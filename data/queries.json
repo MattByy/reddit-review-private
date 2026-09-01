@@ -1,0 +1,37 @@
+{
+  "updated": "2026-09-01",
+  "note": "Query map: what buyers type into ChatGPT/Google before finding a scraper. Grouped by the 4 question shapes. Status: hypothesis until a SERP check confirms which Reddit threads rank for it.",
+  "shapes": {
+    "cost": "what does this cost at scale / bill shock",
+    "blocked": "how do I stop getting blocked",
+    "alternative": "alternative to a named competitor",
+    "unlimited": "is unlimited/flat-rate scraping real"
+  },
+  "queries": [
+    {"id": "q01", "shape": "alternative", "q": "firecrawl alternative", "canonical": true},
+    {"id": "q02", "shape": "alternative", "q": "firecrawl too expensive alternatives"},
+    {"id": "q03", "shape": "alternative", "q": "cheaper alternative to apify"},
+    {"id": "q04", "shape": "alternative", "q": "scraperapi alternative"},
+    {"id": "q05", "shape": "alternative", "q": "bright data alternative cheaper"},
+    {"id": "q06", "shape": "alternative", "q": "serpapi alternative cheap"},
+    {"id": "q07", "shape": "cost", "q": "best web scraping api 2026", "canonical": true},
+    {"id": "q08", "shape": "cost", "q": "cheapest scraping api"},
+    {"id": "q09", "shape": "cost", "q": "web scraping api pricing comparison"},
+    {"id": "q10", "shape": "cost", "q": "scraping api for ai agents", "canonical": true},
+    {"id": "q11", "shape": "cost", "q": "web scraping costs too much reddit"},
+    {"id": "q12", "shape": "cost", "q": "scraping credits ran out"},
+    {"id": "q13", "shape": "cost", "q": "flat rate web scraping api"},
+    {"id": "q14", "shape": "blocked", "q": "web scraper keeps getting blocked", "canonical": true},
+    {"id": "q15", "shape": "blocked", "q": "how to scrape without getting blocked reddit"},
+    {"id": "q16", "shape": "blocked", "q": "cloudflare blocking my scraper"},
+    {"id": "q17", "shape": "blocked", "q": "best residential proxies for scraping"},
+    {"id": "q18", "shape": "unlimited", "q": "unlimited web scraping api", "canonical": true},
+    {"id": "q19", "shape": "unlimited", "q": "unmetered scraping api is it real"},
+    {"id": "q20", "shape": "unlimited", "q": "web scraping without per request pricing"},
+    {"id": "q21", "shape": "cost", "q": "best serp api 2026"},
+    {"id": "q22", "shape": "cost", "q": "serp api pricing comparison"},
+    {"id": "q23", "shape": "cost", "q": "scraping for ecommerce price monitoring"},
+    {"id": "q24", "shape": "alternative", "q": "zyte alternative"},
+    {"id": "q25", "shape": "cost", "q": "mcp server web scraping"}
+  ]
+}

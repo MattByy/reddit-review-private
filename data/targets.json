@@ -1,0 +1,787 @@
+{
+ "updated": "2026-09-01",
+ "note": "Reddit threads ranking for buyer queries (Brave SERP via our own /v1/search). best_pos = highest rank seen. Sorted by query coverage.",
+ "targets": [
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1kjvv68/the_real_costs_of_web_scraping/",
+   "title": "r/webscraping on Reddit: The real costs of web scraping",
+   "queries": [
+    "q09",
+    "q11",
+    "q13",
+    "q19",
+    "q20"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/PrivatePackets/comments/1k00j08/the_ultimate_guide_to_the_best_web_scraping_apis/",
+   "title": "r/PrivatePackets on Reddit: The Ultimate Guide to the Best Web Scraping APIs in 2025: Scrape Smarter, Not Harder",
+   "queries": [
+    "q07",
+    "q08",
+    "q09",
+    "q13",
+    "q18"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1016j3l/best_web_scraping_apis_at_the_moment/",
+   "title": "r/webscraping on Reddit: Best web scraping api's at the moment?",
+   "queries": [
+    "q04",
+    "q08",
+    "q13",
+    "q18"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/n8n/comments/1qnry6h/requesting_help_cheapfree_website_scraping_api/",
+   "title": "r/n8n on Reddit: Requesting Help: Cheap/Free Website Scraping API - bypass Cloudflare and bot protection",
+   "queries": [
+    "q08",
+    "q13",
+    "q18"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/n8n/comments/1k5yny8/serp_alternative_web_search/",
+   "title": "r/n8n on Reddit: SERP alternative (web search)",
+   "queries": [
+    "q06",
+    "q21",
+    "q22"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/LocalLLaMA/comments/1jw4yqv/what_is_the_best_scraper_tool_right_now_firecrawl/",
+   "title": "r/LocalLLaMA on Reddit: What is the best scraper tool right now? Firecrawl is great, but I want to explore more options",
+   "queries": [
+    "q01",
+    "q02"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/developer/comments/1r5nb4d/top_web_scraping_apis_for_developers_2026/",
+   "title": "r/developer on Reddit: Top Web Scraping APIs for Developers (2026)",
+   "queries": [
+    "q07",
+    "q09"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/n8n/comments/1q4eccq/any_payasyougo_scrapers_that_dont_expire_credits/",
+   "title": "r/n8n on Reddit: Any pay-as-you-go scrapers that don't expire credits monthly? (Firecrawl alt)",
+   "queries": [
+    "q12",
+    "q20"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1sesvvq/picking_one_google_serp_api_in_2026_feels_less/",
+   "title": "r/WebScrapingInsider on Reddit: Picking ONE Google SERP API in 2026 feels less like \"which parser is best\" and more like \"which risk profile are you buying.\"",
+   "queries": [
+    "q21",
+    "q22"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/LocalLLaMA/comments/1qmzz8e/lowcost_alternatives_to_firecrawl/",
+   "title": "r/LocalLLaMA on Reddit: Low-cost alternatives to Firecrawl?",
+   "queries": [
+    "q01",
+    "q02"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/learnpython/comments/kwhlrj/how_can_i_safely_web_scrape_and_not_get/",
+   "title": "r/learnpython on Reddit: How can I safely web scrape and not get blocked/banned/blacklisted?",
+   "queries": [
+    "q14",
+    "q15"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/automation/comments/1pjypoi/is_there_a_cheaper_alternative_to_scrapingant_or/",
+   "title": "r/automation on Reddit: Is there a cheaper alternative to ScrapingAnt or is it the cheapest on the market?",
+   "queries": [
+    "q04",
+    "q08"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1vsd1ot/which_is_the_best_web_scraping_api_for_ecommerce/",
+   "title": "r/WebScrapingInsider on Reddit: Which is the best web scraping API for e-commerce sites?",
+   "queries": [
+    "q08",
+    "q09"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1s8ktm0/how_can_i_safely_web_scrape_and_not_get/",
+   "title": "r/webscraping on Reddit: How can I safely web scrape and not get blocked/banned/blacklisted?",
+   "queries": [
+    "q14",
+    "q15"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/webdev/comments/1dgiii7/web_scraping_instead_of_reddit_api/",
+   "title": "r/webdev on Reddit: Web Scraping instead of Reddit API?",
+   "queries": [
+    "q18",
+    "q19"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/SaaS/comments/1hw51ra/web_scraping_usage_based_pricing/",
+   "title": "r/SaaS on Reddit: Web scraping - usage based pricing",
+   "queries": [
+    "q09",
+    "q20"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1t080rn/how_to_scrape_reddit_now_closed_api/",
+   "title": "r/webscraping on Reddit: How to scrape Reddit now (Closed API)?",
+   "queries": [
+    "q12",
+    "q19"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/SaaS/comments/1r2u8gh/built_a_scraping_api_as_a_cheaper_faster/",
+   "title": "r/SaaS on Reddit: Built a scraping API as a cheaper, faster alternative to Firecrawl",
+   "queries": [
+    "q01",
+    "q02"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1kjwz0c/opensource_reddit_scraper/",
+   "title": "r/webscraping on Reddit: Open-source Reddit scraper",
+   "queries": [
+    "q18",
+    "q19"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/n8n/comments/1qu4fdg/apify_free_alterntive/",
+   "title": "r/n8n on Reddit: apify free alterntive",
+   "queries": [
+    "q03"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1pib3d7/are_there_alternatives_to_the_reddit_api/",
+   "title": "r/webscraping on Reddit: Are there alternatives to the Reddit API ?",
+   "queries": [
+    "q04"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/proxies/comments/1r5am23/whats_a_bettercheaper_alternative_to_brightdata/",
+   "title": "r/proxies on Reddit: Whats a better/cheaper alternative to Brightdata?",
+   "queries": [
+    "q05"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/AI_Agents/comments/1iuksza/web_scraping_tools_for_ai_agents_apis_or_vanilla/",
+   "title": "r/AI_Agents on Reddit: Web Scraping Tools for AI Agents - APIs or Vanilla Scraping Options",
+   "queries": [
+    "q10"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/programming/comments/ic2zc2/web_scraping_without_getting_blocked/",
+   "title": "r/programming on Reddit: Web scraping without getting blocked",
+   "queries": [
+    "q15"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1j7mqs7/cloudflare_blocking_my_scraper_in_the_cloud_but/",
+   "title": "r/webscraping on Reddit: Cloudflare Blocking My Scraper in the Cloud, But It Works Locally",
+   "queries": [
+    "q16"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1srkmsu/best_residential_proxies_in_2026_if_you_actually/",
+   "title": "r/WebScrapingInsider on Reddit: Best residential proxies in 2026 if you actually care about success rate.. not fake \"unlimited\" plans?",
+   "queries": [
+    "q17"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1stdpla/price_monitoring_for_ecommerce/",
+   "title": "r/WebScrapingInsider on Reddit: Price Monitoring for e-commerce",
+   "queries": [
+    "q23"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/Entrepreneur/comments/1bi66al/oxylabs_vs_brightdata_vs_zyte_what_are_you_using/",
+   "title": "r/Entrepreneur on Reddit: Oxylabs vs Brightdata vs Zyte? What are you using for large-scale web scraping in 2024?",
+   "queries": [
+    "q24"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/mcp/comments/1nm8fz1/web_scraping_mcp_server_bring_live_web_data_into/",
+   "title": "r/mcp on Reddit: Web Scraping MCP Server \u2013 Bring Live Web Data Into Your Agent",
+   "queries": [
+    "q25"
+   ],
+   "best_pos": 1
+  },
+  {
+   "url": "https://www.reddit.com/r/AI_Agents/comments/1seboyl/web_search_apis_andor_scraping/",
+   "title": "r/AI_Agents on Reddit: Web search APIs and/or scraping",
+   "queries": [
+    "q10"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1q47k94/how_much_does_webscraping_cost/",
+   "title": "r/webscraping on Reddit: How much does webscraping cost?",
+   "queries": [
+    "q11"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/mjoibq/web_scraper_always_getting_blocked/",
+   "title": "r/webscraping on Reddit: Web scraper always getting blocked",
+   "queries": [
+    "q14"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1cvisv8/how_can_i_scrape_pages_with_cloudflare_protection/",
+   "title": "r/webscraping on Reddit: How can I scrape pages with Cloudflare protection when encountering a 403 block?",
+   "queries": [
+    "q16"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/learnpython/comments/1sirqe9/building_a_price_monitoring_tool_what_api_should/",
+   "title": "r/learnpython on Reddit: building a price monitoring tool, what api should i use to scrape sites reliably?",
+   "queries": [
+    "q23"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/ClaudeAI/comments/1m8giwj/whats_the_best_most_reliable_mcp_to_let_claude/",
+   "title": "r/ClaudeAI on Reddit: What's the best most reliable MCP to let Claude Code scrape a website?",
+   "queries": [
+    "q25"
+   ],
+   "best_pos": 2
+  },
+  {
+   "url": "https://www.reddit.com/r/n8n/comments/1m7sovx/alternative_to_firecrawl/",
+   "title": "r/n8n on Reddit: Alternative to FireCrawl?",
+   "queries": [
+    "q01"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/n8n/comments/1v783nr/is_there_any_alternative_to_apify_for_reddit/",
+   "title": "r/n8n on Reddit: Is there any alternative to apify for Reddit?",
+   "queries": [
+    "q03"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/SaaS/comments/1swxwx2/we_have_built_a_cheaper_alternative_to_bright/",
+   "title": "r/SaaS on Reddit: we have built a cheaper alternative to Bright Data but struggling with GTM, would love advice",
+   "queries": [
+    "q05"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/webdev/comments/1oibczg/alternatives_to_serp_api_for_scrapping_reviews/",
+   "title": "r/webdev on Reddit: Alternatives to serp API for scrapping reviews",
+   "queries": [
+    "q06"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1stguri/what_are_the_best_ai_web_scraping_tools_in_2026/",
+   "title": "r/WebScrapingInsider on Reddit: What Are the Best AI Web Scraping Tools in 2026?",
+   "queries": [
+    "q07"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/AI_Agents/comments/1rt0dl9/best_ai_for_data_scraping/",
+   "title": "r/AI_Agents on Reddit: Best AI for data scraping",
+   "queries": [
+    "q10"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1dq73ry/how_much_i_should_charge_for_web_scraping/",
+   "title": "r/webscraping on Reddit: How much I should charge for web scraping",
+   "queries": [
+    "q11"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/hermesagent/comments/1tu1iey/what_are_you_using_for_light_google/",
+   "title": "r/hermesagent on Reddit: What are you using for light Google search/scraping? Firecrawl credits burning fast",
+   "queries": [
+    "q12"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1cx1iew/trouble_with_web_scraping_getting_blocked/",
+   "title": "r/webscraping on Reddit: Trouble with Web Scraping: Getting Blocked",
+   "queries": [
+    "q14"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1cylo52/crawler_blocked_by_cloudflare_despite_respecting/",
+   "title": "r/webscraping on Reddit: Crawler blocked by Cloudflare despite respecting robots.txt and sending one request per day",
+   "queries": [
+    "q16"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/proxies/comments/1sv5zti/best_residential_proxy_provider_in_2026/",
+   "title": "r/proxies on Reddit: Best Residential Proxy Provider in 2026?",
+   "queries": [
+    "q17"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1ia8ht1/cheap_web_scraping_hosting/",
+   "title": "r/webscraping on Reddit: Cheap web scraping hosting",
+   "queries": [
+    "q20"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/TechSEO/comments/1vldg9a/which_serp_api_would_you_use_for_google_when/",
+   "title": "r/TechSEO on Reddit: Which serp api would you use for Google when proxies and blocks are the main problem?",
+   "queries": [
+    "q21"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/ecommerce/comments/1m0xhtd/what_tool_do_you_use_to_track_competitor_prices/",
+   "title": "What tool do you use to track competitor prices? : r/ecommerce",
+   "queries": [
+    "q23"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/14bj45w/what_is_the_stripe_of_scraping_api_services/",
+   "title": "r/webscraping on Reddit: What is the Stripe of Scraping API services?",
+   "queries": [
+    "q24"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/mcp/comments/1p61f2q/scrapy_mcp_server_a_powerful_web_scraping_mcp/",
+   "title": "r/mcp on Reddit: Scrapy MCP Server \u2013 A powerful web scraping MCP server built on Scrapy and FastMCP that supports multiple scraping methods (HTTP, Scrapy, browser automation), anti-detection techniques, form handling, and concurrent crawling. Designed for commercial environments with enterprise-grade features like i",
+   "queries": [
+    "q25"
+   ],
+   "best_pos": 3
+  },
+  {
+   "url": "https://www.reddit.com/r/AgentsOfAI/comments/1t3pe4e/firecrawl_vs_crawl4ai_i_tried_both_and_heres_what/",
+   "title": "r/AgentsOfAI on Reddit: Firecrawl vs Crawl4ai, I tried both and here's what i found",
+   "queries": [
+    "q01"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/apify/comments/1vpqdv8/pay_per_use_apify_alternatives/",
+   "title": "r/apify on Reddit: Pay per use Apify Alternatives?",
+   "queries": [
+    "q03"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/n8n/comments/1gy42z9/we_should_look_for_another_option_besides_serpapi/",
+   "title": "r/n8n on Reddit: We should look for another option besides SerpAPI, right?",
+   "queries": [
+    "q06"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/Agent_AI/comments/1rpqqr2/8_best_web_scraping_tools_in_2026_ainative/",
+   "title": "r/Agent_AI on Reddit: 8 Best Web Scraping Tools in 2026: AI-Native Scrapers Compared",
+   "queries": [
+    "q07"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/AI_Agents/comments/1ulhzdj/what_are_people_actually_scraping_from_the_web/",
+   "title": "r/AI_Agents on Reddit: What are people actually scraping from the web using AI agents?",
+   "queries": [
+    "q10"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/tvcj0t/how_to_estimate_cost_web_scraping_freelancing/",
+   "title": "r/webscraping on Reddit: How to Estimate cost Web Scraping Freelancing Project?",
+   "queries": [
+    "q11"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/webdev/comments/1s9q7na/we_had_to_pick_a_scraping_solution_for_a_client/",
+   "title": "r/webdev on Reddit: We had to pick a scraping solution for a client project, sharing what actually mattered",
+   "queries": [
+    "q12"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1hf8tmr/got_blocked_while_scraping/",
+   "title": "r/webscraping on Reddit: Got blocked while scraping",
+   "queries": [
+    "q14"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/datascience/comments/ckptcz/a_guide_to_web_scraping_without_getting_blocked/",
+   "title": "r/datascience on Reddit: A guide to Web Scraping without getting blocked",
+   "queries": [
+    "q15"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/CloudFlare/comments/1ejd8dc/block_ai_scrapers_and_crawlers/",
+   "title": "r/CloudFlare on Reddit: Block AI Scrapers and Crawlers",
+   "queries": [
+    "q16"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1rro4bt/what_are_some_best_cheap_residential_proxies/",
+   "title": "r/WebScrapingInsider on Reddit: What are some best cheap residential proxies?",
+   "queries": [
+    "q17"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1sxv2c4/how_to_get_client_for_ecommerce_price_monitoring/",
+   "title": "r/WebScrapingInsider on Reddit: How to get client for e-commerce price monitoring",
+   "queries": [
+    "q23"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1kef4g4/using_playwright_mcp_servers_for_scraping/",
+   "title": "r/webscraping on Reddit: Using Playwright MCP Servers for Scraping",
+   "queries": [
+    "q25"
+   ],
+   "best_pos": 4
+  },
+  {
+   "url": "https://www.reddit.com/r/micro_saas/comments/1r2u71e/built_a_scraping_api_as_a_cheaper_faster/",
+   "title": "r/micro_saas on Reddit: Built a scraping API as a cheaper, faster alternative to Firecrawl",
+   "queries": [
+    "q02"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/saasbuild/comments/1mqcxr1/any_free_alternatives_for_apify/",
+   "title": "r/saasbuild on Reddit: Any free alternatives for apify?",
+   "queries": [
+    "q03"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/Entrepreneur/comments/1pc9u5k/best_web_scraping_tools_ideally_premium_instead/",
+   "title": "r/Entrepreneur on Reddit: Best web scraping tools (ideally premium instead of open source)?",
+   "queries": [
+    "q04"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/selfhosted/comments/pmzt5p/alternative_to_brightdata_web_scraping/",
+   "title": "r/selfhosted on Reddit: Alternative to Brightdata? (Web Scraping)",
+   "queries": [
+    "q05"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/aiagents/comments/1k0hc4d/question_whats_the_best_web_scraping_api_for_ai/",
+   "title": "r/aiagents on Reddit: [Question] What's the best web scraping API for ai gents you've recently battle tested?",
+   "queries": [
+    "q10"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/zh2xa9/what_do_you_charge_for_webscraping_on_average/",
+   "title": "r/webscraping on Reddit: What do you charge for webscraping on average?",
+   "queries": [
+    "q11"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/webdev/comments/1nyovt1/i_had_to_scrape_36000_pages_and_it_turned_into_a/",
+   "title": "r/webdev on Reddit: I had to scrape 36,000 pages and it turned into a complete mess before I figured it out",
+   "queries": [
+    "q12"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/15yocsc/how_to_not_get_blocked/",
+   "title": "r/webscraping on Reddit: How to not get blocked",
+   "queries": [
+    "q15"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/1hpx4qa/bypass_cloudflare_with_little_knowledge_of/",
+   "title": "r/webscraping on Reddit: Bypass cloudflare with little knowledge of scraping",
+   "queries": [
+    "q16"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/digitalnomad/comments/1s31f3l/begginer_at_scraping_what_are_best_residential/",
+   "title": "r/digitalnomad on Reddit: Begginer at scraping. What are best residential proxies vs datacenter proxies for scraping?",
+   "queries": [
+    "q17"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/ecommerce/comments/1s8uxca/how_do_you_track_prices_from_competitors/",
+   "title": "r/ecommerce on Reddit: How do you track prices from competitors?",
+   "queries": [
+    "q23"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/mcp/comments/1riqn5m/ive_been_building_scrapers_and_mcp_servers_for/",
+   "title": "r/mcp on Reddit: I've been building scrapers and MCP servers for months. WebMCP might kill half my codebase and I'm weirdly ok with it",
+   "queries": [
+    "q25"
+   ],
+   "best_pos": 5
+  },
+  {
+   "url": "https://www.reddit.com/r/coldemail/comments/1o4lrpa/whats_a_good_replacement_for_apify/",
+   "title": "r/coldemail on Reddit: What\u2019s a good replacement for Apify?",
+   "queries": [
+    "q03"
+   ],
+   "best_pos": 6
+  },
+  {
+   "url": "https://www.reddit.com/r/learnpython/comments/1c08y8p/best_current_web_scraping_solutions_stack_for/",
+   "title": "r/learnpython on Reddit: Best current web scraping solutions / stack for large projects?",
+   "queries": [
+    "q04"
+   ],
+   "best_pos": 6
+  },
+  {
+   "url": "https://www.reddit.com/r/learndatascience/comments/1ryq6ay/budgetfriendly_scraping_infrastructure_for/",
+   "title": "r/learndatascience on Reddit: Budget-friendly scraping infrastructure for large-scale data science projects (Alternatives to Bright Data?)",
+   "queries": [
+    "q05"
+   ],
+   "best_pos": 6
+  },
+  {
+   "url": "https://www.reddit.com/r/LangChain/comments/1lw6nre/open_source_free_serpapi_alternative_for/",
+   "title": "r/LangChain on Reddit: \ud83d\udd0d [Open Source] Free SerpAPI Alternative for LangChain - Same JSON Format, Zero Cost",
+   "queries": [
+    "q06"
+   ],
+   "best_pos": 6
+  },
+  {
+   "url": "https://www.reddit.com/r/SideProject/comments/1exlrnn/i_found_web_scraping_apis_too_expensive_so_i/",
+   "title": "r/SideProject on Reddit: I found web scraping APIs too expensive, so I built my own (that bypasses Cloudflare)!",
+   "queries": [
+    "q20"
+   ],
+   "best_pos": 6
+  },
+  {
+   "url": "https://www.reddit.com/r/smallbusiness/comments/1qnsa9o/waht_i_do_to_cut_bright_data_costs_for_my_clients/",
+   "title": "r/smallbusiness on Reddit: Waht I do to cut Bright Data costs for my clients by 95%",
+   "queries": [
+    "q05"
+   ],
+   "best_pos": 7
+  },
+  {
+   "url": "https://www.reddit.com/r/microsaas/comments/1pnduth/i_need_feedback_we_built_an_alternative_to/",
+   "title": "r/microsaas on Reddit: I need feedback. We built an alternative to SerpAPI/Serper. It's much smaller and simpler than other tools on the market. I believe our main advantage is our low entry level and price.",
+   "queries": [
+    "q06"
+   ],
+   "best_pos": 7
+  },
+  {
+   "url": "https://www.reddit.com/r/automation/comments/1ncuv8k/best_web_scraping_tools_ive_tried_and_what_i/",
+   "title": "r/automation on Reddit: Best web scraping tools I\u2019ve tried (and what I learned from each)",
+   "queries": [
+    "q07"
+   ],
+   "best_pos": 7
+  },
+  {
+   "url": "https://www.reddit.com/r/scrapingtheweb/comments/1sgotuo/what_are_some_decent_rotating_residential_proxies/",
+   "title": "r/scrapingtheweb on Reddit: What are some decent rotating residential proxies for tough scraping targets?",
+   "queries": [
+    "q17"
+   ],
+   "best_pos": 7
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/15zb9u8/advice_on_setting_up_a_scraping_infrastructure/",
+   "title": "r/webscraping on Reddit: Advice on setting up a scraping infrastructure for hard websites like LinkedIn",
+   "queries": [
+    "q24"
+   ],
+   "best_pos": 7
+  },
+  {
+   "url": "https://www.reddit.com/r/WebDataDiggers/comments/1q1ujog/the_state_of_serp_scraping_in_2026/",
+   "title": "r/WebDataDiggers on Reddit: The state of SERP scraping in 2026",
+   "queries": [
+    "q21"
+   ],
+   "best_pos": 8
+  },
+  {
+   "url": "https://www.reddit.com/r/webscraping/comments/vc4h07/scrapingbot_closing_alternatives/",
+   "title": "r/webscraping on Reddit: Scraping-Bot closing, alternatives?",
+   "queries": [
+    "q24"
+   ],
+   "best_pos": 8
+  },
+  {
+   "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1rdcafp/what_scraping_apis_are_you_actually_using_and/",
+   "title": "r/WebScrapingInsider on Reddit: What scraping APIs are you actually using (and trusting) in production?",
+   "queries": [
+    "q19"
+   ],
+   "best_pos": 9
+  },
+  {
+   "url": "https://www.reddit.com/r/learnpython/comments/1eqlzvt/best_scraping_solutions_and_workflows_for_newbies/",
+   "title": "r/learnpython on Reddit: Best scraping solutions and workflows for newbies?",
+   "queries": [
+    "q24"
+   ],
+   "best_pos": 9
+  },
+  {
+   "url": "https://www.reddit.com/r/coldemail/comments/1s7gpl0/most_costeffective_way_to_crawl_a_list_of/",
+   "title": "r/coldemail on Reddit: Most cost-effective way to crawl a list of websites for owners/names?",
+   "queries": [
+    "q02"
+   ],
+   "best_pos": 10
+  },
+  {
+   "url": "https://www.reddit.com/r/thewebscrapingclub/comments/1tdb74m/i_built_a_webscraper_api_that_is_67x_more/",
+   "title": "r/thewebscrapingclub on Reddit: I built a Web-Scraper API that is 6-7x more efficient than current ones",
+   "queries": [
+    "q13"
+   ],
+   "best_pos": 10
+  },
+  {
+   "url": "https://www.reddit.com/r/micro_saas/comments/1se7jo7/most_google_serp_apis_are_expensive_so_i_built_a/",
+   "title": "r/micro_saas on Reddit: Most Google SERP APIs are expensive, so I built a cheaper one",
+   "queries": [
+    "q22"
+   ],
+   "best_pos": 11
+  },
+  {
+   "url": "https://www.reddit.com/r/SaaSSales/comments/1qec9a5/best_serp_api_tool_for_b2b_data_collection/",
+   "title": "r/SaaSSales on Reddit: Best Serp API tool for B2B data collection",
+   "queries": [
+    "q21"
+   ],
+   "best_pos": 18
+  }
+ ]
+}

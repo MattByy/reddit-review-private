@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Geonode · Reddit GEO Ops</title>
+<style>
+:root{--bg:#0f1114;--panel:#181a1e;--ink:#e8e8e8;--mut:#b0b5bd;--dim:#969ba5;--acc:#ffd815;--ok:#7dd87d;--bad:#ff7d7d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+main{max-width:1000px;margin:0 auto;padding:32px 20px 80px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:40px 0 12px;border-bottom:1px solid #2c2f36;padding-bottom:6px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{text-align:left;padding:6px 10px 6px 0;vertical-align:top;border-bottom:1px solid #22252b}
+th{color:var(--dim);font-weight:400;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+a{color:#8ecbff;text-decoration:none}a:hover{text-decoration:underline}
+.bar{height:10px;background:var(--acc);display:inline-block;vertical-align:middle;min-width:2px}
+.bar.g{background:#8ecbff}
+.num{color:var(--mut)}
+.pill{display:inline-block;padding:1px 8px;border:1px solid #2c2f36;border-radius:10px;font-size:11px;color:var(--mut)}
+.pill.live{color:var(--ok);border-color:var(--ok)}
+.pill.queued{color:var(--acc);border-color:#665c1e}
+.pill.blocked{color:var(--bad);border-color:#663535}
+.flow{background:var(--panel);padding:18px 20px;border-radius:8px;margin:10px 0;font-size:14px}
+.flow ol{margin:8px 0 0;padding-left:22px}.flow li{margin:6px 0;color:var(--mut)}
+.flow li b{color:var(--ink)}
+.rule{color:var(--mut);font-size:13px;margin:4px 0}
+.rule b{color:var(--ink)}
+#meta{color:var(--dim);font-size:12px}
+</style>
+</head>
+<body><main>
+<h1>Reddit GEO Ops — Geonode</h1>
+<div id="meta">loading…</div>
+
+<h2>How this works</h2>
+<div class="flow">
+People ask ChatGPT and Google things like <i>"firecrawl alternative"</i>. The answers come from Reddit threads that rank for those queries. We find those exact threads and put the best answer in them — real computed prices, disclosed as Geonode. Every step below is data in the <code>geonode-strategy</code> repo; git history is the change log.
+<ol>
+<li><b>Query map</b> — ~25 buyer searches, 4 shapes: cost · blocked · alternative-to-X · is-unlimited-real</li>
+<li><b>SERP check</b> — our own <code>/v1/search</code> finds the Reddit threads ranking for each query → the target list below</li>
+<li><b>Listen</b> — Engain mention feed adds fresh threads naming us or competitors</li>
+<li><b>Draft</b> — agent writes the reply: rate-card math, honest where a rival wins, affiliation disclosed. Copy-rule gate + subreddit rule-check</li>
+<li><b>Approve</b> — digest to Swello on Discord; a human approves and posts. Nothing autonomous touches Reddit</li>
+<li><b>Boost</b> — 3–7 upvotes max per published comment, drip. Hard cap</li>
+<li><b>Measure</b> — weekly share-of-voice below; monthly: what does ChatGPT actually answer</li>
+</ol>
+</div>
+<div class="rule"><b>Hard rules:</b> disclosed affiliation always · no manufactured accounts or fake convos · numbers computed from vendors' own rate cards, never typed · "not published" is rendered as exactly that.</div>
+
+<h2>Share of voice — Reddit mentions <span class="pill">baseline 2026-09-01 · Engain</span></h2>
+<div class="sub">Goal: close the gap on Firecrawl. Geonode count is inflated by the July comment run; treat as ceiling.</div>
+<table id="sov"></table>
+
+<h2>Thread targets <span class="pill" id="tcount"></span></h2>
+<div class="sub">Reddit threads ranking (Brave, top-5) for buyer queries — found with our own scraper. Sorted by how many queries each thread answers. These are the pages to dominate.</div>
+<table id="targets"></table>
+
+<h2>Experiments</h2>
+<table id="exps"></table>
+
+<h2>Activity log</h2>
+<div class="sub" id="lognote"></div>
+<table id="log"></table>
+
+</main>
+<script>
+const j = u => fetch(u).then(r=>r.json());
+Promise.all([j('data/log.json'), j('data/targets.json'), j('data/experiments.json'), j('data/queries.json')])
+.then(([log, tg, ex, qs]) => {
+  document.getElementById('meta').textContent =
+    `data updated ${tg.updated} · ${qs.queries.length} queries · ${tg.targets.length} target threads · repo: geonode-strategy/04-reddit`;
+
+  const sov = Object.entries(log.baseline.share_of_voice).sort((a,b)=>b[1]-a[1]);
+  const max = sov[0][1];
+  document.getElementById('sov').innerHTML =
+    '<tr><th>brand</th><th>mentions</th><th></th></tr>' +
+    sov.map(([b,n])=>`<tr><td>${b}${b==='geonode.com'?' ←':''}</td><td class="num">${n}</td><td style="width:55%"><span class="bar${b==='geonode.com'?'':' g'}" style="width:${(n/max*100).toFixed(0)}%"></span></td></tr>`).join('');
+
+  const qmap = Object.fromEntries(qs.queries.map(q=>[q.id,q.q]));
+  document.getElementById('tcount').textContent = tg.targets.length + ' threads';
+  document.getElementById('targets').innerHTML =
+    '<tr><th>#q</th><th>pos</th><th>thread</th><th>ranks for</th></tr>' +
+    tg.targets.slice(0,40).map(t=>{
+      const path = t.url.replace('https://www.reddit.com','');
+      return `<tr><td class="num">${t.queries.length}</td><td class="num">${t.best_pos}</td><td><a href="${t.url}" rel="noopener">${path.slice(0,70)}</a></td><td class="num">${t.queries.map(id=>qmap[id]||id).slice(0,3).join(' · ')}</td></tr>`;
+    }).join('');
+
+  document.getElementById('exps').innerHTML =
+    '<tr><th>id</th><th>hypothesis</th><th>where</th><th>metric</th><th>status</th></tr>' +
+    ex.experiments.map(e=>`<tr><td>${e.id}</td><td>${e.hypothesis}</td><td class="num">${e.where}</td><td class="num">${e.metric}</td><td><span class="pill ${e.status}">${e.status}</span></td></tr>`).join('');
+
+  document.getElementById('lognote').textContent = log.entries.length ? '' : 'No actions logged yet — loop goes live after key rotation + first approvals.';
+  if (log.entries.length) document.getElementById('log').innerHTML =
+    '<tr><th>date</th><th>sub</th><th>action</th><th>thread</th><th>status</th></tr>' +
+    log.entries.slice().reverse().map(e=>`<tr><td class="num">${e.date}</td><td>${e.sub||''}</td><td>${e.action}</td><td><a href="${e.url}">${(e.url||'').slice(0,50)}</a></td><td class="num">${e.status||''}</td></tr>`).join('');
+})
+.catch(e => document.getElementById('meta').textContent = 'data load failed: ' + e);
+</script>
+</body></html>

@@ -1,0 +1,47 @@
+{
+  "updated": "2026-09-01",
+  "note": "Experiment registry. One hypothesis, one sub, one angle, 2 weeks, one metric. Verdict required.",
+  "experiments": [
+    {
+      "id": "E1",
+      "owner": "Swello",
+      "hypothesis": "Commenting the unlimited/flat-price angle on popular scraper posts lifts our mention share",
+      "where": "top-ranking evergreen scraper threads (from targets.json)",
+      "metric": "mentions of geonode.com in Engain feed, 2-week delta",
+      "status": "queued",
+      "started": null,
+      "verdict": null
+    },
+    {
+      "id": "E2",
+      "owner": "agent",
+      "hypothesis": "E-commerce cost/price-monitoring threads convert better than scraper-nerd subs (less competition, bill-pain buyers)",
+      "where": "r/ecommerce, r/dropship, r/FulfillmentByAmazon",
+      "metric": "replies + trial-link clicks (UTM) per comment",
+      "status": "queued",
+      "started": null,
+      "verdict": null
+    },
+    {
+      "id": "E3",
+      "owner": "agent",
+      "hypothesis": "Replying where competitors are already mentioned (Engain mentions feed) is the highest-intent surface",
+      "where": "any thread mentioning firecrawl/brightdata/apify/scraperapi with a question",
+      "metric": "upvotes on our reply + thread rank retention",
+      "status": "queued",
+      "started": null,
+      "verdict": null
+    },
+    {
+      "id": "E4",
+      "owner": "agent+Swello",
+      "hypothesis": "A reproducible cost benchmark post (same 20 targets, us vs 3 rivals, open method) outperforms all commenting combined",
+      "where": "r/SaaS or r/LocalLLaMA (r/webscraping rules likely block it)",
+      "metric": "post score + AI-citation appearance for canonical queries within 30 days",
+      "status": "blocked",
+      "blocker": "needs the benchmark run first (07-GROWTH.md workstream 4)",
+      "started": null,
+      "verdict": null
+    }
+  ]
+}
