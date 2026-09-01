@@ -18,22 +18,14 @@
   <a href="audit.html">4 · Audit</a>
 </div>
 <div class="card">
-<b>The strategy in one paragraph.</b>
-<p>Buyers ask ChatGPT and Google things like <i>"firecrawl alternative"</i> or <i>"why does scraping cost so much"</i>. The answers are assembled from Reddit threads that rank for those queries. We keep a growing list of what buyers could be searching (<a href="queries.html">Queries</a>) → find the exact threads that rank for them (<a href="targets.html">Targets</a>, via our own <code>/v1/search</code>) → put the best answer in each thread with real computed prices and disclosed affiliation (<a href="dominate.html">Dominate</a>) → then test from clean sessions and real AI engines whether the answers now include us, and score what worked (<a href="audit.html">Audit</a>). Experiments run on top; everything is logged; git history is the audit trail.</p>
+<b>The play.</b>
+<p>Buyers ask AI "firecrawl alternative". AI answers from Reddit threads that rank. We find those threads (<a href="targets.html">Targets</a>), leave genuinely good comments in them (<a href="dominate.html">Dominate</a>), and check monthly if the AI answers changed (<a href="audit.html">Audit</a>).</p>
 </div>
 
 <h2>Share of voice — Reddit mentions <span class="pill">Engain · baseline 2026-09-01</span></h2>
-<div class="sub">The gap to close. Geonode's count is inflated by the July comment run — treat it as a ceiling.</div>
+
 <table id="sov"></table>
 
-<h2>Hard rules</h2>
-<div class="card"><ul>
-<li><b>Disclosed affiliation, always.</b> Undisclosed shilling gets caught and pinned by mods forever (Riveter precedent) — and the callout thread gets indexed by AI too.</li>
-<li><b>No manufactured accounts, no fake conversations.</b> One burned network poisons every thread we own.</li>
-<li><b>Upvote boosts capped at 3–7 per comment, dripped.</b> Small boosts survived our July run; the 42-vote burst is the anti-pattern.</li>
-<li><b>Every number computed from the vendor's own rate card, never typed.</b> "Not published" is rendered exactly as that.</li>
-<li><b>Human approves every post.</b> The agent drafts; nothing touches Reddit autonomously.</li>
-</ul></div>
 </main>
 <script>
 Promise.all([j('data/log.json'), j('data/targets.json'), j('data/queries.json')]).then(([log,tg,qs])=>{

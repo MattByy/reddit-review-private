@@ -1,18 +1,27 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Dominate · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/app.js"></script><main>
 <h1>3 · Dominate</h1>
-<div class="sub">Owning the target threads. Simple version — complexity gets added only when we need it.</div>
+<div class="sub">Not "buy geonode, it's cheapest." A comment earns its spot by actually helping — the numbers are ammo, creativity is the weapon.</div>
 
 <h2>The daily flow</h2>
 <div class="card"><ol>
 <li><b>Pick</b> — each day the agent picks a few targets from the list</li>
-<li><b>Draft</b> — each picked thread gets one drafted comment (real prices, Geonode disclosed)</li>
+<li><b>Draft</b> — one comment per thread, written with a chosen response strategy (below), affiliation disclosed</li>
 <li><b>Human decides</b> — for every draft: <b>approve</b> (post it) · <b>edit</b> (fix, then post) · <b>delete</b> (skip)</li>
 <li><b>Post</b> — approved comment goes up; thread status → <span class="pill live">posted</span></li>
 <li><b>Upvotes</b> — after posting, 3–7 upvotes drip in over a few days. Never more</li>
 </ol>
 <p>That's the whole loop. Drafts arrive as a digest in Swello's Discord.</p></div>
 
+<h2>Response strategies</h2>
+<table>
+<tr><th>strategy</th><th>what it looks like</th><th>best for shape</th></tr>
+<tr><td>War story</td><td>"we burned $X on credits before switching approach…" — experience first, product maybe</td><td>cost</td></tr>
+<tr><td>Fix first</td><td>actually solve their blocking problem; mention what we use only if asked or relevant</td><td>blocked</td></tr>
+<tr><td>Honest comparison</td><td>side-by-side incl. where rivals win; numbers from their own rate cards</td><td>alternative</td></tr>
+<tr><td>Explain the trick</td><td>how flat pricing works economically — teach, don't sell</td><td>unlimited</td></tr>
+</table>
+<div class="sub">Each draft is tagged with its strategy — the Audit scores which style wins, not just which thread.</div>
 <h2>Today's drafts <span class="pill" id="dcount"></span></h2>
 <table id="drafts"></table>
 
