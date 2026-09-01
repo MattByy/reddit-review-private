@@ -1,0 +1,6 @@
+{
+  "updated": "2026-09-01",
+  "note": "AI-answer audits. For each canonical query: what did each engine actually answer, does Geonode appear, which sources were cited. Baseline first, then monthly. Filling this is the Audit stage; scoring lives here.",
+  "engines": ["chatgpt", "perplexity", "gemini", "google-ai-overview"],
+  "audits": []
+}
