@@ -1,7 +1,22 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Targets · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Targets · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css">
+<style>
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.controls input{background:var(--panel);border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:6px;font:13px ui-monospace,monospace;flex:1;min-width:220px}
+.controls select{background:var(--panel);border:1px solid var(--line);color:var(--mut);padding:8px 10px;border-radius:6px;font:13px ui-monospace,monospace}
+.trow{border-bottom:1px solid var(--line);padding:10px 0;cursor:pointer}
+.trow:hover{background:var(--panel)}
+.trow .head{display:flex;gap:10px;align-items:center}
+.trow .title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow .sr{color:var(--acc);font-size:12px;min-width:130px}
+.trow .meta{color:var(--dim);font-size:12px;min-width:90px;text-align:right}
+.trow .detail{display:none;padding:10px 0 4px 0}
+.trow.open .detail{display:block}
+.qchip{display:inline-block;background:var(--well);border:1px solid var(--line);border-radius:12px;padding:2px 10px;margin:3px 4px 0 0;font-size:12px;color:var(--mut)}
+.detail a{font-size:13px}
+</style></head>
 <body><script src="assets/app.js"></script><main>
 <h1>2 · Targets</h1>
-<div class="sub">A <b>target</b> = a Reddit thread that ranks in search for one of our queries. These are the pages AI engines read when they answer buyers. Each target shows the queries it ranks for, its status, and how many times we've been in it. Refreshed weekly.</div>
+<div class="sub">Reddit threads that rank in search for our queries. Click a row to see the queries it ranks for. Search and filter below.</div>
 
 <div class="grid">
  <div class="stat"><div class="v" id="s-n">–</div><div class="l">threads</div></div>
@@ -10,24 +25,57 @@
  <div class="stat"><div class="v" id="s-new">–</div><div class="l">untouched</div></div>
 </div>
 
-<div class="card"><b>Status meanings:</b> <span class="pill">new</span> nobody touched it · <span class="pill queued">drafted</span> comment written, waiting approval · <span class="pill live">posted</span> we're in the thread · <span class="pill done">done</span> nothing more to gain · <span class="pill blocked">skip</span> ruled out (sub rules / dead thread).</div>
+<div class="controls">
+  <input id="q" placeholder="search title, subreddit, query…">
+  <select id="fstatus"><option value="">status: all</option><option>new</option><option>drafted</option><option>posted</option><option>done</option><option>skip</option></select>
+  <select id="fshape"><option value="">shape: all</option><option>cost</option><option>blocked</option><option>alternative</option><option>unlimited</option></select>
+  <select id="fsort"><option value="cov">sort: coverage</option><option value="pos">sort: best position</option><option value="sub">sort: subreddit</option></select>
+</div>
 
-<h2>Target list <span class="pill" id="count"></span></h2>
-<table id="tbl"></table>
+<div id="list"></div>
+<div class="sub" id="shown"></div>
 </main>
 <script>
 Promise.all([j('data/targets.json'), j('data/queries.json')]).then(([tg,qs])=>{
-  const qmap=Object.fromEntries(qs.queries.map(q=>[q.id,q.q]));
-  const T=tg.targets;
+  const qmap=Object.fromEntries(qs.queries.map(q=>[q.id,q]));
+  const T=tg.targets.map(t=>{
+    const m=t.url.match(/\/r\/([^/]+)/); t.sub=m?m[1]:'';
+    t.shapes=[...new Set(t.queries.map(id=>qmap[id]?.shape).filter(Boolean))];
+    t.qtexts=t.queries.map(id=>qmap[id]?.q||id);
+    t.title=(t.title||t.url.split('/comments/')[1]||'').replace(/_/g,' ');
+    return t;
+  });
   document.getElementById('s-n').textContent=T.length;
   document.getElementById('s-top').textContent=T.filter(t=>t.best_pos===1).length;
   document.getElementById('s-done').textContent=T.filter(t=>['posted','done'].includes(t.status)).length;
   document.getElementById('s-new').textContent=T.filter(t=>t.status==='new').length;
-  document.getElementById('count').textContent=T.length+' threads';
-  document.getElementById('tbl').innerHTML='<tr><th>status</th><th>we in it</th><th>#q</th><th>pos</th><th>thread</th><th>ranks for</th></tr>'+
-    T.map(t=>{
-      const path=t.url.replace('https://www.reddit.com','');
-      return `<tr><td>${pill(t.status)}</td><td class="num">${t.our_comments||0}×</td><td class="num">${t.queries.length}</td><td class="num">${t.best_pos}</td><td><a href="${t.url}" rel="noopener">${path.slice(0,65)}</a></td><td class="num">${t.queries.map(id=>qmap[id]||id).join(' · ')}</td></tr>`;
-    }).join('');
+
+  const $=id=>document.getElementById(id);
+  function render(){
+    const q=$('q').value.toLowerCase(), st=$('fstatus').value, sh=$('fshape').value, so=$('fsort').value;
+    let rows=T.filter(t=>
+      (!st||t.status===st) && (!sh||t.shapes.includes(sh)) &&
+      (!q || t.title.toLowerCase().includes(q) || t.sub.toLowerCase().includes(q) || t.qtexts.join(' ').toLowerCase().includes(q)));
+    rows.sort((a,b)=> so==='pos' ? a.best_pos-b.best_pos : so==='sub' ? a.sub.localeCompare(b.sub) : (b.queries.length-a.queries.length)||(a.best_pos-b.best_pos));
+    $('list').innerHTML=rows.map((t,i)=>`
+      <div class="trow" data-i="${i}">
+        <div class="head">
+          <span class="sr">r/${t.sub}</span>
+          <span class="title">${t.title}</span>
+          <span class="meta">${t.queries.length}q · pos ${t.best_pos} · ${t.our_comments||0}×</span>
+          ${pill(t.status)}
+        </div>
+        <div class="detail">
+          ${t.qtexts.map(x=>`<span class="qchip">${x}</span>`).join('')}
+          <div style="margin-top:8px"><a href="${t.url}" rel="noopener" target="_blank">open thread ↗</a></div>
+        </div>
+      </div>`).join('');
+    $('shown').textContent=rows.length+' of '+T.length+' shown';
+    [...document.querySelectorAll('.trow')].forEach(r=>r.addEventListener('click',e=>{
+      if(e.target.tagName!=='A') r.classList.toggle('open');
+    }));
+  }
+  ['q','fstatus','fshape','fsort'].forEach(id=>$(id).addEventListener('input',render));
+  render();
 });
 </script></body></html>
