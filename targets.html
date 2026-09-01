@@ -1,27 +1,33 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Targets · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/app.js"></script><main>
-<h1>2 · Targets — the threads that own the rankings</h1>
-<div class="sub">For every query we run our own <code>/v1/search</code> (Brave, top results) and keep the Reddit threads that rank. These pages are what AI engines read when they answer a buyer. Sorted by coverage: a thread ranking for 5 queries is worth 5 threads ranking for 1. Refreshed weekly — rankings decay.</div>
+<h1>2 · Targets</h1>
+<div class="sub">A <b>target</b> = a Reddit thread that ranks in search for one of our queries. These are the pages AI engines read when they answer buyers. Each target shows the queries it ranks for, its status, and how many times we've been in it. Refreshed weekly.</div>
 
 <div class="grid">
- <div class="stat"><div class="v" id="s-n">–</div><div class="l">unique threads</div></div>
- <div class="stat"><div class="v" id="s-top">–</div><div class="l">threads at position 1</div></div>
- <div class="stat"><div class="v" id="s-multi">–</div><div class="l">rank for 2+ queries</div></div>
+ <div class="stat"><div class="v" id="s-n">–</div><div class="l">threads</div></div>
+ <div class="stat"><div class="v" id="s-top">–</div><div class="l">at position 1</div></div>
+ <div class="stat"><div class="v" id="s-done">–</div><div class="l">posted / done</div></div>
+ <div class="stat"><div class="v" id="s-new">–</div><div class="l">untouched</div></div>
 </div>
 
-<h2>Target list</h2>
+<div class="card"><b>Status meanings:</b> <span class="pill">new</span> nobody touched it · <span class="pill queued">drafted</span> comment written, waiting approval · <span class="pill live">posted</span> we're in the thread · <span class="pill done">done</span> nothing more to gain · <span class="pill blocked">skip</span> ruled out (sub rules / dead thread).</div>
+
+<h2>Target list <span class="pill" id="count"></span></h2>
 <table id="tbl"></table>
 </main>
 <script>
 Promise.all([j('data/targets.json'), j('data/queries.json')]).then(([tg,qs])=>{
   const qmap=Object.fromEntries(qs.queries.map(q=>[q.id,q.q]));
-  document.getElementById('s-n').textContent=tg.targets.length;
-  document.getElementById('s-top').textContent=tg.targets.filter(t=>t.best_pos===1).length;
-  document.getElementById('s-multi').textContent=tg.targets.filter(t=>t.queries.length>1).length;
-  document.getElementById('tbl').innerHTML='<tr><th>#q</th><th>best pos</th><th>thread</th><th>ranks for</th></tr>'+
-    tg.targets.map(t=>{
+  const T=tg.targets;
+  document.getElementById('s-n').textContent=T.length;
+  document.getElementById('s-top').textContent=T.filter(t=>t.best_pos===1).length;
+  document.getElementById('s-done').textContent=T.filter(t=>['posted','done'].includes(t.status)).length;
+  document.getElementById('s-new').textContent=T.filter(t=>t.status==='new').length;
+  document.getElementById('count').textContent=T.length+' threads';
+  document.getElementById('tbl').innerHTML='<tr><th>status</th><th>we in it</th><th>#q</th><th>pos</th><th>thread</th><th>ranks for</th></tr>'+
+    T.map(t=>{
       const path=t.url.replace('https://www.reddit.com','');
-      return `<tr><td class="num">${t.queries.length}</td><td class="num">${t.best_pos}</td><td><a href="${t.url}" rel="noopener">${path.slice(0,75)}</a></td><td class="num">${t.queries.map(id=>qmap[id]||id).join(' · ')}</td></tr>`;
+      return `<tr><td>${pill(t.status)}</td><td class="num">${t.our_comments||0}×</td><td class="num">${t.queries.length}</td><td class="num">${t.best_pos}</td><td><a href="${t.url}" rel="noopener">${path.slice(0,65)}</a></td><td class="num">${t.queries.map(id=>qmap[id]||id).join(' · ')}</td></tr>`;
     }).join('');
 });
 </script></body></html>

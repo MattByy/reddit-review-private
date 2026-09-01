@@ -1,29 +1,24 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Audit · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/app.js"></script><main>
-<h1>4 · Audit — did the answers change?</h1>
-<div class="sub">The scoring stage. Before domination starts: a baseline snapshot of what every engine answers for the canonical queries. Then monthly re-runs, clean sessions, same wording. Score = does Geonode appear, at what rank, citing which source.</div>
+<h1>4 · Audit</h1>
+<div class="sub">The scoring step: did the answers change? We ask ChatGPT / Google the ★ canonical queries from a clean session, same wording every time, and record whether Geonode shows up and which thread got cited.</div>
 
-<h2>Method</h2>
 <div class="card"><ol>
-<li><b>Baseline first</b> — ask ChatGPT, Perplexity, Gemini and read Google AI Overviews for every ★ query, from clean sessions. Save the full answers + cited sources into <code>data/audits.json</code>. Nothing posts before the baseline exists.</li>
-<li><b>Clean-session Google checks</b> — fresh-profile searches (Apify actor or our own SERP endpoint) so personalization doesn't lie to us</li>
-<li><b>Monthly re-run</b> — identical wording, score the delta</li>
-<li><b>Attribution</b> — which target thread got cited? That thread's play (comment/post/boost) gets the credit. This is what decides the Dominate method</li>
-<li><b>Conversion cross-check</b> — UTM'd links → trial starts (the funnel's conversion event, per 07-GROWTH.md)</li>
+<li><b>Baseline</b> — snapshot what every engine answers <i>today</i>, before we post anything. Without a before, we can't prove anything worked.</li>
+<li><b>Monthly re-run</b> — identical wording, clean sessions</li>
+<li><b>Score</b> — per query: do we appear? which thread was cited? better or worse than baseline?</li>
+<li><b>Decide</b> — threads whose citations moved get more comments; threads that did nothing get marked done</li>
 </ol></div>
 
-<h2>Scorecard per query</h2>
-<div class="card"><p><b>appears</b> (y/n) · <b>rank</b> in the answer · <b>cited source</b> (which Reddit thread / page) · <b>sentiment</b> of the mention · <b>delta vs baseline</b>. Target from the strategy repo: top-3 on the reference queries, &lt;5% today → 50%+.</p></div>
-
-<h2>Audit runs <span class="pill" id="count"></span></h2>
+<h2>Runs <span class="pill" id="count"></span></h2>
 <table id="tbl"></table>
 </main>
 <script>
 j('data/audits.json').then(a=>{
   document.getElementById('count').textContent=a.audits.length+' runs';
   document.getElementById('tbl').innerHTML = a.audits.length
-    ? '<tr><th>date</th><th>engine</th><th>query</th><th>appears</th><th>cited source</th></tr>'+
+    ? '<tr><th>date</th><th>engine</th><th>query</th><th>we appear</th><th>cited source</th></tr>'+
       a.audits.map(r=>`<tr><td class="num">${r.date}</td><td>${r.engine}</td><td>${r.query}</td><td>${r.appears?'✓':'—'}</td><td class="num">${r.cited||''}</td></tr>`).join('')
-    : '<tr><td class="num">No runs yet. Baseline is the next scheduled action — it must land before any posting starts.</td></tr>';
+    : '<tr><td class="num">No runs yet. Baseline is the next action — nothing posts before it exists.</td></tr>';
 });
 </script></body></html>

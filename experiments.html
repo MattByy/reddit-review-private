@@ -1,13 +1,13 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Experiments · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/app.js"></script><main>
 <h1>Experiments</h1>
-<div class="sub">One hypothesis · one sub · one angle · ~10 actions · 2 weeks · one metric. Kill/scale threshold written before start. Registry: <code>04-reddit/data/experiments.json</code>.</div>
+<div class="sub"><b>What this is:</b> before betting the whole channel on one tactic, we test ideas small. One experiment = one idea, tried for 2 weeks with ~10 actions, measured on one number, then a decision: kill it or scale it. This is how "should we do posts or comments?" and "which subs convert?" get answered with data instead of opinions.</div>
 <h2>Registry</h2>
 <table id="tbl"></table>
 </main>
 <script>
 j('data/experiments.json').then(ex=>{
-  document.getElementById('tbl').innerHTML='<tr><th>id</th><th>hypothesis</th><th>where</th><th>metric</th><th>owner</th><th>status</th></tr>'+
-    ex.experiments.map(e=>`<tr><td>${e.id}</td><td>${e.hypothesis}</td><td class="num">${e.where}</td><td class="num">${e.metric}</td><td class="num">${e.owner}</td><td>${pill(e.status)}${e.blocker?'<div class="num">'+e.blocker+'</div>':''}</td></tr>`).join('');
+  document.getElementById('tbl').innerHTML='<tr><th>id</th><th>the idea</th><th>where</th><th>measured by</th><th>status</th></tr>'+
+    ex.experiments.map(e=>`<tr><td>${e.id}</td><td>${e.hypothesis}</td><td class="num">${e.where}</td><td class="num">${e.metric}</td><td>${pill(e.status)}${e.blocker?'<div class="num">'+e.blocker+'</div>':''}</td></tr>`).join('');
 });
 </script></body></html>

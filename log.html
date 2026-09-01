@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Log · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/app.js"></script><main>
-<h1>Activity log</h1>
-<div class="sub">Append-only. Every draft, approval, post, boost and outcome — <code>04-reddit/data/log.json</code>. Git history shows every change with author and time.</div>
+<h1>Log</h1>
+<div class="sub"><b>What this is:</b> the receipts. Every action the system takes — a draft written, a comment approved, posted, boosted, removed — gets one line here, forever. When something works or breaks, this is where we find out what actually happened.</div>
 <h2>Entries <span class="pill" id="count"></span></h2>
 <table id="tbl"></table>
 </main>
@@ -11,6 +11,6 @@ j('data/log.json').then(log=>{
   document.getElementById('tbl').innerHTML = log.entries.length
     ? '<tr><th>date</th><th>sub</th><th>action</th><th>thread</th><th>status</th></tr>'+
       log.entries.slice().reverse().map(e=>`<tr><td class="num">${e.date}</td><td>${e.sub||''}</td><td>${e.action}</td><td><a href="${e.url}">${(e.url||'').replace('https://www.reddit.com','').slice(0,55)}</a></td><td class="num">${e.status||''}</td></tr>`).join('')
-    : '<tr><td class="num">Empty. First entries land when the loop goes live (after key rotation + baseline audit).</td></tr>';
+    : '<tr><td class="num">Empty. First entries land when the daily loop goes live.</td></tr>';
 });
 </script></body></html>

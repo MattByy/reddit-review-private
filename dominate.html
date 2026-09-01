@@ -1,29 +1,37 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Dominate · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/app.js"></script><main>
-<h1>3 · Dominate — owning the target threads</h1>
-<div class="sub">Method not fully decided (comments vs posts vs boosts) — the experiments decide it. What is decided: the workflow and the hard rules.</div>
+<h1>3 · Dominate</h1>
+<div class="sub">Owning the target threads. Simple version — complexity gets added only when we need it.</div>
 
-<h2>The workflow</h2>
+<h2>The daily flow</h2>
 <div class="card"><ol>
-<li><b>Pick</b> — agent selects targets from the list (coverage × freshness × sub rules allow it)</li>
-<li><b>Draft</b> — reply leads with computed rate-card math; honest where a rival is cheaper; Geonode affiliation disclosed; UTM-tagged link → <code>/start</code> where the sub allows links</li>
-<li><b>Gate</b> — draft passes the CLAUDE.md copy rules + Engain <code>rule-check</code> against that subreddit's rules (the July run lost 71 tasks pre-publish; this gate is why)</li>
-<li><b>Approve</b> — digest to Swello on Discord; human approves; human-or-Engain posts</li>
-<li><b>Boost</b> — 3–7 upvotes, dripped over days, our disclosed comment only. Hard cap</li>
-<li><b>Log</b> — every action appended to the <a href="log.html">Log</a> with thread, status, outcome</li>
-</ol></div>
+<li><b>Pick</b> — each day the agent picks a few targets from the list</li>
+<li><b>Draft</b> — each picked thread gets one drafted comment (real prices, Geonode disclosed)</li>
+<li><b>Human decides</b> — for every draft: <b>approve</b> (post it) · <b>edit</b> (fix, then post) · <b>delete</b> (skip)</li>
+<li><b>Post</b> — approved comment goes up; thread status → <span class="pill live">posted</span></li>
+<li><b>Upvotes</b> — after posting, 3–7 upvotes drip in over a few days. Never more</li>
+</ol>
+<p>That's the whole loop. Drafts arrive as a digest in Swello's Discord.</p></div>
 
-<h2>Candidate plays (experiments decide)</h2>
+<h2>Today's drafts <span class="pill" id="dcount"></span></h2>
+<table id="drafts"></table>
+
+<h2>Allowed / banned</h2>
 <table>
-<tr><th>play</th><th>what</th><th>status</th></tr>
-<tr><td>Answer comments</td><td>best answer in an existing ranked thread</td><td><span class="pill live">default</span></td></tr>
-<tr><td>New posts</td><td>benchmark / cost-breakdown posts in subs that allow it (r/SaaS, r/LocalLLaMA — r/webscraping bans vendor posts)</td><td><span class="pill queued">E4</span></td></tr>
-<tr><td>Capped boosts</td><td>3–7 votes drip on published comments</td><td><span class="pill live">allowed</span></td></tr>
-<tr><td>Burst upvotes / bought engagement</td><td>42-vote pushes, JAP bot services</td><td><span class="pill blocked">banned</span></td></tr>
-<tr><td>Undisclosed accounts / fake convos</td><td>—</td><td><span class="pill blocked">banned</span></td></tr>
+<tr><th>play</th><th>status</th></tr>
+<tr><td>Answer comments in ranked threads</td><td><span class="pill live">default</span></td></tr>
+<tr><td>Posts of our own (benchmarks) in subs that allow it</td><td><span class="pill queued">testing (E4)</span></td></tr>
+<tr><td>3–7 upvote drip on our published comments</td><td><span class="pill live">allowed</span></td></tr>
+<tr><td>Upvote bursts, bought followers (JAP)</td><td><span class="pill blocked">banned</span></td></tr>
+<tr><td>Fake accounts, fake conversations, undisclosed shilling</td><td><span class="pill blocked">banned</span></td></tr>
 </table>
-
-<h2>The one argument every draft carries</h2>
-<div class="card"><p>Computed from vendors' own published rate cards (repo: <code>dashboard/lib/home.ts</code>): at Firecrawl's largest published plan, plain pages cost <b>$0.60/1K</b> and hard pages (their 5× credit multiplier) <b>$3.00/1K</b>. A Geonode plan is flat by threads — the per-page figure falls out of usage, and difficulty doesn't multiply it. Where a rival is genuinely cheaper (very low volume), the draft says so — the honest branch is what makes the rest credible.</p></div>
 </main>
-<script></script></body></html>
+<script>
+j('data/drafts.json').then(d=>{
+  document.getElementById('dcount').textContent=d.drafts.length+' waiting';
+  document.getElementById('drafts').innerHTML = d.drafts.length
+    ? '<tr><th>thread</th><th>draft</th><th>decision</th></tr>'+
+      d.drafts.map(x=>`<tr><td><a href="${x.url}">${x.url.replace('https://www.reddit.com','').slice(0,45)}</a></td><td class="num">${x.text.slice(0,160)}…</td><td>${pill(x.decision||'pending')}</td></tr>`).join('')
+    : '<tr><td class="num">No drafts queued yet — the daily loop starts after the baseline audit.</td></tr>';
+}).catch(()=>{document.getElementById('dcount').textContent='0';document.getElementById('drafts').innerHTML='<tr><td class="num">No drafts queued yet — the daily loop starts after the baseline audit.</td></tr>';});
+</script></body></html>

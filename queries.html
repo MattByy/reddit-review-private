@@ -1,25 +1,26 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Queries · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/app.js"></script><main>
-<h1>1 · Queries — what buyers could be searching</h1>
-<div class="sub">The living list. We fill this up continuously: every phrase a buyer might type into ChatGPT or Google before choosing a scraper. Four shapes. Add candidates via the repo (<code>04-reddit/data/queries.json</code>) — every addition is a commit, so history shows who added what, when.</div>
+<h1>1 · Queries</h1>
+<div class="sub">A <b>query</b> = a sentence a buyer types into ChatGPT or Google before choosing a scraper. This list is where everything starts. We keep filling it up, forever. File: <code>data/queries.json</code>.</div>
 
-<div class="card"><b>Where new queries come from:</b>
+<div class="card">
+<b>Shape</b> = the category of the query. Only 4 exist, and each tells the agent which argument to lead with:
 <ul>
-<li>Customer language bank (<code>02-website/customer-language-bank.md</code>) — buyers' verbatim words</li>
-<li>Engain mention feed — phrasing people actually use in threads</li>
-<li>AI expansion — ask the models "what would someone type before buying a scraping API"</li>
-<li>Google/Brave autocomplete on seed terms</li>
-<li>Support tickets + sales calls (doc 18's weekly mining)</li>
-</ul></div>
+<li><b>cost</b> — "scraping costs too much" → lead with price math</li>
+<li><b>blocked</b> — "my scraper keeps getting blocked" → lead with the network</li>
+<li><b>alternative</b> — "alternative to firecrawl" → lead with the comparison</li>
+<li><b>unlimited</b> — "is flat-rate scraping real" → lead with how flat pricing works</li>
+</ul>
+<b>★ Canonical</b> = the few queries we officially score ourselves on every month, same wording every time. The rest are exploratory.
+</div>
 
-<h2>The map <span class="pill" id="count"></span></h2>
+<h2>The list <span class="pill" id="count"></span></h2>
 <table id="tbl"></table>
 </main>
 <script>
 j('data/queries.json').then(qs=>{
   document.getElementById('count').textContent=qs.queries.length+' queries · updated '+qs.updated;
-  const shapes=qs.shapes;
-  document.getElementById('tbl').innerHTML='<tr><th>id</th><th>query</th><th>shape</th><th>canonical</th></tr>'+
-    qs.queries.map(q=>`<tr><td class="num">${q.id}</td><td>${q.q}</td><td class="num">${q.shape} — ${shapes[q.shape]||''}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
+  document.getElementById('tbl').innerHTML='<tr><th>id</th><th>query</th><th>shape</th><th>★</th></tr>'+
+    qs.queries.map(q=>`<tr><td class="num">${q.id}</td><td>${q.q}</td><td class="num">${q.shape}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
 });
 </script></body></html>
