@@ -11,7 +11,7 @@
 <li><b>alternative</b> — "alternative to firecrawl" → lead with the comparison</li>
 <li><b>unlimited</b> — "is flat-rate scraping real" → lead with how flat pricing works</li>
 </ul>
-<b>★ Canonical</b> = the few queries we officially score ourselves on every month, same wording every time. The rest are exploratory.
+<b>Source</b> = where the query came from: <code>seed</code> our hypothesis · <code>autocomplete</code> real Google suggestion · <code>volume-checked</code> has search-volume data.<br><b>★ Canonical</b> = the few queries we officially score ourselves on every month, same wording every time. The rest are exploratory.
 </div>
 
 <h2>The list <span class="pill" id="count"></span></h2>
@@ -20,7 +20,7 @@
 <script>
 j('data/queries.json').then(qs=>{
   document.getElementById('count').textContent=qs.queries.length+' queries · updated '+qs.updated;
-  document.getElementById('tbl').innerHTML='<tr><th>id</th><th>query</th><th>shape</th><th>★</th></tr>'+
-    qs.queries.map(q=>`<tr><td class="num">${q.id}</td><td>${q.q}</td><td class="num">${q.shape}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
+  document.getElementById('tbl').innerHTML='<tr><th>id</th><th>query</th><th>shape</th><th>source</th><th>★</th></tr>'+
+    qs.queries.map(q=>`<tr><td class="num">${q.id}</td><td>${q.q}</td><td class="num">${q.shape}</td><td class="num">${q.source||'seed'}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
 });
 </script></body></html>

@@ -20,12 +20,13 @@
 <div class="card">
 <b>The play, step by step.</b>
 <ol>
-<li>Someone types <i>"firecrawl alternative"</i> or <i>"scraping costs too much"</i> into ChatGPT or Google.</li>
-<li>The answer they get is built from a handful of Reddit threads that rank for that search. Those threads decide who gets recommended.</li>
-<li>We keep a growing list of those searches (<a href="queries.html">Queries</a>) and use our own scraper to find the exact threads that rank for each one (<a href="targets.html">Targets</a>).</li>
-<li>In each thread we leave a comment that genuinely helps — a war story, a fix, an honest comparison. Not an ad. Numbers when they serve the answer (<a href="dominate.html">Dominate</a>). A human approves every comment before it posts.</li>
-<li>A month later we ask the AIs the same searches again and check: do they recommend us now, and which thread convinced them (<a href="audit.html">Audit</a>). What worked gets more; what didn't gets dropped.</li>
+<li><b>Find out what buyers actually type.</b> Not guesses: Google autocomplete and keyword tools show the real searches ("firecrawl alternative open source", "apify alternative n8n"). Each query is tagged <code>seed</code> (our hypothesis) or <code>autocomplete</code> (real people typed this). Volume data comes next — the list keeps growing forever (<a href="queries.html">Queries</a>).</li>
+<li><b>Find the threads that answer those searches.</b> When someone asks ChatGPT or Google, the answer is assembled from a few Reddit threads that rank. Our own scraper finds exactly which ones, per query (<a href="targets.html">Targets</a>).</li>
+<li><b>Earn a place in those threads.</b> One genuinely helpful comment per thread — a war story, a fix, an honest comparison — written in a chosen style, disclosed as Geonode, approved by a human before posting, then boosted with a few upvotes at most (<a href="dominate.html">Dominate</a>).</li>
+<li><b>Check if reality moved.</b> Monthly, from clean sessions, we ask the AIs the same ★ queries and record: are we recommended now, and which thread got cited (<a href="audit.html">Audit</a>).</li>
+<li><b>Double down or drop.</b> Threads and comment styles that moved citations get more attention; the rest get marked done. Side ideas run as 2-week <a href="experiments.html">Experiments</a> first.</li>
 </ol>
+<p><b>Why this beats the old approach:</b> the previous Reddit effort commented broadly and bought upvotes for trending — Reddit-internal metrics. This system starts from real search demand and is scored on one external question: <i>does the AI recommend us when a buyer asks?</i></p>
 </div>
 
 <h2>Share of voice — Reddit mentions <span class="pill">Engain · baseline 2026-09-01</span></h2>
