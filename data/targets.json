@@ -1,5 +1,5 @@
 {
- "updated": "2026-09-01",
+ "updated": "2026-09-02",
  "note": "Reddit threads ranking for buyer queries (found via our own /v1/search, Brave). Each target: queries it ranks for, best position, status (new/drafted/posted/done/skip), our_comments = times we've posted in it. Refresh weekly.",
  "targets": [
   {
@@ -14,7 +14,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/PrivatePackets/comments/1k00j08/the_ultimate_guide_to_the_best_web_scraping_apis/",
@@ -28,7 +30,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1016j3l/best_web_scraping_apis_at_the_moment/",
@@ -41,7 +45,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/n8n/comments/1qnry6h/requesting_help_cheapfree_website_scraping_api/",
@@ -53,7 +59,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/n8n/comments/1k5yny8/serp_alternative_web_search/",
@@ -65,7 +73,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/LocalLLaMA/comments/1jw4yqv/what_is_the_best_scraper_tool_right_now_firecrawl/",
@@ -76,7 +86,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/developer/comments/1r5nb4d/top_web_scraping_apis_for_developers_2026/",
@@ -87,7 +99,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/n8n/comments/1q4eccq/any_payasyougo_scrapers_that_dont_expire_credits/",
@@ -98,7 +112,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1sesvvq/picking_one_google_serp_api_in_2026_feels_less/",
@@ -109,7 +125,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/LocalLLaMA/comments/1qmzz8e/lowcost_alternatives_to_firecrawl/",
@@ -120,7 +138,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/learnpython/comments/kwhlrj/how_can_i_safely_web_scrape_and_not_get/",
@@ -131,7 +151,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/automation/comments/1pjypoi/is_there_a_cheaper_alternative_to_scrapingant_or/",
@@ -142,7 +164,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1vsd1ot/which_is_the_best_web_scraping_api_for_ecommerce/",
@@ -153,7 +177,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1s8ktm0/how_can_i_safely_web_scrape_and_not_get/",
@@ -164,7 +190,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webdev/comments/1dgiii7/web_scraping_instead_of_reddit_api/",
@@ -175,7 +203,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/SaaS/comments/1hw51ra/web_scraping_usage_based_pricing/",
@@ -186,7 +216,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1t080rn/how_to_scrape_reddit_now_closed_api/",
@@ -197,7 +229,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/SaaS/comments/1r2u8gh/built_a_scraping_api_as_a_cheaper_faster/",
@@ -208,7 +242,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1kjwz0c/opensource_reddit_scraper/",
@@ -219,7 +255,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/n8n/comments/1qu4fdg/apify_free_alterntive/",
@@ -229,7 +267,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1pib3d7/are_there_alternatives_to_the_reddit_api/",
@@ -239,7 +279,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/proxies/comments/1r5am23/whats_a_bettercheaper_alternative_to_brightdata/",
@@ -249,7 +291,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/AI_Agents/comments/1iuksza/web_scraping_tools_for_ai_agents_apis_or_vanilla/",
@@ -259,7 +303,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/programming/comments/ic2zc2/web_scraping_without_getting_blocked/",
@@ -269,7 +315,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1j7mqs7/cloudflare_blocking_my_scraper_in_the_cloud_but/",
@@ -279,7 +327,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1srkmsu/best_residential_proxies_in_2026_if_you_actually/",
@@ -289,7 +339,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1stdpla/price_monitoring_for_ecommerce/",
@@ -299,7 +351,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/Entrepreneur/comments/1bi66al/oxylabs_vs_brightdata_vs_zyte_what_are_you_using/",
@@ -309,7 +363,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/mcp/comments/1nm8fz1/web_scraping_mcp_server_bring_live_web_data_into/",
@@ -319,7 +375,9 @@
    ],
    "best_pos": 1,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/AI_Agents/comments/1seboyl/web_search_apis_andor_scraping/",
@@ -329,7 +387,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1q47k94/how_much_does_webscraping_cost/",
@@ -339,7 +399,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/mjoibq/web_scraper_always_getting_blocked/",
@@ -349,7 +411,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1cvisv8/how_can_i_scrape_pages_with_cloudflare_protection/",
@@ -359,7 +423,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/learnpython/comments/1sirqe9/building_a_price_monitoring_tool_what_api_should/",
@@ -369,7 +435,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/ClaudeAI/comments/1m8giwj/whats_the_best_most_reliable_mcp_to_let_claude/",
@@ -379,7 +447,9 @@
    ],
    "best_pos": 2,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/n8n/comments/1m7sovx/alternative_to_firecrawl/",
@@ -389,7 +459,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/n8n/comments/1v783nr/is_there_any_alternative_to_apify_for_reddit/",
@@ -399,7 +471,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/SaaS/comments/1swxwx2/we_have_built_a_cheaper_alternative_to_bright/",
@@ -409,7 +483,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webdev/comments/1oibczg/alternatives_to_serp_api_for_scrapping_reviews/",
@@ -419,7 +495,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1stguri/what_are_the_best_ai_web_scraping_tools_in_2026/",
@@ -429,7 +507,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/AI_Agents/comments/1rt0dl9/best_ai_for_data_scraping/",
@@ -439,7 +519,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1dq73ry/how_much_i_should_charge_for_web_scraping/",
@@ -449,7 +531,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/hermesagent/comments/1tu1iey/what_are_you_using_for_light_google/",
@@ -459,7 +543,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1cx1iew/trouble_with_web_scraping_getting_blocked/",
@@ -469,7 +555,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1cylo52/crawler_blocked_by_cloudflare_despite_respecting/",
@@ -479,7 +567,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/proxies/comments/1sv5zti/best_residential_proxy_provider_in_2026/",
@@ -489,7 +579,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1ia8ht1/cheap_web_scraping_hosting/",
@@ -499,7 +591,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/TechSEO/comments/1vldg9a/which_serp_api_would_you_use_for_google_when/",
@@ -509,7 +603,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/ecommerce/comments/1m0xhtd/what_tool_do_you_use_to_track_competitor_prices/",
@@ -519,7 +615,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/14bj45w/what_is_the_stripe_of_scraping_api_services/",
@@ -529,7 +627,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/mcp/comments/1p61f2q/scrapy_mcp_server_a_powerful_web_scraping_mcp/",
@@ -539,7 +639,9 @@
    ],
    "best_pos": 3,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/AgentsOfAI/comments/1t3pe4e/firecrawl_vs_crawl4ai_i_tried_both_and_heres_what/",
@@ -549,7 +651,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/apify/comments/1vpqdv8/pay_per_use_apify_alternatives/",
@@ -559,7 +663,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/n8n/comments/1gy42z9/we_should_look_for_another_option_besides_serpapi/",
@@ -569,7 +675,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/Agent_AI/comments/1rpqqr2/8_best_web_scraping_tools_in_2026_ainative/",
@@ -579,7 +687,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/AI_Agents/comments/1ulhzdj/what_are_people_actually_scraping_from_the_web/",
@@ -589,7 +699,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/tvcj0t/how_to_estimate_cost_web_scraping_freelancing/",
@@ -599,7 +711,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webdev/comments/1s9q7na/we_had_to_pick_a_scraping_solution_for_a_client/",
@@ -609,7 +723,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1hf8tmr/got_blocked_while_scraping/",
@@ -619,7 +735,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/datascience/comments/ckptcz/a_guide_to_web_scraping_without_getting_blocked/",
@@ -629,7 +747,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/CloudFlare/comments/1ejd8dc/block_ai_scrapers_and_crawlers/",
@@ -639,7 +759,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1rro4bt/what_are_some_best_cheap_residential_proxies/",
@@ -649,7 +771,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1sxv2c4/how_to_get_client_for_ecommerce_price_monitoring/",
@@ -659,7 +783,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1kef4g4/using_playwright_mcp_servers_for_scraping/",
@@ -669,7 +795,9 @@
    ],
    "best_pos": 4,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/micro_saas/comments/1r2u71e/built_a_scraping_api_as_a_cheaper_faster/",
@@ -679,7 +807,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/saasbuild/comments/1mqcxr1/any_free_alternatives_for_apify/",
@@ -689,7 +819,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/Entrepreneur/comments/1pc9u5k/best_web_scraping_tools_ideally_premium_instead/",
@@ -699,7 +831,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/selfhosted/comments/pmzt5p/alternative_to_brightdata_web_scraping/",
@@ -709,7 +843,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/aiagents/comments/1k0hc4d/question_whats_the_best_web_scraping_api_for_ai/",
@@ -719,7 +855,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/zh2xa9/what_do_you_charge_for_webscraping_on_average/",
@@ -729,7 +867,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webdev/comments/1nyovt1/i_had_to_scrape_36000_pages_and_it_turned_into_a/",
@@ -739,7 +879,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/15yocsc/how_to_not_get_blocked/",
@@ -749,7 +891,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/1hpx4qa/bypass_cloudflare_with_little_knowledge_of/",
@@ -759,7 +903,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/digitalnomad/comments/1s31f3l/begginer_at_scraping_what_are_best_residential/",
@@ -769,7 +915,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/ecommerce/comments/1s8uxca/how_do_you_track_prices_from_competitors/",
@@ -779,7 +927,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/mcp/comments/1riqn5m/ive_been_building_scrapers_and_mcp_servers_for/",
@@ -789,7 +939,9 @@
    ],
    "best_pos": 5,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/coldemail/comments/1o4lrpa/whats_a_good_replacement_for_apify/",
@@ -799,7 +951,9 @@
    ],
    "best_pos": 6,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/learnpython/comments/1c08y8p/best_current_web_scraping_solutions_stack_for/",
@@ -809,7 +963,9 @@
    ],
    "best_pos": 6,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/learndatascience/comments/1ryq6ay/budgetfriendly_scraping_infrastructure_for/",
@@ -819,7 +975,9 @@
    ],
    "best_pos": 6,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/LangChain/comments/1lw6nre/open_source_free_serpapi_alternative_for/",
@@ -829,7 +987,9 @@
    ],
    "best_pos": 6,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/SideProject/comments/1exlrnn/i_found_web_scraping_apis_too_expensive_so_i/",
@@ -839,7 +999,9 @@
    ],
    "best_pos": 6,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/smallbusiness/comments/1qnsa9o/waht_i_do_to_cut_bright_data_costs_for_my_clients/",
@@ -849,7 +1011,9 @@
    ],
    "best_pos": 7,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/microsaas/comments/1pnduth/i_need_feedback_we_built_an_alternative_to/",
@@ -859,7 +1023,9 @@
    ],
    "best_pos": 7,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/automation/comments/1ncuv8k/best_web_scraping_tools_ive_tried_and_what_i/",
@@ -869,7 +1035,9 @@
    ],
    "best_pos": 7,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/scrapingtheweb/comments/1sgotuo/what_are_some_decent_rotating_residential_proxies/",
@@ -879,7 +1047,9 @@
    ],
    "best_pos": 7,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/15zb9u8/advice_on_setting_up_a_scraping_infrastructure/",
@@ -889,7 +1059,9 @@
    ],
    "best_pos": 7,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebDataDiggers/comments/1q1ujog/the_state_of_serp_scraping_in_2026/",
@@ -899,7 +1071,9 @@
    ],
    "best_pos": 8,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/webscraping/comments/vc4h07/scrapingbot_closing_alternatives/",
@@ -909,7 +1083,9 @@
    ],
    "best_pos": 8,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/WebScrapingInsider/comments/1rdcafp/what_scraping_apis_are_you_actually_using_and/",
@@ -919,7 +1095,9 @@
    ],
    "best_pos": 9,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/learnpython/comments/1eqlzvt/best_scraping_solutions_and_workflows_for_newbies/",
@@ -929,7 +1107,9 @@
    ],
    "best_pos": 9,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/coldemail/comments/1s7gpl0/most_costeffective_way_to_crawl_a_list_of/",
@@ -939,7 +1119,9 @@
    ],
    "best_pos": 10,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/thewebscrapingclub/comments/1tdb74m/i_built_a_webscraper_api_that_is_67x_more/",
@@ -949,7 +1131,9 @@
    ],
    "best_pos": 10,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/micro_saas/comments/1se7jo7/most_google_serp_apis_are_expensive_so_i_built_a/",
@@ -959,7 +1143,9 @@
    ],
    "best_pos": 11,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   },
   {
    "url": "https://www.reddit.com/r/SaaSSales/comments/1qec9a5/best_serp_api_tool_for_b2b_data_collection/",
@@ -969,7 +1155,9 @@
    ],
    "best_pos": 18,
    "status": "new",
-   "our_comments": 0
+   "our_comments": 0,
+   "score": null,
+   "comments": null
   }
  ]
 }

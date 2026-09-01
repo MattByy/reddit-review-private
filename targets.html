@@ -16,7 +16,7 @@
 </style></head>
 <body><script src="assets/app.js"></script><main>
 <h1>2 · Targets</h1>
-<div class="sub">Reddit threads that rank in search for our queries. Click a row to see the queries it ranks for. Search and filter below.</div>
+<div class="sub">Reddit threads that rank in search for our queries. Click a row for its queries. ▲upvotes/💬comments appear per thread once Reddit stats collection is unblocked.</div>
 
 <div class="grid">
  <div class="stat"><div class="v" id="s-n">–</div><div class="l">threads</div></div>
@@ -62,7 +62,7 @@ Promise.all([j('data/targets.json'), j('data/queries.json')]).then(([tg,qs])=>{
         <div class="head">
           <span class="sr">r/${t.sub}</span>
           <span class="title">${t.title}</span>
-          <span class="meta">${t.queries.length}q · pos ${t.best_pos} · ${t.our_comments||0}×</span>
+          <span class="meta">${t.score!=null?("▲"+t.score+" · "+t.comments+"💬 · "):""}${t.queries.length}q · pos ${t.best_pos} · ${t.our_comments||0}×</span>
           ${pill(t.status)}
         </div>
         <div class="detail">

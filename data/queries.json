@@ -1,6 +1,6 @@
 {
  "updated": "2026-09-02",
- "note": "Query map. source: seed (hypothesis) | autocomplete (real Google suggestions) | volume-checked (has search volume data). Filling this up is permanent work.",
+ "note": "Ranked by demand evidence: threads = how many Reddit threads rank for it (SERP-verified), best_pos = highest position. volume = monthly Google searches (null until DataForSEO connected \u2014 rendered as 'no data', never guessed).",
  "shapes": {
   "cost": "what does this cost at scale / bill shock",
   "blocked": "how do I stop getting blocked",
@@ -13,215 +13,320 @@
    "shape": "alternative",
    "q": "firecrawl alternative",
    "canonical": true,
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q02",
    "shape": "alternative",
    "q": "firecrawl too expensive alternatives",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q03",
    "shape": "alternative",
    "q": "cheaper alternative to apify",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q04",
    "shape": "alternative",
    "q": "scraperapi alternative",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q05",
    "shape": "alternative",
    "q": "bright data alternative cheaper",
-   "source": "seed"
-  },
-  {
-   "id": "q06",
-   "shape": "alternative",
-   "q": "serpapi alternative cheap",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q07",
    "shape": "cost",
    "q": "best web scraping api 2026",
    "canonical": true,
-   "source": "seed"
-  },
-  {
-   "id": "q08",
-   "shape": "cost",
-   "q": "cheapest scraping api",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q09",
    "shape": "cost",
    "q": "web scraping api pricing comparison",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q10",
    "shape": "cost",
    "q": "scraping api for ai agents",
    "canonical": true,
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q11",
    "shape": "cost",
    "q": "web scraping costs too much reddit",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q12",
    "shape": "cost",
    "q": "scraping credits ran out",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q13",
    "shape": "cost",
    "q": "flat rate web scraping api",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q15",
+   "shape": "blocked",
+   "q": "how to scrape without getting blocked reddit",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q16",
+   "shape": "blocked",
+   "q": "cloudflare blocking my scraper",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q17",
+   "shape": "blocked",
+   "q": "best residential proxies for scraping",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q19",
+   "shape": "unlimited",
+   "q": "unmetered scraping api is it real",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q20",
+   "shape": "unlimited",
+   "q": "web scraping without per request pricing",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q21",
+   "shape": "cost",
+   "q": "best serp api 2026",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q23",
+   "shape": "cost",
+   "q": "scraping for ecommerce price monitoring",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q24",
+   "shape": "alternative",
+   "q": "zyte alternative",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q25",
+   "shape": "cost",
+   "q": "mcp server web scraping",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null
+  },
+  {
+   "id": "q08",
+   "shape": "cost",
+   "q": "cheapest scraping api",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 2,
+   "volume": null
   },
   {
    "id": "q14",
    "shape": "blocked",
    "q": "web scraper keeps getting blocked",
    "canonical": true,
-   "source": "seed"
-  },
-  {
-   "id": "q15",
-   "shape": "blocked",
-   "q": "how to scrape without getting blocked reddit",
-   "source": "seed"
-  },
-  {
-   "id": "q16",
-   "shape": "blocked",
-   "q": "cloudflare blocking my scraper",
-   "source": "seed"
-  },
-  {
-   "id": "q17",
-   "shape": "blocked",
-   "q": "best residential proxies for scraping",
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 2,
+   "volume": null
   },
   {
    "id": "q18",
    "shape": "unlimited",
    "q": "unlimited web scraping api",
    "canonical": true,
-   "source": "seed"
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 2,
+   "volume": null
   },
   {
-   "id": "q19",
-   "shape": "unlimited",
-   "q": "unmetered scraping api is it real",
-   "source": "seed"
-  },
-  {
-   "id": "q20",
-   "shape": "unlimited",
-   "q": "web scraping without per request pricing",
-   "source": "seed"
-  },
-  {
-   "id": "q21",
-   "shape": "cost",
-   "q": "best serp api 2026",
-   "source": "seed"
+   "id": "q06",
+   "shape": "alternative",
+   "q": "serpapi alternative cheap",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 3,
+   "volume": null
   },
   {
    "id": "q22",
    "shape": "cost",
    "q": "serp api pricing comparison",
-   "source": "seed"
-  },
-  {
-   "id": "q23",
-   "shape": "cost",
-   "q": "scraping for ecommerce price monitoring",
-   "source": "seed"
-  },
-  {
-   "id": "q24",
-   "shape": "alternative",
-   "q": "zyte alternative",
-   "source": "seed"
-  },
-  {
-   "id": "q25",
-   "shape": "cost",
-   "q": "mcp server web scraping",
-   "source": "seed"
+   "source": "seed",
+   "threads": 3,
+   "best_pos": 1,
+   "volume": null
   },
   {
    "id": "q26",
    "shape": "alternative",
    "q": "firecrawl alternative open source",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q27",
    "shape": "alternative",
    "q": "firecrawl free alternative reddit",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q28",
    "shape": "alternative",
    "q": "apify alternative n8n",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q29",
    "shape": "alternative",
    "q": "apify alternatives for claude",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q30",
    "shape": "cost",
    "q": "web scraping api n8n",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q31",
    "shape": "cost",
    "q": "web scraping api pricing",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q32",
    "shape": "cost",
    "q": "serp api free",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q33",
    "shape": "alternative",
    "q": "serp api alternative",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q34",
    "shape": "cost",
    "q": "web scraping ai agent n8n",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   },
   {
    "id": "q35",
    "shape": "cost",
    "q": "web scraping api open source",
-   "source": "autocomplete"
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": null
   }
  ]
 }
