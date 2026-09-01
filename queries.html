@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Queries · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/app.js"></script><main>
 <h1>1 · Queries</h1>
-<div class="sub">A <b>query</b> = a sentence a buyer types before choosing a scraper. Ranked by demand evidence: how many Reddit threads rank for it. Volume = monthly Google searches (shows "no data" until the keyword tool is connected — we never guess).</div>
+<div class="sub">A <b>query</b> = a sentence a buyer types before choosing a scraper. Ranked by demand evidence: how many Reddit threads rank for it. Volume = monthly Google searches (Apify keyword tool, exact match only). "no data" = under the tool's ~10/mo floor — these long-tails are exactly what AI engines answer from Reddit, so low volume ≠ low value.</div>
 
 <div class="card">
 <b>Shape</b> = the category of the query. Only 4 exist, and each tells the agent which argument to lead with:
@@ -21,6 +21,6 @@
 j('data/queries.json').then(qs=>{
   document.getElementById('count').textContent=qs.queries.length+' queries · updated '+qs.updated;
   document.getElementById('tbl').innerHTML='<tr><th>#</th><th>query</th><th>threads</th><th>best pos</th><th>volume</th><th>shape</th><th>source</th><th>★</th></tr>'+
-    qs.queries.map((q,i)=>`<tr><td class="num">${i+1}</td><td>${q.q}</td><td><span class="bar" style="width:${(q.threads||0)*14}px"></span> <span class="num">${q.threads||0}</span></td><td class="num">${q.best_pos??'–'}</td><td class="num">${q.volume??'no data'}</td><td class="num">${q.shape}</td><td class="num">${q.source||'seed'}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
+    qs.queries.map((q,i)=>`<tr><td class="num">${i+1}</td><td>${q.q}</td><td><span class="bar" style="width:${(q.threads||0)*14}px"></span> <span class="num">${q.threads||0}</span></td><td class="num">${q.best_pos??'–'}</td><td class="num">${q.volume!=null?q.volume+'/mo':'<span title="'+(q.volume_note||'below tool floor')+'">no data</span>'}${q.cpc?' · $'+q.cpc+' cpc':''}</td><td class="num">${q.shape}</td><td class="num">${q.source||'seed'}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
 });
 </script></body></html>

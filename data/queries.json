@@ -1,6 +1,6 @@
 {
  "updated": "2026-09-02",
- "note": "Ranked by demand evidence: threads = how many Reddit threads rank for it (SERP-verified), best_pos = highest position. volume = monthly Google searches (null until DataForSEO connected \u2014 rendered as 'no data', never guessed).",
+ "note": "Ranked by volume (Google monthly searches via Apify s-r/google-keywords, exact match only), then thread evidence. volume null = below the tool's floor (<10/mo) or no exact match \u2014 rendered 'no data', never guessed. volume_note holds nearest variant when found.",
  "shapes": {
   "cost": "what does this cost at scale / bill shock",
   "blocked": "how do I stop getting blocked",
@@ -9,6 +9,26 @@
  },
  "queries": [
   {
+   "id": "q32",
+   "shape": "cost",
+   "q": "serp api free",
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": 170,
+   "cpc": 5.72
+  },
+  {
+   "id": "q33",
+   "shape": "alternative",
+   "q": "serp api alternative",
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": 140,
+   "cpc": 20.11
+  },
+  {
    "id": "q01",
    "shape": "alternative",
    "q": "firecrawl alternative",
@@ -16,25 +36,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
-  },
-  {
-   "id": "q02",
-   "shape": "alternative",
-   "q": "firecrawl too expensive alternatives",
-   "source": "seed",
-   "threads": 5,
-   "best_pos": 1,
-   "volume": null
-  },
-  {
-   "id": "q03",
-   "shape": "alternative",
-   "q": "cheaper alternative to apify",
-   "source": "seed",
-   "threads": 5,
-   "best_pos": 1,
-   "volume": null
+   "volume": 110,
+   "cpc": 11.55
   },
   {
    "id": "q04",
@@ -43,7 +46,68 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": 50,
+   "cpc": 57.48
+  },
+  {
+   "id": "q24",
+   "shape": "alternative",
+   "q": "zyte alternative",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": 50,
+   "cpc": 18.005
+  },
+  {
+   "id": "q25",
+   "shape": "cost",
+   "q": "mcp server web scraping",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": 30,
+   "cpc": 0
+  },
+  {
+   "id": "q34",
+   "shape": "cost",
+   "q": "web scraping ai agent n8n",
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": 10,
+   "cpc": 0
+  },
+  {
+   "id": "q35",
+   "shape": "cost",
+   "q": "web scraping api open source",
+   "source": "autocomplete",
+   "threads": 0,
+   "best_pos": null,
+   "volume": 10,
+   "cpc": 0
+  },
+  {
+   "id": "q02",
+   "shape": "alternative",
+   "q": "firecrawl too expensive alternatives",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null,
+   "volume_note": "no data from tool"
+  },
+  {
+   "id": "q03",
+   "shape": "alternative",
+   "q": "cheaper alternative to apify",
+   "source": "seed",
+   "threads": 5,
+   "best_pos": 1,
+   "volume": null,
+   "volume_note": "no exact match; top variant: cheaper alternatives to hubspot (40/mo)"
   },
   {
    "id": "q05",
@@ -52,7 +116,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q07",
@@ -62,7 +127,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q09",
@@ -71,7 +137,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q10",
@@ -81,7 +148,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q11",
@@ -90,7 +158,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q12",
@@ -99,7 +168,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q13",
@@ -108,7 +178,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q15",
@@ -117,7 +188,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q16",
@@ -126,7 +198,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q17",
@@ -135,7 +208,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q19",
@@ -144,7 +218,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q20",
@@ -153,7 +228,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q21",
@@ -162,7 +238,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q23",
@@ -171,25 +248,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 1,
-   "volume": null
-  },
-  {
-   "id": "q24",
-   "shape": "alternative",
-   "q": "zyte alternative",
-   "source": "seed",
-   "threads": 5,
-   "best_pos": 1,
-   "volume": null
-  },
-  {
-   "id": "q25",
-   "shape": "cost",
-   "q": "mcp server web scraping",
-   "source": "seed",
-   "threads": 5,
-   "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q08",
@@ -198,7 +258,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 2,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q14",
@@ -208,7 +269,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 2,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q18",
@@ -218,7 +280,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 2,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q06",
@@ -227,7 +290,8 @@
    "source": "seed",
    "threads": 5,
    "best_pos": 3,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q22",
@@ -236,7 +300,8 @@
    "source": "seed",
    "threads": 3,
    "best_pos": 1,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q26",
@@ -245,7 +310,8 @@
    "source": "autocomplete",
    "threads": 0,
    "best_pos": null,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q27",
@@ -254,7 +320,8 @@
    "source": "autocomplete",
    "threads": 0,
    "best_pos": null,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q28",
@@ -263,7 +330,8 @@
    "source": "autocomplete",
    "threads": 0,
    "best_pos": null,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q29",
@@ -272,7 +340,8 @@
    "source": "autocomplete",
    "threads": 0,
    "best_pos": null,
-   "volume": null
+   "volume": null,
+   "volume_note": "no data from tool"
   },
   {
    "id": "q30",
@@ -281,7 +350,8 @@
    "source": "autocomplete",
    "threads": 0,
    "best_pos": null,
-   "volume": null
+   "volume": null,
+   "volume_note": "no exact match; top variant: web scraping examples (90/mo)"
   },
   {
    "id": "q31",
@@ -290,43 +360,8 @@
    "source": "autocomplete",
    "threads": 0,
    "best_pos": null,
-   "volume": null
-  },
-  {
-   "id": "q32",
-   "shape": "cost",
-   "q": "serp api free",
-   "source": "autocomplete",
-   "threads": 0,
-   "best_pos": null,
-   "volume": null
-  },
-  {
-   "id": "q33",
-   "shape": "alternative",
-   "q": "serp api alternative",
-   "source": "autocomplete",
-   "threads": 0,
-   "best_pos": null,
-   "volume": null
-  },
-  {
-   "id": "q34",
-   "shape": "cost",
-   "q": "web scraping ai agent n8n",
-   "source": "autocomplete",
-   "threads": 0,
-   "best_pos": null,
-   "volume": null
-  },
-  {
-   "id": "q35",
-   "shape": "cost",
-   "q": "web scraping api open source",
-   "source": "autocomplete",
-   "threads": 0,
-   "best_pos": null,
-   "volume": null
+   "volume": null,
+   "volume_note": "no exact match; top variant: web scraper api free (70/mo)"
   }
  ]
 }
