@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>History · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css">
+<style>
+.up{color:#4ade80}.down{color:#f87171}
+.mono{font:12px ui-monospace,monospace;color:var(--mut)}
+</style></head>
+<body><script src="assets/app.js"></script><main>
+<h1>Search history</h1>
+<div class="sub">Search results are not a fact, they're a photo taken on a day. Every time we look up a query we save what we saw and when — so a thread that ranked #1 last week and #9 today shows that, instead of silently overwriting itself.</div>
+
+<div class="grid">
+ <div class="stat"><div class="v" id="s-runs">–</div><div class="l">runs recorded</div></div>
+ <div class="stat"><div class="v" id="s-obs">–</div><div class="l">sightings logged</div></div>
+ <div class="stat"><div class="v" id="s-thr">–</div><div class="l">threads ever seen</div></div>
+ <div class="stat"><div class="v" id="s-q">–</div><div class="l">queries checked</div></div>
+</div>
+
+<h2>Runs</h2>
+<table id="runs"></table>
+
+<h2>What changed in the latest run</h2>
+<div class="sub" id="chsub"></div>
+<table id="changes"></table>
+
+<div class="card" style="margin-top:20px">
+<b>How this works.</b> <code>observations.json</code> is append-only — one row per query × thread × date, never edited. <code>targets.json</code> is rebuilt from it, so the thread list can never drift from the evidence. Re-run with <code>python3 scripts/serp-snapshot.py --top 45</code>; git history keeps every version of both files.
+</div>
+</main>
+<script>
+Promise.all([j('data/observations.json'), j('data/queries.json')]).then(([o,qs])=>{
+  const $=id=>document.getElementById(id), qmap=Object.fromEntries(qs.queries.map(q=>[q.id,q.q]));
+  const LAST=o.last_run, runs=o.runs, CHECKED=new Set((o.checked||{})[LAST]||[]);
+  $('s-runs').textContent=runs.length;
+  $('s-obs').textContent=o.observations.length.toLocaleString();
+  $('s-thr').textContent=new Set(o.observations.map(x=>x.thread)).size;
+  $('s-q').textContent=new Set(o.observations.map(x=>x.query_id)).size;
+
+  $('runs').innerHTML='<tr><th>date</th><th>engine</th><th>queries</th><th>reddit results</th><th>new rows</th><th>errors</th><th>note</th></tr>'+
+    runs.slice().reverse().map(r=>`<tr><td>${r.date}</td><td class="num">${r.engine}</td><td class="num">${r.queries??'–'}</td><td class="num">${r.hits}</td><td class="num">${r.new_rows}</td><td class="num">${r.errors}</td><td class="mono">${r.note||''}</td></tr>`).join('');
+
+  // per query+thread: latest two REAL positions
+  const key=x=>x.query_id+'|'+x.thread, hist={};
+  o.observations.forEach(x=>{ (hist[key(x)]=hist[key(x)]||[]).push(x); });
+  const rows=[];
+  Object.values(hist).forEach(h=>{
+    h.sort((a,b)=>a.date.localeCompare(b.date));
+    const last=h[h.length-1], prev=h.length>1?h[h.length-2]:null;
+    if(last.date!==LAST) { if(CHECKED.has(last.query_id)) rows.push({t:'gone', q:last.query_id, from:last.position, to:null, url:last.url, title:last.title, since:last.date}); return; }
+    if(!prev){ rows.push({t:'new', q:last.query_id, from:null, to:last.position, url:last.url, title:last.title}); return; }
+    if(prev.position!=null && last.position!=null && prev.position!==last.position && !prev.approx)
+      rows.push({t:'moved', q:last.query_id, from:prev.position, to:last.position, url:last.url, title:last.title});
+  });
+  const order={moved:0,new:1,gone:2};
+  rows.sort((a,b)=>order[a.t]-order[b.t] || Math.abs((b.from??0)-(b.to??0))-Math.abs((a.from??0)-(a.to??0)));
+  $('chsub').textContent=rows.filter(r=>r.t==='moved').length+' moved · '+rows.filter(r=>r.t==='new').length+' newly ranking · '+rows.filter(r=>r.t==='gone').length+' dropped out (as of '+LAST+')';
+  $('changes').innerHTML='<tr><th>change</th><th>query</th><th>thread</th><th>position</th></tr>'+
+    rows.slice(0,200).map(r=>{
+      const badge=r.t==='new'?'<span class="up">NEW</span>':r.t==='gone'?'<span class="down">DROPPED</span>':
+        (r.to<r.from?`<span class="up">▲${r.from-r.to}</span>`:`<span class="down">▼${r.to-r.from}</span>`);
+      const t=(r.title||'').replace(/^r\/[^:]+ on Reddit: /,'')||r.url.split('/comments/')[1];
+      return `<tr><td>${badge}</td><td class="mono">${r.q} · ${qmap[r.q]||''}</td><td><a href="${r.url}" target="_blank" rel="noopener">${t}</a></td><td class="num">${r.from??'–'} → ${r.to??'out'}</td></tr>`;
+    }).join('');
+});
+</script></body></html>

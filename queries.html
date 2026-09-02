@@ -31,8 +31,8 @@ j('data/queries.json').then(qs=>{
     const s=$('qs').value.toLowerCase(), sh=$('qshape').value;
     const rows=qs.queries.filter(x=>(!sh||x.shape===sh)&&(!s||x.q.includes(s)));
     $('count').textContent=qs.queries.length+' queries · updated '+qs.updated;
-    $('tbl').innerHTML='<tr><th>#</th><th>query</th><th>volume</th><th>cpc</th><th>threads</th><th>best pos</th><th>shape</th><th>source</th><th>★</th></tr>'+
-      rows.map((q,i)=>`<tr><td class="num">${i+1}</td><td>${q.q}</td><td class="num">${q.volume!=null?q.volume.toLocaleString()+'/mo':'<span title="'+(q.volume_note||'below tool floor')+'">no data</span>'}</td><td class="num">${q.cpc?'$'+q.cpc:''}</td><td class="num">${q.threads||0}</td><td class="num">${q.best_pos??'–'}</td><td class="num">${q.shape}</td><td class="num">${q.source||'seed'}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
+    $('tbl').innerHTML='<tr><th>#</th><th>id</th><th>query</th><th>volume</th><th>cpc</th><th>threads</th><th>best pos</th><th>checked</th><th>shape</th><th>★</th></tr>'+
+      rows.map((q,i)=>`<tr><td class="num">${i+1}</td><td class="num">${q.id}</td><td>${q.q}</td><td class="num">${q.volume!=null?q.volume.toLocaleString()+'/mo':'<span title="'+(q.volume_note||'below tool floor')+'">no data</span>'}</td><td class="num">${q.cpc?'$'+q.cpc:''}</td><td class="num">${q.threads||0}</td><td class="num">${q.best_pos??'–'}</td><td class="num">${q.last_checked||'<span style="opacity:.5">never</span>'}</td><td class="num">${q.shape}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
     $('qshown').textContent=rows.length+' of '+qs.queries.length+' shown';
   };
   ['qs','qshape'].forEach(id=>$(id).addEventListener('input',render));

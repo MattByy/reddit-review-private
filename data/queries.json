@@ -16,8 +16,9 @@
    "volume": 165000,
    "cpc": 3.585,
    "intent": "",
-   "threads": 0,
-   "best_pos": null
+   "threads": 16,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q101",
@@ -27,8 +28,9 @@
    "volume": 165000,
    "cpc": 6.71,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 16,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q102",
@@ -38,8 +40,9 @@
    "volume": 12100,
    "cpc": 9.23,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 20,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q103",
@@ -49,8 +52,9 @@
    "volume": 12100,
    "cpc": 13.35,
    "intent": "Nav, Info, Commercial",
-   "threads": 0,
-   "best_pos": null
+   "threads": 16,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q104",
@@ -60,8 +64,9 @@
    "volume": 9900,
    "cpc": 12.71,
    "intent": "Info, Transactional",
-   "threads": 0,
-   "best_pos": null
+   "threads": 13,
+   "best_pos": 2,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q105",
@@ -71,8 +76,9 @@
    "volume": 9900,
    "cpc": 3.15,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 13,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q106",
@@ -82,8 +88,9 @@
    "volume": 9900,
    "cpc": 6.34,
    "intent": "Nav, Transactional",
-   "threads": 0,
-   "best_pos": null
+   "threads": 17,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q107",
@@ -94,7 +101,8 @@
    "cpc": 0.74,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q108",
@@ -104,8 +112,9 @@
    "volume": 6600,
    "cpc": 8.18,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 17,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q109",
@@ -115,8 +124,9 @@
    "volume": 3600,
    "cpc": 12.75,
    "intent": "Transactional",
-   "threads": 0,
-   "best_pos": null
+   "threads": 16,
+   "best_pos": 2,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q110",
@@ -126,8 +136,9 @@
    "volume": 3600,
    "cpc": 8.26,
    "intent": "Nav",
-   "threads": 0,
-   "best_pos": null
+   "threads": 20,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q111",
@@ -137,8 +148,9 @@
    "volume": 2900,
    "cpc": 9.32,
    "intent": "Commercial, Transactional",
-   "threads": 0,
-   "best_pos": null
+   "threads": 10,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q112",
@@ -148,8 +160,9 @@
    "volume": 2900,
    "cpc": 3.995,
    "intent": "",
-   "threads": 0,
-   "best_pos": null
+   "threads": 15,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q113",
@@ -159,8 +172,9 @@
    "volume": 2400,
    "cpc": 15.77,
    "intent": "Info, Commercial",
-   "threads": 0,
-   "best_pos": null
+   "threads": 13,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q114",
@@ -170,8 +184,9 @@
    "volume": 2400,
    "cpc": 1.28,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 15,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q115",
@@ -181,8 +196,9 @@
    "volume": 2400,
    "cpc": 15.77,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 7,
+   "best_pos": 2,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q116",
@@ -193,7 +209,8 @@
    "cpc": 4.24,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q117",
@@ -203,8 +220,9 @@
    "volume": 1900,
    "cpc": 9.33,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 11,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q118",
@@ -214,8 +232,9 @@
    "volume": 1900,
    "cpc": 6.73,
    "intent": "Transactional, Nav",
-   "threads": 0,
-   "best_pos": null
+   "threads": 18,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q119",
@@ -225,8 +244,9 @@
    "volume": 1600,
    "cpc": 4.16,
    "intent": "Info, Nav",
-   "threads": 0,
-   "best_pos": null
+   "threads": 15,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q120",
@@ -236,8 +256,9 @@
    "volume": 1600,
    "cpc": 0.7,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 18,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q121",
@@ -247,8 +268,9 @@
    "volume": 1300,
    "cpc": 7.54,
    "intent": "Transactional",
-   "threads": 0,
-   "best_pos": null
+   "threads": 16,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q122",
@@ -258,8 +280,9 @@
    "volume": 1300,
    "cpc": 7.59,
    "intent": "Transactional",
-   "threads": 0,
-   "best_pos": null
+   "threads": 16,
+   "best_pos": 2,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q123",
@@ -269,8 +292,9 @@
    "volume": 1300,
    "cpc": 8,
    "intent": "Nav",
-   "threads": 0,
-   "best_pos": null
+   "threads": 19,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q124",
@@ -280,8 +304,9 @@
    "volume": 1300,
    "cpc": 7.73,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 17,
+   "best_pos": 2,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q125",
@@ -291,8 +316,9 @@
    "volume": 1000,
    "cpc": 12,
    "intent": "Nav, Transactional, Commercial",
-   "threads": 0,
-   "best_pos": null
+   "threads": 16,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q126",
@@ -302,8 +328,9 @@
    "volume": 1000,
    "cpc": 10.615,
    "intent": "",
-   "threads": 0,
-   "best_pos": null
+   "threads": 20,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q127",
@@ -313,8 +340,9 @@
    "volume": 1000,
    "cpc": 5.73,
    "intent": "Nav",
-   "threads": 0,
-   "best_pos": null
+   "threads": 12,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q128",
@@ -324,8 +352,9 @@
    "volume": 720,
    "cpc": 7.5,
    "intent": "Commercial, Nav, Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 19,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q129",
@@ -335,8 +364,9 @@
    "volume": 720,
    "cpc": 5.71,
    "intent": "Commercial, Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 7,
+   "best_pos": 3,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q130",
@@ -346,8 +376,9 @@
    "volume": 720,
    "cpc": 9.94,
    "intent": "Nav",
-   "threads": 0,
-   "best_pos": null
+   "threads": 17,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q131",
@@ -357,8 +388,9 @@
    "volume": 720,
    "cpc": 3.775,
    "intent": "",
-   "threads": 0,
-   "best_pos": null
+   "threads": 18,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q132",
@@ -368,8 +400,9 @@
    "volume": 590,
    "cpc": 10.82,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 15,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q133",
@@ -379,8 +412,9 @@
    "volume": 590,
    "cpc": 9.41,
    "intent": "",
-   "threads": 0,
-   "best_pos": null
+   "threads": 16,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q134",
@@ -390,8 +424,9 @@
    "volume": 590,
    "cpc": 1.04,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 10,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q135",
@@ -401,8 +436,9 @@
    "volume": 590,
    "cpc": 4.38,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 20,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q136",
@@ -412,8 +448,9 @@
    "volume": 590,
    "cpc": 1.55,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 20,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q137",
@@ -423,8 +460,9 @@
    "volume": 590,
    "cpc": 5.02,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 12,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q138",
@@ -434,8 +472,9 @@
    "volume": 590,
    "cpc": 0.84,
    "intent": "",
-   "threads": 0,
-   "best_pos": null
+   "threads": 17,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q139",
@@ -445,8 +484,9 @@
    "volume": 590,
    "cpc": 4.27,
    "intent": "",
-   "threads": 0,
-   "best_pos": null
+   "threads": 10,
+   "best_pos": 6,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q140",
@@ -457,7 +497,8 @@
    "cpc": 4.955,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q141",
@@ -468,7 +509,8 @@
    "cpc": 7.97,
    "intent": "Nav, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q142",
@@ -478,8 +520,9 @@
    "volume": 480,
    "cpc": 1.62,
    "intent": "Transactional, Nav, Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 17,
+   "best_pos": 1,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q143",
@@ -489,8 +532,9 @@
    "volume": 480,
    "cpc": 0,
    "intent": "Info",
-   "threads": 0,
-   "best_pos": null
+   "threads": 11,
+   "best_pos": 2,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q144",
@@ -500,8 +544,9 @@
    "volume": 480,
    "cpc": 10.46,
    "intent": "Info, Commercial",
-   "threads": 0,
-   "best_pos": null
+   "threads": 12,
+   "best_pos": 2,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q145",
@@ -512,7 +557,8 @@
    "cpc": 0.285,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q146",
@@ -523,7 +569,8 @@
    "cpc": 4.7,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q147",
@@ -534,7 +581,8 @@
    "cpc": 5.24,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q148",
@@ -545,7 +593,8 @@
    "cpc": 9.43,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q149",
@@ -556,7 +605,8 @@
    "cpc": 7.65,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q150",
@@ -567,7 +617,8 @@
    "cpc": 10,
    "intent": "Transactional, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q151",
@@ -578,7 +629,8 @@
    "cpc": 26.95,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q152",
@@ -589,7 +641,8 @@
    "cpc": 6.04,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q153",
@@ -600,7 +653,8 @@
    "cpc": 6.04,
    "intent": "Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q154",
@@ -611,7 +665,8 @@
    "cpc": 5.915,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q155",
@@ -622,7 +677,8 @@
    "cpc": 16.72,
    "intent": "Commercial, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q156",
@@ -633,7 +689,8 @@
    "cpc": 7.94,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q157",
@@ -644,7 +701,8 @@
    "cpc": 13.31,
    "intent": "Info, Commercial, Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q158",
@@ -655,7 +713,8 @@
    "cpc": 7.45,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q159",
@@ -666,7 +725,8 @@
    "cpc": 0.28,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q160",
@@ -677,7 +737,8 @@
    "cpc": 1.83,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q161",
@@ -688,7 +749,8 @@
    "cpc": 13.52,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q162",
@@ -699,7 +761,8 @@
    "cpc": 12.37,
    "intent": "Transactional, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q163",
@@ -710,7 +773,8 @@
    "cpc": 2.06,
    "intent": "Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q164",
@@ -721,7 +785,8 @@
    "cpc": 8.36,
    "intent": "Info, Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q165",
@@ -732,7 +797,8 @@
    "cpc": 0.57,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q166",
@@ -743,7 +809,8 @@
    "cpc": 6.58,
    "intent": "Nav, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q167",
@@ -754,7 +821,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q168",
@@ -765,7 +833,8 @@
    "cpc": 0.59,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q169",
@@ -776,7 +845,8 @@
    "cpc": 0.77,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q170",
@@ -787,7 +857,8 @@
    "cpc": 5.35,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q171",
@@ -798,7 +869,8 @@
    "cpc": 7.69,
    "intent": "Info, Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q172",
@@ -809,7 +881,8 @@
    "cpc": 21.74,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q173",
@@ -820,7 +893,8 @@
    "cpc": 3,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q174",
@@ -831,7 +905,8 @@
    "cpc": 7.81,
    "intent": "Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q175",
@@ -842,7 +917,8 @@
    "cpc": 6.28,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q176",
@@ -853,7 +929,8 @@
    "cpc": 6.95,
    "intent": "Info, Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q177",
@@ -864,7 +941,8 @@
    "cpc": 3.22,
    "intent": "Transactional, Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q178",
@@ -875,7 +953,8 @@
    "cpc": 5.54,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q32",
@@ -885,7 +964,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": 170,
-   "cpc": 5.72
+   "cpc": 5.72,
+   "last_checked": null
   },
   {
    "id": "q179",
@@ -896,7 +976,8 @@
    "cpc": 15.625,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q180",
@@ -907,7 +988,8 @@
    "cpc": 3.08,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q181",
@@ -918,7 +1000,8 @@
    "cpc": 1.54,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q182",
@@ -929,7 +1012,8 @@
    "cpc": 24.64,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q183",
@@ -940,7 +1024,8 @@
    "cpc": 2.5,
    "intent": "Transactional, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q184",
@@ -951,7 +1036,8 @@
    "cpc": 14.93,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q185",
@@ -962,7 +1048,8 @@
    "cpc": 7.65,
    "intent": "Info, Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q186",
@@ -973,7 +1060,8 @@
    "cpc": 5.74,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q33",
@@ -983,7 +1071,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": 140,
-   "cpc": 20.11
+   "cpc": 20.11,
+   "last_checked": null
   },
   {
    "id": "q187",
@@ -994,7 +1083,8 @@
    "cpc": 3.59,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q188",
@@ -1005,7 +1095,8 @@
    "cpc": 4.99,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q189",
@@ -1016,7 +1107,8 @@
    "cpc": 21.62,
    "intent": "Nav, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q190",
@@ -1027,7 +1119,8 @@
    "cpc": 3.84,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q191",
@@ -1038,7 +1131,8 @@
    "cpc": 7.74,
    "intent": "Nav, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q192",
@@ -1049,7 +1143,8 @@
    "cpc": 4.71,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q193",
@@ -1060,7 +1155,8 @@
    "cpc": 15.25,
    "intent": "Nav, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q194",
@@ -1071,7 +1167,8 @@
    "cpc": 6.66,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q01",
@@ -1079,10 +1176,11 @@
    "q": "firecrawl alternative",
    "canonical": true,
    "source": "seed",
-   "threads": 5,
+   "threads": 17,
    "best_pos": 1,
    "volume": 110,
-   "cpc": 11.55
+   "cpc": 11.55,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q195",
@@ -1093,7 +1191,8 @@
    "cpc": 4.86,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q196",
@@ -1104,7 +1203,8 @@
    "cpc": 13.075,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q197",
@@ -1115,7 +1215,8 @@
    "cpc": 5.69,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q198",
@@ -1126,7 +1227,8 @@
    "cpc": 0.06,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q199",
@@ -1137,7 +1239,8 @@
    "cpc": 2.705,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q200",
@@ -1148,7 +1251,8 @@
    "cpc": 12.12,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q201",
@@ -1159,7 +1263,8 @@
    "cpc": 9.97,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q202",
@@ -1170,7 +1275,8 @@
    "cpc": 4.49,
    "intent": "Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q203",
@@ -1181,7 +1287,8 @@
    "cpc": 7.55,
    "intent": "Info, Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q204",
@@ -1192,7 +1299,8 @@
    "cpc": 0,
    "intent": "Info, Transactional, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q205",
@@ -1203,7 +1311,8 @@
    "cpc": 13.64,
    "intent": "Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q206",
@@ -1214,7 +1323,8 @@
    "cpc": 2.83,
    "intent": "Nav, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q207",
@@ -1225,7 +1335,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q208",
@@ -1236,7 +1347,8 @@
    "cpc": 0,
    "intent": "Commercial, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q209",
@@ -1247,7 +1359,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q210",
@@ -1258,7 +1371,8 @@
    "cpc": 0,
    "intent": "Commercial, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q211",
@@ -1269,7 +1383,8 @@
    "cpc": 10.91,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q212",
@@ -1280,7 +1395,8 @@
    "cpc": 10.04,
    "intent": "Commercial, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q213",
@@ -1291,7 +1407,8 @@
    "cpc": 11.51,
    "intent": "Commercial, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q214",
@@ -1302,7 +1419,8 @@
    "cpc": 1.71,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q215",
@@ -1313,7 +1431,8 @@
    "cpc": 13.53,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q216",
@@ -1324,7 +1443,8 @@
    "cpc": 14.08,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q217",
@@ -1335,7 +1455,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q218",
@@ -1346,7 +1467,8 @@
    "cpc": 0,
    "intent": "Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q219",
@@ -1357,17 +1479,19 @@
    "cpc": 0,
    "intent": "Nav, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q04",
    "shape": "alternative",
    "q": "scraperapi alternative",
    "source": "seed",
-   "threads": 5,
+   "threads": 13,
    "best_pos": 1,
    "volume": 50,
-   "cpc": 57.48
+   "cpc": 57.48,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q24",
@@ -1377,7 +1501,8 @@
    "threads": 5,
    "best_pos": 1,
    "volume": 50,
-   "cpc": 18.005
+   "cpc": 18.005,
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q220",
@@ -1388,7 +1513,8 @@
    "cpc": 4.55,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q221",
@@ -1399,7 +1525,8 @@
    "cpc": 6.52,
    "intent": "Nav, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q222",
@@ -1410,7 +1537,8 @@
    "cpc": 9.87,
    "intent": "Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q223",
@@ -1421,7 +1549,8 @@
    "cpc": 4.64,
    "intent": "Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q224",
@@ -1432,7 +1561,8 @@
    "cpc": 10.865,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q225",
@@ -1443,7 +1573,8 @@
    "cpc": 4.44,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q226",
@@ -1454,7 +1585,8 @@
    "cpc": 3.75,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q227",
@@ -1465,7 +1597,8 @@
    "cpc": 15.2,
    "intent": "Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q228",
@@ -1476,7 +1609,8 @@
    "cpc": 0,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q229",
@@ -1487,7 +1621,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q230",
@@ -1498,7 +1633,8 @@
    "cpc": 0,
    "intent": "Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q231",
@@ -1509,7 +1645,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q232",
@@ -1520,7 +1657,8 @@
    "cpc": 5.64,
    "intent": "Commercial, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q233",
@@ -1531,7 +1669,8 @@
    "cpc": 0,
    "intent": "Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q234",
@@ -1542,7 +1681,8 @@
    "cpc": 66.74,
    "intent": "Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q235",
@@ -1553,7 +1693,8 @@
    "cpc": 5.51,
    "intent": "Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q236",
@@ -1564,7 +1705,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q237",
@@ -1575,7 +1717,8 @@
    "cpc": 0,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q238",
@@ -1586,7 +1729,8 @@
    "cpc": 0,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q239",
@@ -1597,7 +1741,8 @@
    "cpc": 3.81,
    "intent": "Info, Commercial, Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q240",
@@ -1608,7 +1753,8 @@
    "cpc": 29.02,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q241",
@@ -1619,7 +1765,8 @@
    "cpc": 37.145,
    "intent": "Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q242",
@@ -1630,7 +1777,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q243",
@@ -1641,7 +1789,8 @@
    "cpc": 2.74,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q244",
@@ -1652,7 +1801,8 @@
    "cpc": 22.15,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q25",
@@ -1662,7 +1812,8 @@
    "threads": 5,
    "best_pos": 1,
    "volume": 30,
-   "cpc": 0
+   "cpc": 0,
+   "last_checked": "2026-09-01"
   },
   {
    "id": "q245",
@@ -1673,7 +1824,8 @@
    "cpc": 14.06,
    "intent": "Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q246",
@@ -1684,7 +1836,8 @@
    "cpc": 0,
    "intent": "Info, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q247",
@@ -1695,7 +1848,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q248",
@@ -1706,7 +1860,8 @@
    "cpc": 10.83,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q249",
@@ -1717,7 +1872,8 @@
    "cpc": 0.26,
    "intent": "Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q250",
@@ -1728,7 +1884,8 @@
    "cpc": 10.94,
    "intent": "Commercial, Transactional",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q251",
@@ -1739,7 +1896,8 @@
    "cpc": 5.67,
    "intent": "Info, Nav, Commercial",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q252",
@@ -1750,7 +1908,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q253",
@@ -1761,7 +1920,8 @@
    "cpc": 0,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q254",
@@ -1772,7 +1932,8 @@
    "cpc": 0,
    "intent": "Nav, Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q255",
@@ -1783,7 +1944,8 @@
    "cpc": 0,
    "intent": "Info, Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q256",
@@ -1794,7 +1956,8 @@
    "cpc": 16.17,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q257",
@@ -1805,7 +1968,8 @@
    "cpc": 0,
    "intent": "Nav",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q258",
@@ -1816,7 +1980,8 @@
    "cpc": 57.86,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q259",
@@ -1827,7 +1992,8 @@
    "cpc": 21.38,
    "intent": "Info",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q260",
@@ -1838,7 +2004,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q261",
@@ -1849,7 +2016,8 @@
    "cpc": 9.07,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q262",
@@ -1860,7 +2028,8 @@
    "cpc": 11.73,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q263",
@@ -1871,7 +2040,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q34",
@@ -1881,7 +2051,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": 10,
-   "cpc": 0
+   "cpc": 0,
+   "last_checked": null
   },
   {
    "id": "q35",
@@ -1891,7 +2062,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": 10,
-   "cpc": 0
+   "cpc": 0,
+   "last_checked": null
   },
   {
    "id": "q264",
@@ -1902,7 +2074,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q265",
@@ -1913,7 +2086,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q266",
@@ -1924,7 +2098,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q267",
@@ -1935,7 +2110,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q268",
@@ -1946,7 +2122,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q269",
@@ -1957,7 +2134,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q270",
@@ -1968,7 +2146,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q271",
@@ -1979,7 +2158,8 @@
    "cpc": 11.855,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q272",
@@ -1990,7 +2170,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q273",
@@ -2001,7 +2182,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q274",
@@ -2012,7 +2194,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q275",
@@ -2023,7 +2206,8 @@
    "cpc": 9.8,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q276",
@@ -2034,7 +2218,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q277",
@@ -2045,7 +2230,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q278",
@@ -2056,7 +2242,8 @@
    "cpc": 21.645,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q279",
@@ -2067,7 +2254,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q280",
@@ -2078,7 +2266,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q281",
@@ -2089,7 +2278,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q282",
@@ -2100,7 +2290,8 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q283",
@@ -2111,27 +2302,30 @@
    "cpc": 0,
    "intent": "",
    "threads": 0,
-   "best_pos": null
+   "best_pos": null,
+   "last_checked": null
   },
   {
    "id": "q02",
    "shape": "alternative",
    "q": "firecrawl too expensive alternatives",
    "source": "seed",
-   "threads": 5,
+   "threads": 13,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q03",
    "shape": "alternative",
    "q": "cheaper alternative to apify",
    "source": "seed",
-   "threads": 5,
+   "threads": 11,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no exact match; top variant: cheaper alternatives to hubspot (40/mo)"
+   "volume_note": "no exact match; top variant: cheaper alternatives to hubspot (40/mo)",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q05",
@@ -2141,7 +2335,8 @@
    "threads": 5,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q07",
@@ -2149,20 +2344,22 @@
    "q": "best web scraping api 2026",
    "canonical": true,
    "source": "seed",
-   "threads": 5,
+   "threads": 6,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q09",
    "shape": "cost",
    "q": "web scraping api pricing comparison",
    "source": "seed",
-   "threads": 5,
+   "threads": 6,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q10",
@@ -2170,90 +2367,99 @@
    "q": "scraping api for ai agents",
    "canonical": true,
    "source": "seed",
-   "threads": 5,
+   "threads": 19,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q11",
    "shape": "cost",
    "q": "web scraping costs too much reddit",
    "source": "seed",
-   "threads": 5,
+   "threads": 18,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q12",
    "shape": "cost",
    "q": "scraping credits ran out",
    "source": "seed",
-   "threads": 5,
+   "threads": 10,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q13",
    "shape": "cost",
    "q": "flat rate web scraping api",
    "source": "seed",
-   "threads": 5,
-   "best_pos": 1,
+   "threads": 7,
+   "best_pos": 10,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q15",
    "shape": "blocked",
    "q": "how to scrape without getting blocked reddit",
    "source": "seed",
-   "threads": 5,
+   "threads": 14,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q16",
    "shape": "blocked",
    "q": "cloudflare blocking my scraper",
    "source": "seed",
-   "threads": 5,
+   "threads": 20,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q17",
    "shape": "blocked",
    "q": "best residential proxies for scraping",
    "source": "seed",
-   "threads": 5,
+   "threads": 15,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q19",
    "shape": "unlimited",
    "q": "unmetered scraping api is it real",
    "source": "seed",
-   "threads": 5,
-   "best_pos": 1,
+   "threads": 6,
+   "best_pos": 2,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q20",
    "shape": "unlimited",
    "q": "web scraping without per request pricing",
    "source": "seed",
-   "threads": 5,
-   "best_pos": 1,
+   "threads": 14,
+   "best_pos": 2,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q21",
@@ -2263,27 +2469,30 @@
    "threads": 5,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q23",
    "shape": "cost",
    "q": "scraping for ecommerce price monitoring",
    "source": "seed",
-   "threads": 5,
+   "threads": 19,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q08",
    "shape": "cost",
    "q": "cheapest scraping api",
    "source": "seed",
-   "threads": 5,
+   "threads": 12,
    "best_pos": 2,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q14",
@@ -2291,10 +2500,11 @@
    "q": "web scraper keeps getting blocked",
    "canonical": true,
    "source": "seed",
-   "threads": 5,
+   "threads": 16,
    "best_pos": 2,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q18",
@@ -2302,20 +2512,22 @@
    "q": "unlimited web scraping api",
    "canonical": true,
    "source": "seed",
-   "threads": 5,
+   "threads": 8,
    "best_pos": 2,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q06",
    "shape": "alternative",
    "q": "serpapi alternative cheap",
    "source": "seed",
-   "threads": 5,
+   "threads": 12,
    "best_pos": 3,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q22",
@@ -2325,7 +2537,8 @@
    "threads": 3,
    "best_pos": 1,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": "2026-09-02"
   },
   {
    "id": "q26",
@@ -2335,7 +2548,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": null
   },
   {
    "id": "q27",
@@ -2345,7 +2559,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": null
   },
   {
    "id": "q28",
@@ -2355,7 +2570,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": null
   },
   {
    "id": "q29",
@@ -2365,7 +2581,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": null,
-   "volume_note": "no data from tool"
+   "volume_note": "no data from tool",
+   "last_checked": null
   },
   {
    "id": "q30",
@@ -2375,7 +2592,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": null,
-   "volume_note": "no exact match; top variant: web scraping examples (90/mo)"
+   "volume_note": "no exact match; top variant: web scraping examples (90/mo)",
+   "last_checked": null
   },
   {
    "id": "q31",
@@ -2385,7 +2603,8 @@
    "threads": 0,
    "best_pos": null,
    "volume": null,
-   "volume_note": "no exact match; top variant: web scraper api free (70/mo)"
+   "volume_note": "no exact match; top variant: web scraper api free (70/mo)",
+   "last_checked": null
   }
  ]
 }
