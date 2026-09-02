@@ -31,10 +31,25 @@ console.log("wrote assets/config.js for", url);
 
 // ── gate every page ────────────────────────────────────────────────────────
 // The gate must load BEFORE config.js and app.js so nothing renders behind it.
+//
+// UNGATED is a deliberate list, not an oversight. review.html is the page
+// Swello opens to approve or reject a comment, often on a phone — a code
+// between him and that decision only slows the one action the whole pipeline
+// waits on. The gate was never protecting the data anyway (the anon key ships
+// in config.js), so exempting the working page costs nothing real.
+const UNGATED = new Set(["review.html"]);
 const GATE = '<script src="assets/gate.js"></script>';
-let gated = 0, already = 0;
+let gated = 0, already = 0, skipped = 0;
 for (const f of fs.readdirSync(".").filter(f => f.endsWith(".html"))) {
   const src = fs.readFileSync(f, "utf8");
+  if (UNGATED.has(f)) {
+    if (src.includes("assets/gate.js")) {
+      fs.writeFileSync(f, src.replace(/\s*<script src="assets\/gate\.js"><\/script>/g, ""));
+      console.log(`  removed gate from ${f} (on the ungated list)`);
+    }
+    skipped++;
+    continue;
+  }
   if (src.includes("assets/gate.js")) { already++; continue; }
   if (!src.includes('<script src="assets/config.js">')) {
     console.error(`BUILD FAILED: ${f} has no config.js tag — cannot place the gate reliably.`);
@@ -43,4 +58,4 @@ for (const f of fs.readdirSync(".").filter(f => f.endsWith(".html"))) {
   fs.writeFileSync(f, src.replace('<script src="assets/config.js"></script>', GATE + '\n' + '<script src="assets/config.js"></script>'));
   gated++;
 }
-console.log(`passcode gate: ${gated} page(s) injected, ${already} already had it`);
+console.log(`passcode gate: ${gated} injected, ${already} already had it, ${skipped} deliberately ungated`);

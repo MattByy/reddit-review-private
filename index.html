@@ -4,32 +4,15 @@
 <h1>Overview</h1>
 <div id="meta">loading…</div>
 
+<div class="card">
+  <b>What needs your attention right now</b>
+  <div id="attention"></div>
+</div>
+
 <div class="grid">
   <div class="stat"><div class="v" id="s-q">–</div><div class="l">buyer queries mapped</div></div>
   <div class="stat"><div class="v" id="s-t">–</div><div class="l">target threads found</div></div>
   <div class="stat"><div class="v" id="s-sov">–</div><div class="l">our mentions vs firecrawl</div></div>
-  <div class="stat"><div class="v" id="s-log">–</div><div class="l">actions logged</div></div>
-</div>
-
-<h2>The pipeline</h2>
-<div class="stage">
-  <a href="queries.html">1 · Queries</a>
-  <a href="targets.html">2 · Targets</a>
-  <a href="review.html">3 · Review</a>
-  <a href="status.html">4 · Status</a>
-  <a href="audit.html">5 · Audit</a>
-</div>
-<div class="card">
-<b>The play, step by step.</b>
-<ol>
-<li><b>Find out what buyers actually type.</b> Not guesses: Google autocomplete and keyword tools show the real searches ("firecrawl alternative open source", "apify alternative n8n"). Each query is tagged <code>seed</code> (our hypothesis) or <code>autocomplete</code> (real people typed this). Volume data comes next — the list keeps growing forever (<a href="queries.html">Queries</a>).</li>
-<li><b>Find the threads that answer those searches.</b> When someone asks ChatGPT or Google, the answer is assembled from a few Reddit threads that rank. Our own scraper finds exactly which ones, per query (<a href="targets.html">Targets</a>).</li>
-<li><b>Earn a place in those threads.</b> One genuinely helpful comment per thread — a war story, a fix, an honest comparison — written in a chosen style, disclosed as Geonode, scored against the subreddit's rules, and approved by a human before anything is sent (<a href="review.html">Review</a>).</li>
-<li><b>Watch it land.</b> Approved comments go to Engain, which posts through a real account on its own schedule, then upvotes are ordered automatically once the comment is live. Every thread's exact stage is on one page (<a href="status.html">Status</a>).</li>
-<li><b>Check if reality moved.</b> Monthly, from clean sessions, we ask the AIs the same ★ queries and record: are we recommended now, and which thread got cited (<a href="audit.html">Audit</a>).</li>
-<li><b>Double down or drop.</b> Threads and comment styles that moved citations get more attention; the rest get marked done. Side ideas run as 2-week <a href="experiments.html">experiments</a> first.</li>
-</ol>
-<p><b>Why this beats the old approach:</b> the previous Reddit effort commented broadly and bought upvotes for trending — Reddit-internal metrics. This system starts from real search demand and is scored on one external question: <i>does the AI recommend us when a buyer asks?</i></p>
 </div>
 
 <h2>Share of voice — Reddit mentions <span class="pill">Engain · baseline 2026-09-01</span></h2>
@@ -40,12 +23,41 @@
 <script>
 (async () => {
   try {
-    const [logRows, targets, queries, sovRows] = await Promise.all([
-      sb('activity_log', 'select=*&order=at.desc&limit=1000'),
-      sbAll('targets', 'select=thread_id&order=thread_id.asc'),
+    const [threadActivity, queries, sovRows] = await Promise.all([
+      sbAll('thread_activity', 'select=thread_id,stage&order=thread_id.asc'),
       sb('queries', 'select=id&limit=1000'),
       sb('sov_baseline', 'select=brand,mentions,caveat,measured_on,source&order=mentions.desc&limit=100')
     ]);
+
+    /* Count threads (unique thread_ids in thread_activity) and stages */
+    const uniqueThreads = new Set(threadActivity.map(r => r.thread_id)).size;
+    const draftPending = threadActivity.filter(r => r.stage === 'draft_pending_review').length;
+    const waitingEngain = threadActivity.filter(r => r.stage === 'waiting_on_engain').length;
+    const publishedAwaiting = threadActivity.filter(r => r.stage === 'published_awaiting_upvotes').length;
+    const upvotesRunning = threadActivity.filter(r => r.stage === 'upvotes_running').length;
+    const upvotesDelivered = threadActivity.filter(r => r.stage === 'upvotes_delivered').length;
+    /* "Live" means live. A comment sitting with Engain has not been published
+       and must never be counted as if it were on Reddit — that is the same
+       false all-clear that made `upvote` claim every published comment had an
+       order when nothing was published. */
+    const commentsLive = publishedAwaiting + upvotesRunning + upvotesDelivered;
+
+    /* Build the attention card */
+    let attentionHTML = '';
+    if (draftPending > 0) {
+      attentionHTML += `<div style="color:var(--acc);margin:8px 0"><b>${draftPending} draft(s) awaiting review</b> → <a href="review.html">Review now</a></div>`;
+    }
+    if (commentsLive > 0) {
+      attentionHTML += `<div style="color:var(--ok);margin:8px 0">${commentsLive} comment(s) live on Reddit</div>`;
+    }
+    if (waitingEngain > 0) {
+      attentionHTML += `<div style="color:var(--mut);margin:8px 0">${waitingEngain} sent, waiting on Engain to publish → <a href="status.html">Status</a></div>`;
+    }
+    if (!attentionHTML) {
+      attentionHTML = '<div style="color:var(--mut);margin:8px 0">Nothing waiting on you.</div>';
+    }
+
+    document.getElementById('attention').innerHTML = attentionHTML;
 
     /* Share of voice is a DATED MEASUREMENT read from sov_baseline, never a
        number typed into this page. Its caveat travels with it — the geonode
@@ -58,10 +70,9 @@
     document.getElementById('meta').textContent =
       `data updated ${new Date().toISOString().slice(0,10)} · repo geonode-strategy/04-reddit · git = change history`;
     document.getElementById('s-q').textContent = queries.length;
-    document.getElementById('s-t').textContent = targets.length;
+    document.getElementById('s-t').textContent = uniqueThreads;
     document.getElementById('s-sov').textContent =
       (geo === undefined || fc === undefined) ? 'no data' : geo + " / " + fc;
-    document.getElementById('s-log').textContent = logRows.length;
 
     const caveat = sovRows.find(r => r.caveat);
     document.getElementById('sov').innerHTML = sov.length

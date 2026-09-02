@@ -8,37 +8,11 @@
 .arow .head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .arow .sr{color:var(--acc);font-size:12px;min-width:120px}
 .arow .title{flex:1;min-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.arow .why{color:var(--mut);font-size:12px;margin-top:6px;line-height:1.5}
-.arow .why b{color:var(--ink);font-weight:600}
+.arow .meta{color:var(--mut);font-size:12px;margin-top:4px}
 .arow a{font-size:12px}
-.steps{display:flex;gap:0;margin-top:8px;flex-wrap:wrap}
-.steps span{font-size:11px;color:var(--dim);border:1px solid var(--line);border-right:0;padding:3px 9px}
-.steps span:last-child{border-right:1px solid var(--line)}
-.steps span.on{background:var(--well);color:var(--ink);border-color:var(--line)}
-.steps span.now{background:#1d2733;color:#8ecbff;border-color:#2c4c68}
 </style></head>
 <body><script src="assets/gate.js"></script><script src="assets/config.js"></script><script src="assets/app.js"></script><main>
 <h1>Status</h1>
-<div class="sub">Every thread we have acted on, and exactly where it is. Nothing here is typed — the stage is worked out from what exists in the database: a comment counts as published only when Engain has given us a real Reddit URL for it.</div>
-
-<div class="grid">
-  <div class="stat"><div class="v" id="s-act">–</div><div class="l">threads acted on</div></div>
-  <div class="stat"><div class="v" id="s-pub">–</div><div class="l">comments live</div></div>
-  <div class="stat"><div class="v" id="s-wait">–</div><div class="l">waiting on Engain</div></div>
-  <div class="stat"><div class="v" id="s-up">–</div><div class="l">upvotes delivered</div></div>
-</div>
-
-<div class="card">
-<b>The flow, and where it can sit.</b>
-<div class="steps" style="margin-top:10px">
-  <span>draft</span><span>approved</span><span>cleared</span><span>sent</span><span>published</span><span>upvotes</span>
-</div>
-<div style="margin-top:10px;color:var(--mut);font-size:13px;line-height:1.6">
-Engain posts through real Reddit accounts, so it schedules rather than posting the moment we submit. Across the last 100 tasks on this project, <b>not one published in under an hour</b> — the median wait was <b>12.7 hours</b>. A comment sitting at <i>waiting on Engain</i> is normal, not stuck.
-<br><br>
-Upvotes need the comment's live URL, which only exists after it publishes. So an upvote order cannot be placed early; the poller places it automatically as soon as the URL appears. There is nothing to do by hand.
-</div>
-</div>
 
 <div id="list"></div>
 <div class="sub" id="foot"></div>
@@ -46,87 +20,54 @@ Upvotes need the comment's live URL, which only exists after it publishes. So an
 <script>
 (async () => {
   try {
-    /* One view, one definition of "what happened". See migration
-       007-thread-activity.sql — the stage is derived from what exists, so this
-       page cannot drift from what the poster actually did. */
     const rows = await sb('thread_activity',
       'select=*&stage=neq.no_draft&order=published_at.desc.nullslast,thread_id.asc&limit=500');
 
     const $ = id => document.getElementById(id);
 
     const LABEL = {
-      draft_pending_review:      ['wait', 'draft — waiting for your review'],
-      approved_not_cleared:      ['wait', 'approved — not cleared to send'],
-      cleared_not_sent:          ['wait', 'cleared — next post run picks it up'],
-      waiting_on_engain:         ['wait', 'sent — Engain is scheduling it'],
-      published_awaiting_upvotes:['live', 'published — upvotes next'],
-      upvotes_running:           ['live', 'published — upvotes running'],
-      upvotes_delivered:         ['live', 'done'],
-      send_failed:               ['bad',  'send failed'],
-      removed:                   ['bad',  'removed on Reddit']
+      draft_pending_review:       ['wait', 'draft'],
+      approved_not_cleared:       ['wait', 'approved'],
+      cleared_not_sent:           ['wait', 'cleared'],
+      waiting_on_engain:          ['wait', 'sent'],
+      published_awaiting_upvotes: ['live', 'published'],
+      upvotes_running:            ['live', 'upvotes'],
+      upvotes_delivered:          ['live', 'done'],
+      send_failed:                ['bad',  'failed'],
+      removed:                    ['bad',  'removed']
     };
 
-    /* Which step of the six is current. Used to light the strip, so the row
-       shows position in the flow rather than only a word. */
-    const STEP = {
-      draft_pending_review: 0, approved_not_cleared: 1, cleared_not_sent: 2,
-      waiting_on_engain: 3, published_awaiting_upvotes: 4, upvotes_running: 5,
-      upvotes_delivered: 5, send_failed: 3, removed: 4
-    };
-    const STEPS = ['draft','approved','cleared','sent','published','upvotes'];
-
-    function why(r) {
-      switch (r.stage) {
-        case 'draft_pending_review':
-          return `Written and scored${r.rule_verdict ? ` (<b>${r.rule_verdict}</b>, removal risk ${r.removal_risk})` : ''}. Waiting for you on the <a href="review.html">Review</a> page.`;
-        case 'approved_not_cleared':
-          return 'You approved the text. It still needs clearing to send — a separate decision, so approving copy never publishes anything by itself.';
-        case 'cleared_not_sent':
-          return 'Cleared. The next post run submits it to Engain.';
-        case 'waiting_on_engain':
-          return `Submitted to Engain${r.credits_used ? `, ${r.credits_used} credits` : ''}. They post through a real account on their own schedule — median <b>12.7h</b> on this project. <b>No upvotes yet: the order needs the live comment URL, which does not exist until it publishes.</b>`;
-        case 'published_awaiting_upvotes':
-          return `Live on Reddit. The poller orders <b>${r.upvotes_suggested ?? '3'}</b> upvotes automatically on its next run.`;
-        case 'upvotes_running':
-          return `Live. Upvotes <b>${r.upvotes_delivered ?? 0} of ${r.upvotes_ordered}</b> delivered, dripping at 2/day.`;
-        case 'upvotes_delivered':
-          return `Live, all <b>${r.upvotes_ordered}</b> upvotes delivered. Nothing left to do.`;
-        case 'send_failed':
-          return `Engain reported <b>${r.task_status}</b>. Credits may still have been charged — check before resubmitting.`;
-        case 'removed':
-          return `Reddit removed it (<b>${r.task_status}</b>). The comment is gone; the record stays.`;
-        default:
-          return '';
+    function meta(r) {
+      let info = '';
+      if (r.reddit_url) {
+        info += `<a href="${r.reddit_url}" target="_blank" rel="noopener">comment ↗</a> · `;
       }
+      if (r.upvotes_delivered || r.upvotes_ordered) {
+        info += `${r.upvotes_delivered || 0}/${r.upvotes_ordered} upvotes`;
+      }
+      return info;
     }
-
-    const live = rows.filter(r => r.reddit_url);
-    $('s-act').textContent  = rows.length;
-    $('s-pub').textContent  = live.length;
-    $('s-wait').textContent = rows.filter(r => r.stage === 'waiting_on_engain').length;
-    $('s-up').textContent   = rows.reduce((n, r) => n + (r.upvotes_delivered || 0), 0);
 
     $('list').innerHTML = rows.map(r => {
       const [cls, label] = LABEL[r.stage] || ['', r.stage];
-      const at = STEP[r.stage] ?? 0;
       return `<div class="arow">
         <div class="head">
           <span class="sr">r/${r.subreddit || '?'}</span>
           <span class="title">${(r.title || r.thread_id).replace(/^r\/[^:]+\s+on\s+Reddit:\s+/, '')}</span>
           <span class="stg ${cls}">${label}</span>
         </div>
-        <div class="steps">${STEPS.map((s, i) =>
-          `<span class="${i < at ? 'on' : i === at ? 'now' : ''}">${s}</span>`).join('')}</div>
-        <div class="why">${why(r)}</div>
-        <div style="margin-top:6px">
-          ${r.reddit_url ? `<a href="${r.reddit_url}" target="_blank" rel="noopener">our comment ↗</a> · ` : ''}
-          <a href="${r.thread_url}" target="_blank" rel="noopener">thread ↗</a>
-        </div>
+        <div class="meta">${meta(r)} <a href="${r.thread_url}" target="_blank" rel="noopener">thread ↗</a></div>
       </div>`;
     }).join('') || '<div class="card">No thread has reached the draft stage yet.</div>';
 
-    $('foot').textContent =
-      `${rows.length} thread(s) in the funnel · read from thread_activity · ${new Date().toISOString().slice(0,16).replace('T',' ')}Z`;
+    const sent_not_pub = rows.filter(r => r.stage === 'waiting_on_engain').length;
+    // Plain text, assigned with textContent — an earlier version built a <span>
+    // here and assigned it the same way, which prints the tag on screen.
+    let foot = `${rows.length} thread(s) · ${new Date().toISOString().slice(0,16).replace('T',' ')}Z`;
+    if (sent_not_pub > 0) {
+      foot += ` · ${sent_not_pub} sent, not published yet — no upvotes until they are, which is normal`;
+    }
+    $('foot').textContent = foot;
   } catch (err) {
     fail(err, 'status');
   }

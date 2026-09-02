@@ -8,14 +8,12 @@
 .trow .head{display:flex;gap:10px;align-items:center}
 .trow .title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trow .sr{color:var(--acc);font-size:12px;min-width:130px}
-.trow .meta{color:var(--dim);font-size:12px;min-width:150px;text-align:right}
+.trow .rank{color:var(--ink);font-weight:600;min-width:40px;text-align:center}
 .trow .detail{display:none;padding:10px 0 4px 0}
 .trow.open .detail{display:block}
 .qchip{display:inline-block;background:var(--well);border:1px solid var(--line);border-radius:12px;padding:2px 10px;margin:3px 4px 0 0;font-size:12px;color:var(--mut)}
 .qchip b{color:var(--ink);font-weight:600}
 .detail a{font-size:13px}
-.up{color:#4ade80}.down{color:#f87171}
-.new{color:var(--acc);font-size:11px}
 .gone{opacity:.5}
 .htab{width:100%;margin-top:10px;font-size:12px}
 .htab td,.htab th{padding:3px 8px 3px 0;text-align:left;color:var(--mut)}
@@ -23,26 +21,11 @@
 <body><script src="assets/gate.js"></script>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
 <h1>2 · Targets</h1>
-<div class="sub">Reddit threads that rank in search for our queries. Every thread is tied to the <b>query IDs</b> it ranks for, and every sighting is dated — so you can see when a thread entered the list and whether it climbed or fell since. Click a row for the full history.</div>
-
-<div class="grid">
- <div class="stat"><div class="v" id="s-n">–</div><div class="l">threads</div></div>
- <div class="stat"><div class="v" id="s-top">–</div><div class="l">at position 1</div></div>
- <div class="stat"><div class="v" id="s-new">–</div><div class="l">new in last run</div></div>
- <div class="stat"><div class="v" id="s-gone">–</div><div class="l">dropped out</div></div>
-</div>
-
-<div class="card">
-<b>How to read a row.</b> <code>9q</code> = ranks for 9 of our queries — the single best signal, one thread reaching nine searches beats nine threads reaching one. <code>pos 1</code> = its best position across those queries today. <code>▲2</code> / <code>▼3</code> = average places gained or lost since the previous time we checked those same queries. <code>NEW</code> = first sighting was the latest run. Faded rows didn't appear in the latest run of any query they used to rank for — search moved on, so should we.
-<div style="margin-top:8px;color:var(--dim);font-size:12px">Positions from the 2026-09-01 run are marked <i>approx</i>: that day only one position per thread was stored, not one per query. Movement ignores them.</div>
-</div>
+<div class="sub">Ranked by query coverage: the single best signal is one thread reaching many searches. Click a row to see position history.</div>
 
 <div class="controls">
   <input id="q" placeholder="search title, subreddit, query…">
-  <select id="fstatus"><option value="">status: all</option><option>new</option><option>drafted</option><option>posted</option><option>done</option><option>skip</option></select>
-  <select id="fshape"><option value="">shape: all</option><option>category</option><option>cost</option><option>blocked</option><option>alternative</option><option>unlimited</option></select>
-  <select id="fseen"><option value="">seen: all</option><option value="live">still ranking</option><option value="fresh">new in last run</option><option value="gone">dropped out</option></select>
-  <select id="fsort"><option value="cov">sort: query coverage</option><option value="vol">sort: search volume</option><option value="pos">sort: best position</option><option value="move">sort: biggest mover</option><option value="first">sort: newest</option></select>
+  <select id="fsort"><option value="cov">sort: coverage</option><option value="pos">sort: position</option><option value="first">sort: newest</option></select>
 </div>
 
 <div id="list"></div>
@@ -51,7 +34,6 @@
 <script>
 (async () => {
   try {
-    // Paginated fetch helper
     async function sbPaginated(table, baseQuery, pageSize = 1000) {
       const allRows = [];
       let offset = 0;
@@ -65,7 +47,6 @@
       return allRows;
     }
     
-    // Fetch all needed data with pagination for tables that need it
     const [targets, queries, obs, runs] = await Promise.all([
       sbPaginated('targets', 'select=*&order=thread_id.asc'),
       sb('queries', 'select=*&limit=5000'),
@@ -73,13 +54,9 @@
       sb('runs', 'select=run_date,checked_query_ids&order=run_date.desc&limit=10')
     ]);
     
-    // Build query map
     const qmap = Object.fromEntries(queries.map(q => [q.id, q]));
-    
-    // Find latest run_date
     const lastRunDate = runs.length > 0 ? runs[0].run_date : null;
     
-    // Build observation history map: thread_id -> [date_obs...]
     const obsHistoryMap = {};
     obs.forEach(o => {
       const key = o.thread_id;
@@ -87,15 +64,11 @@
       obsHistoryMap[key].push(o);
     });
     
-    // Enrich targets with computed fields
     const T = targets.map(t => {
       const m = t.url.match(/\/r\/([^/]+)/);
       t.sub = m ? m[1] : '';
-      t.shapes = [...new Set(t.query_ids.map(id => qmap[id]?.shape).filter(Boolean))];
       t.title = (t.title || '').replace(/^r\/[^:]+\s+on\s+Reddit:\s+/, '') || t.url.split('/comments/')[1].replace(/_/g, ' ');
-      t.qtexts = t.query_ids.map(id => ({ id, q: qmap[id]?.q || id, vol: qmap[id]?.volume }));
       
-      // Build per-query history table for the detail panel
       t.history = {};
       t.query_ids.forEach(qid => {
         const qObs = obs.filter(o => o.thread_id === t.thread_id && o.query_id === qid);
@@ -112,26 +85,14 @@
     
     const $ = id => document.getElementById(id);
     
-    // Populate stats
-    $('s-n').textContent = T.length;
-    $('s-top').textContent = T.filter(t => t.best_pos === 1).length;
-    $('s-new').textContent = T.filter(t => t.is_new).length;
-    $('s-gone').textContent = T.filter(t => !t.still_ranking).length;
-    
-    const mv = t => t.move == null ? '' : (t.move > 0.5 ? `<span class="up">▲${t.move.toFixed(0)}</span> ` : t.move < -0.5 ? `<span class="down">▼${(-t.move).toFixed(0)}</span> ` : '');
-    
     function render() {
-      const q = $('q').value.toLowerCase(), st = $('fstatus').value, sh = $('fshape').value, sn = $('fseen').value, so = $('fsort').value;
+      const q = $('q').value.toLowerCase(), so = $('fsort').value;
       let rows = T.filter(t =>
-        (!st || t.status === st) && (!sh || t.shapes.includes(sh)) &&
-        (sn !== 'live' || t.still_ranking) && (sn !== 'fresh' || t.is_new) && (sn !== 'gone' || !t.still_ranking) &&
-        (!q || t.title.toLowerCase().includes(q) || t.sub.toLowerCase().includes(q) || t.qtexts.map(x => x.q + ' ' + x.id).join(' ').toLowerCase().includes(q)));
+        !q || t.title.toLowerCase().includes(q) || t.sub.toLowerCase().includes(q) || t.query_ids.join(' ').toLowerCase().includes(q));
       
       const cmp = {
         cov: (a, b) => (b.n_queries - a.n_queries) || ((a.best_pos || 99) - (b.best_pos || 99)),
-        vol: (a, b) => (b.volume || 0) - (a.volume || 0),
         pos: (a, b) => (a.best_pos || 99) - (b.best_pos || 99),
-        move: (a, b) => Math.abs(b.move || 0) - Math.abs(a.move || 0),
         first: (a, b) => b.first_seen.localeCompare(a.first_seen) || (b.n_queries - a.n_queries)
       };
       rows.sort(cmp[so]);
@@ -140,16 +101,16 @@
         <div class="trow${t.still_ranking ? '' : ' gone'}">
           <div class="head">
             <span class="sr">r/${t.sub}</span>
-            <span class="title">${t.title} ${t.is_new ? '<span class="new">NEW</span>' : ''}</span>
-            <span class="meta">${mv(t)}${t.n_queries}q · pos ${t.best_pos ?? '–'} · ${(t.volume || 0).toLocaleString()}/mo</span>
+            <span class="title">${t.title}</span>
+            <span class="rank">${t.n_queries}q</span>
             ${pill(t.status)}
           </div>
           <div class="detail">
-            ${t.qtexts.map(x => `<span class="qchip"><b>${x.id}</b> ${x.q}${x.vol ? ' · ' + x.vol.toLocaleString() + '/mo' : ''}</span>`).join('')}
-            <table class="htab"><tr><th>query</th><th>position by date</th></tr>
+            ${t.query_ids.map(id => `<span class="qchip"><b>${id}</b></span>`).join('')}
+            <table class="htab"><tr><th>query</th><th>position history</th></tr>
             ${t.query_ids.map(id => `<tr><td>${id}</td><td>${(t.history[id] || []).map(h => `${h.date.slice(5)}: ${h.pos ?? '–'}${h.approx ? '<i> approx</i>' : ''}`).join('  →  ')}</td></tr>`).join('')}
             </table>
-            <div style="margin-top:8px">first seen <b>${t.first_seen}</b> · last seen <b>${t.last_seen}</b> · <a href="${t.url}" rel="noopener" target="_blank">open thread ↗</a></div>
+            <div style="margin-top:8px"><a href="${t.url}" rel="noopener" target="_blank">open thread ↗</a></div>
           </div>
         </div>`).join('');
       
@@ -160,7 +121,7 @@
       }));
     }
     
-    ['q', 'fstatus', 'fshape', 'fseen', 'fsort'].forEach(id => $(id).addEventListener('input', render));
+    ['q', 'fsort'].forEach(id => $(id).addEventListener('input', render));
     render();
   } catch(err) {
     fail(err, 'targets');

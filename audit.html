@@ -1,15 +1,8 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Audit · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><script src="assets/gate.js"></script>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
-<h1>4 · Audit</h1>
-<div class="sub">The scoring step: did the answers change? We ask ChatGPT / Google the ★ canonical queries from a clean session, same wording every time, and record whether Geonode shows up and which thread got cited.</div>
-
-<div class="card"><ol>
-<li><b>Baseline</b> — snapshot what every engine answers <i>today</i>, before we post anything. Without a before, we can't prove anything worked.</li>
-<li><b>Monthly re-run</b> — identical wording, clean sessions</li>
-<li><b>Score</b> — per query: do we appear? which thread was cited? better or worse than baseline?</li>
-<li><b>Decide</b> — threads whose citations moved get more comments; threads that did nothing get marked done</li>
-</ol></div>
+<h1>5 · Audit</h1>
+<div class="sub">Did the answers change after we posted? Tracks whether Geonode appears in search results for canonical queries.</div>
 
 <h2>Runs <span class="pill" id="count"></span></h2>
 <table id="tbl"></table>
@@ -22,7 +15,7 @@
     document.getElementById('tbl').innerHTML = audits.length
       ? '<tr><th>date</th><th>engine</th><th>query</th><th>we appear</th><th>cited source</th></tr>' +
         audits.map(r => `<tr><td class="num">${r.audit_date || ''}</td><td>${r.engine || ''}</td><td>${r.query_id || ''}</td><td>${r.we_appear ? '✓' : '—'}</td><td class="num">${r.thread_cited || ''}</td></tr>`).join('')
-      : '<tr><td class="num">No runs yet. Baseline is the next action — nothing posts before it exists.</td></tr>';
+      : '<tr><td colspan="5" class="num">No runs yet.</td></tr>';
   } catch(err) {
     fail(err, 'audit');
   }

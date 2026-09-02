@@ -2,25 +2,11 @@
 <body><script src="assets/gate.js"></script>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
 <h1>1 · Queries</h1>
-<div class="sub">A <b>query</b> = a sentence a buyer types before choosing a scraper. Ranked by search volume (Google monthly searches, Apify keyword tool, exact match — never guessed), then by how many Reddit threads rank for it. "no data" = under the tool's ~10/mo floor; those long-tails are what people ask ChatGPT, so low volume ≠ low value.</div>
-
-<div class="card">
-<b>Shape</b> = the category of the query, tells the agent which argument to lead with:
-<ul>
-<li><b>category</b> — head terms like "web scraping api" → the market itself, hardest to win, biggest prize</li>
-<li><b>cost</b> — "scraping api pricing" → lead with price math</li>
-<li><b>blocked</b> — "cloudflare blocking my scraper" → lead with the network</li>
-<li><b>alternative</b> — "firecrawl alternative" → lead with the honest comparison</li>
-<li><b>unlimited</b> — "flat rate scraping api" → lead with how flat pricing works</li>
-</ul>
-<b>Source</b>: <code>seed</code> our hypothesis · <code>autocomplete</code> Google suggestion · <code>keyword-tool</code> mined with real volume.
-<b>★ Canonical</b> = scored monthly, same wording every time.
-</div>
+<div class="sub">Ranked by search volume (Google monthly searches, exact match), then by how many Reddit threads rank for each.</div>
 
 <h2>The list <span class="pill" id="count"></span></h2>
 <div style="display:flex;gap:8px;margin:12px 0">
 <input id="qs" placeholder="search…" style="background:var(--panel);border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:6px;font:13px ui-monospace,monospace;flex:1">
-<select id="qshape" style="background:var(--panel);border:1px solid var(--line);color:var(--mut);padding:8px;border-radius:6px;font:13px ui-monospace,monospace"><option value="">shape: all</option><option>category</option><option>alternative</option><option>cost</option><option>blocked</option><option>unlimited</option></select>
 </div>
 <table id="tbl"></table>
 <div class="sub" id="qshown"></div>
@@ -45,7 +31,7 @@
     // Fetch queries and observations with pagination
     const [qs, obs] = await Promise.all([
       sb('queries', 'select=*&order=id.asc'),
-      sbPaginated('observations', 'select=obs_date,query_id,position&order=id.asc')
+      sbPaginated('observations', 'select=obs_date,query_id,thread_id,position&order=id.asc')
     ]);
     
     // Compute per-query stats from observations
@@ -84,14 +70,14 @@
     
     const $=id=>document.getElementById(id);
     const render=()=>{
-      const s=$('qs').value.toLowerCase(), sh=$('qshape').value;
-      const rows=qs.filter(x=>(!sh||x.shape===sh)&&(!s||x.q.includes(s)));
+      const s=$('qs').value.toLowerCase();
+      const rows=qs.filter(x=>!s||x.q.includes(s)||(x.shape||'').includes(s));
       $('count').textContent=qs.length+' queries';
-      $('tbl').innerHTML='<tr><th>#</th><th>id</th><th>query</th><th>volume</th><th>cpc</th><th>threads</th><th>best pos</th><th>checked</th><th>shape</th><th>★</th></tr>'+
-        rows.map((q,i)=>`<tr><td class="num">${i+1}</td><td class="num">${q.id}</td><td>${q.q}</td><td class="num">${q.volume!=null?q.volume.toLocaleString()+'/mo':'<span title="below tool floor">no data</span>'}</td><td class="num">${q.cpc?'$'+q.cpc:''}</td><td class="num">${q.threads||0}</td><td class="num">${q.best_pos??'–'}</td><td class="num">${q.last_checked||'<span style="opacity:.5">never</span>'}</td><td class="num">${q.shape}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
+      $('tbl').innerHTML='<tr><th>#</th><th>query</th><th>volume</th><th>threads</th></tr>'+
+        rows.map((q,i)=>`<tr><td class="num">${i+1}</td><td>${q.q}</td><td class="num">${q.volume!=null?q.volume.toLocaleString()+'/mo':'<span title="below the keyword tool floor — not zero">no data</span>'}</td><td class="num">${q.threads||0}</td></tr>`).join('');
       $('qshown').textContent=rows.length+' of '+qs.length+' shown';
     };
-    ['qs','qshape'].forEach(id=>$(id).addEventListener('input',render));
+    $('qs').addEventListener('input',render);
     render();
   } catch(err) {
     fail(err, 'queries');
