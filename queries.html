@@ -25,17 +25,75 @@
 <div class="sub" id="qshown"></div>
 </main>
 <script>
-j('data/queries.json').then(qs=>{
-  const $=id=>document.getElementById(id);
-  const render=()=>{
-    const s=$('qs').value.toLowerCase(), sh=$('qshape').value;
-    const rows=qs.queries.filter(x=>(!sh||x.shape===sh)&&(!s||x.q.includes(s)));
-    $('count').textContent=qs.queries.length+' queries · updated '+qs.updated;
-    $('tbl').innerHTML='<tr><th>#</th><th>id</th><th>query</th><th>volume</th><th>cpc</th><th>threads</th><th>best pos</th><th>checked</th><th>shape</th><th>★</th></tr>'+
-      rows.map((q,i)=>`<tr><td class="num">${i+1}</td><td class="num">${q.id}</td><td>${q.q}</td><td class="num">${q.volume!=null?q.volume.toLocaleString()+'/mo':'<span title="'+(q.volume_note||'below tool floor')+'">no data</span>'}</td><td class="num">${q.cpc?'$'+q.cpc:''}</td><td class="num">${q.threads||0}</td><td class="num">${q.best_pos??'–'}</td><td class="num">${q.last_checked||'<span style="opacity:.5">never</span>'}</td><td class="num">${q.shape}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
-    $('qshown').textContent=rows.length+' of '+qs.queries.length+' shown';
-  };
-  ['qs','qshape'].forEach(id=>$(id).addEventListener('input',render));
-  render();
-});
+(async () => {
+  try {
+    // Paginated fetch helper: fetches all rows by looping until a page is smaller than limit
+    async function sbPaginated(table, baseQuery, pageSize = 1000) {
+      const allRows = [];
+      let offset = 0;
+      while (true) {
+        const query = baseQuery + (baseQuery ? '&' : '') + `limit=${pageSize}&offset=${offset}`;
+        const rows = await sb(table, query);
+        allRows.push(...rows);
+        if (rows.length < pageSize) break;
+        offset += pageSize;
+      }
+      return allRows;
+    }
+    
+    // Fetch queries and observations with pagination
+    const [qs, obs] = await Promise.all([
+      sb('queries', 'select=*&order=id.asc'),
+      sbPaginated('observations', 'select=obs_date,query_id,position&order=id.asc')
+    ]);
+    
+    // Compute per-query stats from observations
+    const queryStats = {};
+    qs.forEach(q => {
+      queryStats[q.id] = { threads: new Set(), best_pos: 999, last_checked: null };
+    });
+    
+    // Find max obs_date (latest run)
+    let maxDate = null;
+    obs.forEach(o => {
+      if (!maxDate || o.obs_date > maxDate) maxDate = o.obs_date;
+    });
+    
+    // For each query, get stats from latest date
+    obs.forEach(o => {
+      const stat = queryStats[o.query_id];
+      if (stat) {
+        if (o.obs_date === maxDate) {
+          stat.threads.add(o.thread_id || '');
+          if (o.position != null && o.position < stat.best_pos) {
+            stat.best_pos = o.position;
+          }
+          stat.last_checked = maxDate;
+        }
+      }
+    });
+    
+    // Convert sets to counts and clean up
+    qs.forEach(q => {
+      const stat = queryStats[q.id];
+      q.threads = stat.threads.size;
+      q.best_pos = stat.best_pos === 999 ? null : stat.best_pos;
+      q.last_checked = stat.last_checked;
+    });
+    
+    const $=id=>document.getElementById(id);
+    const render=()=>{
+      const s=$('qs').value.toLowerCase(), sh=$('qshape').value;
+      const rows=qs.filter(x=>(!sh||x.shape===sh)&&(!s||x.q.includes(s)));
+      $('count').textContent=qs.length+' queries';
+      $('tbl').innerHTML='<tr><th>#</th><th>id</th><th>query</th><th>volume</th><th>cpc</th><th>threads</th><th>best pos</th><th>checked</th><th>shape</th><th>★</th></tr>'+
+        rows.map((q,i)=>`<tr><td class="num">${i+1}</td><td class="num">${q.id}</td><td>${q.q}</td><td class="num">${q.volume!=null?q.volume.toLocaleString()+'/mo':'<span title="below tool floor">no data</span>'}</td><td class="num">${q.cpc?'$'+q.cpc:''}</td><td class="num">${q.threads||0}</td><td class="num">${q.best_pos??'–'}</td><td class="num">${q.last_checked||'<span style="opacity:.5">never</span>'}</td><td class="num">${q.shape}</td><td>${q.canonical?'★':''}</td></tr>`).join('');
+      $('qshown').textContent=rows.length+' of '+qs.length+' shown';
+    };
+    ['qs','qshape'].forEach(id=>$(id).addEventListener('input',render));
+    render();
+  } catch(err) {
+    fail(err, 'queries');
+  }
+})();
 </script></body></html>

@@ -48,59 +48,121 @@
 <div class="sub" id="shown"></div>
 </main>
 <script>
-Promise.all([j('data/targets.json'), j('data/queries.json'), j('data/observations.json')]).then(([tg,qs,obs])=>{
-  const LAST=obs.last_run, qmap=Object.fromEntries(qs.queries.map(q=>[q.id,q]));
-  const T=tg.targets.map(t=>{
-    const m=t.url.match(/\/r\/([^/]+)/); t.sub=m?m[1]:'';
-    t.shapes=[...new Set(t.queries.map(id=>qmap[id]?.shape).filter(Boolean))];
-    t.title=(t.title||'').replace(/^r\/[^:]+ on Reddit: /,'')||t.url.split('/comments/')[1].replace(/_/g,' ');
-    t.qtexts=t.queries.map(id=>({id, q:qmap[id]?.q||id, vol:qmap[id]?.volume}));
-    t.fresh=t.first_seen===LAST;
-    return t;
-  });
-  const $=id=>document.getElementById(id);
-  $('s-n').textContent=T.length;
-  $('s-top').textContent=T.filter(t=>t.best_pos===1).length;
-  $('s-new').textContent=T.filter(t=>t.fresh).length;
-  $('s-gone').textContent=T.filter(t=>!t.still_ranking).length;
-
-  const mv=t=>t.move==null?'':(t.move>0.5?`<span class="up">▲${t.move.toFixed(0)}</span> `:t.move<-0.5?`<span class="down">▼${(-t.move).toFixed(0)}</span> `:'');
-
-  function render(){
-    const q=$('q').value.toLowerCase(), st=$('fstatus').value, sh=$('fshape').value, sn=$('fseen').value, so=$('fsort').value;
-    let rows=T.filter(t=>
-      (!st||t.status===st) && (!sh||t.shapes.includes(sh)) &&
-      (sn!=='live'||t.still_ranking) && (sn!=='fresh'||t.fresh) && (sn!=='gone'||!t.still_ranking) &&
-      (!q || t.title.toLowerCase().includes(q) || t.sub.toLowerCase().includes(q) || t.qtexts.map(x=>x.q+' '+x.id).join(' ').toLowerCase().includes(q)));
-    const cmp={
-      cov:(a,b)=>(b.n_queries-a.n_queries)||((a.best_pos||99)-(b.best_pos||99)),
-      vol:(a,b)=>(b.volume||0)-(a.volume||0),
-      pos:(a,b)=>(a.best_pos||99)-(b.best_pos||99),
-      move:(a,b)=>Math.abs(b.move||0)-Math.abs(a.move||0),
-      first:(a,b)=>b.first_seen.localeCompare(a.first_seen)||(b.n_queries-a.n_queries)};
-    rows.sort(cmp[so]);
-    $('list').innerHTML=rows.map(t=>`
-      <div class="trow${t.still_ranking?'':' gone'}">
-        <div class="head">
-          <span class="sr">r/${t.sub}</span>
-          <span class="title">${t.title} ${t.fresh?'<span class="new">NEW</span>':''}</span>
-          <span class="meta">${mv(t)}${t.n_queries}q · pos ${t.best_pos??'–'} · ${(t.volume||0).toLocaleString()}/mo</span>
-          ${pill(t.status)}
-        </div>
-        <div class="detail">
-          ${t.qtexts.map(x=>`<span class="qchip"><b>${x.id}</b> ${x.q}${x.vol?' · '+x.vol.toLocaleString()+'/mo':''}</span>`).join('')}
-          <table class="htab"><tr><th>query</th><th>position by date</th></tr>
-          ${t.queries.map(id=>`<tr><td>${id}</td><td>${(t.history[id]||[]).map(h=>`${h.date.slice(5)}: ${h.pos??'–'}${h.approx?'<i> approx</i>':''}`).join('  →  ')}</td></tr>`).join('')}
-          </table>
-          <div style="margin-top:8px">first seen <b>${t.first_seen}</b> · last seen <b>${t.last_seen}</b> · <a href="${t.url}" rel="noopener" target="_blank">open thread ↗</a></div>
-        </div>
-      </div>`).join('');
-    $('shown').textContent=rows.length+' of '+T.length+' shown · data from '+obs.runs.length+' run(s), latest '+LAST;
-    [...document.querySelectorAll('.trow')].forEach(r=>r.addEventListener('click',e=>{
-      if(e.target.tagName!=='A') r.classList.toggle('open');
-    }));
+(async () => {
+  try {
+    // Paginated fetch helper
+    async function sbPaginated(table, baseQuery, pageSize = 1000) {
+      const allRows = [];
+      let offset = 0;
+      while (true) {
+        const query = baseQuery + (baseQuery ? '&' : '') + `limit=${pageSize}&offset=${offset}`;
+        const rows = await sb(table, query);
+        allRows.push(...rows);
+        if (rows.length < pageSize) break;
+        offset += pageSize;
+      }
+      return allRows;
+    }
+    
+    // Fetch all needed data with pagination for tables that need it
+    const [targets, queries, obs, runs] = await Promise.all([
+      sbPaginated('targets', 'select=*&order=thread_id.asc'),
+      sb('queries', 'select=*&limit=5000'),
+      sbPaginated('observations', 'select=obs_date,query_id,thread_id,position,approx&order=id.asc'),
+      sb('runs', 'select=run_date,checked_query_ids&order=run_date.desc&limit=10')
+    ]);
+    
+    // Build query map
+    const qmap = Object.fromEntries(queries.map(q => [q.id, q]));
+    
+    // Find latest run_date
+    const lastRunDate = runs.length > 0 ? runs[0].run_date : null;
+    
+    // Build observation history map: thread_id -> [date_obs...]
+    const obsHistoryMap = {};
+    obs.forEach(o => {
+      const key = o.thread_id;
+      if (!obsHistoryMap[key]) obsHistoryMap[key] = [];
+      obsHistoryMap[key].push(o);
+    });
+    
+    // Enrich targets with computed fields
+    const T = targets.map(t => {
+      const m = t.url.match(/\/r\/([^/]+)/);
+      t.sub = m ? m[1] : '';
+      t.shapes = [...new Set(t.query_ids.map(id => qmap[id]?.shape).filter(Boolean))];
+      t.title = (t.title || '').replace(/^r\/[^:]+\s+on\s+Reddit:\s+/, '') || t.url.split('/comments/')[1].replace(/_/g, ' ');
+      t.qtexts = t.query_ids.map(id => ({ id, q: qmap[id]?.q || id, vol: qmap[id]?.volume }));
+      
+      // Build per-query history table for the detail panel
+      t.history = {};
+      t.query_ids.forEach(qid => {
+        const qObs = obs.filter(o => o.thread_id === t.thread_id && o.query_id === qid);
+        qObs.sort((a, b) => a.obs_date.localeCompare(b.obs_date));
+        t.history[qid] = qObs.map(o => ({
+          date: o.obs_date,
+          pos: o.position,
+          approx: o.approx
+        }));
+      });
+      
+      return t;
+    });
+    
+    const $ = id => document.getElementById(id);
+    
+    // Populate stats
+    $('s-n').textContent = T.length;
+    $('s-top').textContent = T.filter(t => t.best_pos === 1).length;
+    $('s-new').textContent = T.filter(t => t.is_new).length;
+    $('s-gone').textContent = T.filter(t => !t.still_ranking).length;
+    
+    const mv = t => t.move == null ? '' : (t.move > 0.5 ? `<span class="up">▲${t.move.toFixed(0)}</span> ` : t.move < -0.5 ? `<span class="down">▼${(-t.move).toFixed(0)}</span> ` : '');
+    
+    function render() {
+      const q = $('q').value.toLowerCase(), st = $('fstatus').value, sh = $('fshape').value, sn = $('fseen').value, so = $('fsort').value;
+      let rows = T.filter(t =>
+        (!st || t.status === st) && (!sh || t.shapes.includes(sh)) &&
+        (sn !== 'live' || t.still_ranking) && (sn !== 'fresh' || t.is_new) && (sn !== 'gone' || !t.still_ranking) &&
+        (!q || t.title.toLowerCase().includes(q) || t.sub.toLowerCase().includes(q) || t.qtexts.map(x => x.q + ' ' + x.id).join(' ').toLowerCase().includes(q)));
+      
+      const cmp = {
+        cov: (a, b) => (b.n_queries - a.n_queries) || ((a.best_pos || 99) - (b.best_pos || 99)),
+        vol: (a, b) => (b.volume || 0) - (a.volume || 0),
+        pos: (a, b) => (a.best_pos || 99) - (b.best_pos || 99),
+        move: (a, b) => Math.abs(b.move || 0) - Math.abs(a.move || 0),
+        first: (a, b) => b.first_seen.localeCompare(a.first_seen) || (b.n_queries - a.n_queries)
+      };
+      rows.sort(cmp[so]);
+      
+      $('list').innerHTML = rows.map(t => `
+        <div class="trow${t.still_ranking ? '' : ' gone'}">
+          <div class="head">
+            <span class="sr">r/${t.sub}</span>
+            <span class="title">${t.title} ${t.is_new ? '<span class="new">NEW</span>' : ''}</span>
+            <span class="meta">${mv(t)}${t.n_queries}q · pos ${t.best_pos ?? '–'} · ${(t.volume || 0).toLocaleString()}/mo</span>
+            ${pill(t.status)}
+          </div>
+          <div class="detail">
+            ${t.qtexts.map(x => `<span class="qchip"><b>${x.id}</b> ${x.q}${x.vol ? ' · ' + x.vol.toLocaleString() + '/mo' : ''}</span>`).join('')}
+            <table class="htab"><tr><th>query</th><th>position by date</th></tr>
+            ${t.query_ids.map(id => `<tr><td>${id}</td><td>${(t.history[id] || []).map(h => `${h.date.slice(5)}: ${h.pos ?? '–'}${h.approx ? '<i> approx</i>' : ''}`).join('  →  ')}</td></tr>`).join('')}
+            </table>
+            <div style="margin-top:8px">first seen <b>${t.first_seen}</b> · last seen <b>${t.last_seen}</b> · <a href="${t.url}" rel="noopener" target="_blank">open thread ↗</a></div>
+          </div>
+        </div>`).join('');
+      
+      $('shown').textContent = rows.length + ' of ' + T.length + ' shown · data from ' + runs.length + ' run(s), latest ' + (lastRunDate || 'N/A');
+      
+      [...document.querySelectorAll('.trow')].forEach(r => r.addEventListener('click', e => {
+        if (e.target.tagName !== 'A') r.classList.toggle('open');
+      }));
+    }
+    
+    ['q', 'fstatus', 'fshape', 'fseen', 'fsort'].forEach(id => $(id).addEventListener('input', render));
+    render();
+  } catch(err) {
+    fail(err, 'targets');
   }
-  ['q','fstatus','fshape','fseen','fsort'].forEach(id=>$(id).addEventListener('input',render));
-  render();
-});
+})();
 </script></body></html>
