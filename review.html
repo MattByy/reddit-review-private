@@ -7,6 +7,21 @@
   .rv .thread-header{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
   .rv .thread-header a{font-size:14px;font-weight:500;color:var(--link)}
   .rv .thread-meta{display:flex;gap:12px;font-size:12px;color:var(--dim);flex-wrap:wrap}
+  /* Rule-check panel. Verdict colour is a marker, never the only signal —
+     the word "pass"/"warn"/"fail" is printed too, so it survives greyscale
+     and colour-blindness. Text sits on --ink/--mut, both above the floor on
+     this panel; the verdict tints are borders and glyphs, not body copy. */
+  .rv .rc{border:1px solid var(--line);border-left-width:3px;border-radius:4px;
+          padding:8px 10px;margin-bottom:10px;font-size:12px;line-height:1.55;
+          display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;background:var(--well)}
+  .rv .rc-v{font:600 11px/1 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.06em}
+  .rv .rc-r{color:var(--mut);font-family:ui-monospace,monospace;font-size:11px}
+  .rv .rc-s{color:var(--mut);flex:1 1 100%}
+  .rv .rc-viol{flex:1 1 100%;color:var(--bad);font-size:11px}
+  .rv .rc-pass{border-left-color:var(--ok)}    .rv .rc-pass .rc-v{color:var(--ok)}
+  .rv .rc-warn{border-left-color:var(--acc)}   .rv .rc-warn .rc-v{color:var(--acc)}
+  .rv .rc-fail{border-left-color:var(--bad)}   .rv .rc-fail .rc-v{color:var(--bad)}
+  .rv .rc-none{border-left-color:var(--dim);color:var(--mut)}
   .rv .thread-meta span{display:flex;gap:4px;align-items:center}
   .rv .thread-error{background:var(--line);border:1px solid var(--dim);border-radius:4px;padding:8px 10px;font-size:13px;color:var(--mut);margin-bottom:10px}
   .rv .thread-archived{background:#663535;border:1px solid var(--bad);border-radius:4px;padding:8px 10px;margin-bottom:10px;font-size:13px;color:var(--bad);font-weight:500}
@@ -67,6 +82,11 @@
   <div class="sub" id="who"></div>
   <h2>Pending <span class="pill" id="n"></span></h2>
   <div id="list"></div>
+  <h2>Approved, waiting to send <span class="pill" id="nq"></span></h2>
+  <div class="sub">Approving the text above does not send anything. Sending is a
+    second, separate decision — this is the last screen before a comment becomes
+    public under Geonode's name, and nothing here has been sent yet.</div>
+  <div id="queue"></div>
   <h2>What you changed <span class="pill" id="nl"></span></h2>
   <div class="sub">The agent reads this back: agent's text vs the text you kept. This is the only record of your judgement, so it is append-only.</div>
   <table id="lessons"></table>
@@ -193,8 +213,81 @@
     return html;
   }
 
+  /* The send queue: approved drafts that have not been posted.
+
+     This page marks intent; it does not call Engain. The Engain key never
+     enters a browser — it lives in ~/.geonode/engain.env, chmod 600, and only
+     engain-post.py reads it. Marking "cleared to send" sets send_cleared_at,
+     and the script's gates still run on top of that. So a compromised browser
+     session cannot post: it can only ask a human-run script to consider it. */
+  async function renderQueue() {
+    const rows = await api('drafts?select=id,thread_id,body,status,upvotes_suggested,send_cleared_at,thread_context&status=eq.approved&order=created_at.asc&limit=50');
+    const sent = await api('engain_tasks?select=thread_id,status,reddit_url&status=neq.test_artifact');
+    const sentIds = new Set(sent.map(t => t.thread_id));
+    const waiting = rows.filter(r => !sentIds.has(r.thread_id));
+
+    $('nq').textContent = waiting.length + ' approved';
+    const q = $('queue');
+    if (!waiting.length) {
+      q.innerHTML = '<div class="card">Nothing approved and unsent. Approve a draft above and it appears here.</div>';
+      return;
+    }
+    q.innerHTML = '';
+    for (const d of waiting) {
+      const el = document.createElement('div');
+      el.className = 'rv';
+      const tc = d.thread_context || {};
+      const cleared = !!d.send_cleared_at;
+      el.innerHTML = `
+        <div class="meta">
+          <a href="https://www.reddit.com/comments/${esc(d.thread_id)}" target="_blank" rel="noopener">${esc(tc.title || 'thread ' + d.thread_id)}</a>
+          ${tc.subreddit ? ' · r/' + esc(tc.subreddit) : ''}
+          · ${d.upvotes_suggested == null ? 'no upvotes proposed' : esc(String(d.upvotes_suggested)) + ' upvotes proposed'}
+        </div>
+        <div class="post-body" style="max-height:none">${esc(d.body || '')}</div>
+        <div class="acts">
+          <button class="primary" data-a="clear" ${cleared ? 'disabled' : ''}>${cleared ? 'Cleared to send' : 'Clear this to send'}</button>
+          <button data-a="hold" ${cleared ? '' : 'disabled'}>Put back on hold</button>
+          <span class="sub" data-s>${cleared ? 'waiting for engain-post.py to pick it up' : 'not cleared — the poster will skip it'}</span>
+        </div>`;
+      const stat = el.querySelector('[data-s]');
+      el.querySelector('[data-a=clear]').addEventListener('click', async e => {
+        e.target.disabled = true; stat.textContent = 'marking…';
+        try {
+          await api(`drafts?id=eq.${d.id}`, {method:'PATCH', body: JSON.stringify({send_cleared_at: new Date().toISOString()})});
+          stat.textContent = 'cleared — engain-post.py will pick it up on the next run';
+          el.querySelector('[data-a=hold]').disabled = false;
+          e.target.textContent = 'Cleared to send';
+        } catch (err) { e.target.disabled = false; stat.textContent = String(err.message || err); }
+      });
+      el.querySelector('[data-a=hold]').addEventListener('click', async e => {
+        e.target.disabled = true; stat.textContent = 'holding…';
+        try {
+          await api(`drafts?id=eq.${d.id}`, {method:'PATCH', body: JSON.stringify({send_cleared_at: null})});
+          stat.textContent = 'on hold — the poster will skip it';
+          const cb = el.querySelector('[data-a=clear]');
+          cb.disabled = false; cb.textContent = 'Clear this to send';
+        } catch (err) { e.target.disabled = false; stat.textContent = String(err.message || err); }
+      });
+      q.appendChild(el);
+    }
+  }
+
   async function render() {
     const rows = await api('drafts?select=id,thread_id,strategy,format,body,body_original,status,upvotes_suggested,upvotes_reason,prompt_version,thread_context&status=eq.pending&order=created_at.asc&limit=100');
+
+    /* The rule-check is what decides whether a comment survives contact with
+       the subreddit, so it belongs on screen next to the text being approved.
+       Scores are nondeterministic (same text has scored 58 and 78 minutes
+       apart), so the summary records how many runs the number came from and
+       approving is never gated on it — it is evidence for a human, not a gate. */
+    let checks = {};
+    if (rows.length) {
+      const ids = rows.map(r => r.id).join(',');
+      const rc = await api(`rule_checks?select=draft_id,verdict,removal_risk,violated_rules,summary,checked_at&draft_id=in.(${ids})&order=checked_at.desc`);
+      for (const c of rc) if (!checks[c.draft_id]) checks[c.draft_id] = c;
+    }
+
     $('n').textContent = rows.length + ' waiting';
     $('list').innerHTML = rows.length ? '' :
       '<div class="card">Nothing pending. When the agent drafts, it lands here.</div>';
@@ -204,12 +297,27 @@
       el.className = 'rv';
       const up = d.upvotes_suggested == null ? 'no suggestion'
         : `${d.upvotes_suggested} upvotes — ${esc(d.upvotes_reason || 'no reason given')}`;
-      
+
       const threadHtml = renderThreadSection(d);
       const bodyContent = d.body ? esc(d.body) : '<span style="color:var(--dim);font-style:italic">Not written yet</span>';
-      
+
+      const c = checks[d.id];
+      let checkHtml = '<div class="rc rc-none">No rule-check on file. Score it with scripts/score.py before approving.</div>';
+      if (c) {
+        const v = c.verdict;
+        const viol = (c.violated_rules || []).length
+          ? `<div class="rc-viol">flags: ${(c.violated_rules || []).map(esc).join(' · ')}</div>` : '';
+        checkHtml = `<div class="rc rc-${esc(v)}">
+            <span class="rc-v">${esc(v)}</span>
+            <span class="rc-r">removal risk ${c.removal_risk == null ? '—' : esc(String(c.removal_risk))}</span>
+            <span class="rc-s">${esc(c.summary || '')}</span>
+            ${viol}
+          </div>`;
+      }
+
       el.innerHTML = `
         ${threadHtml}
+        ${checkHtml}
         <div class="meta">
           <a href="https://www.reddit.com/comments/${esc(d.thread_id)}" target="_blank" rel="noopener">r/ thread ${esc(d.thread_id)}</a>
           · ${esc(d.strategy || '—')} · ${esc(d.format || '—')}
@@ -296,7 +404,7 @@
   }
 
   async function boot() {
-    try { await render(); await refreshLessons();
+    try { await render(); await renderQueue(); await refreshLessons();
           $('app').hidden = false; $('login').hidden = true;
           $('who').textContent = 'signed in as ' + (sessionStorage.getItem('sb_email') || '—');
     } catch (e) {
