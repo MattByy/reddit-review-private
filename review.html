@@ -1,0 +1,170 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Review · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css">
+<style>
+  .rv{border:1px solid var(--line);border-radius:6px;padding:14px;margin:14px 0}
+  .rv textarea{width:100%;min-height:150px;font:inherit;line-height:1.5;padding:10px;
+    border:1px solid var(--line);border-radius:4px;background:#fff;color:inherit;resize:vertical}
+  .rv .meta{font-size:12px;margin-bottom:8px}
+  .rv .acts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .rv button{font:inherit;padding:7px 14px;border:1px solid var(--line);border-radius:4px;
+    background:#fff;cursor:pointer}
+  .rv button.primary{background:#07090a;color:#fff;border-color:#07090a}
+  .rv button:disabled{opacity:.45;cursor:default}
+  .rv .why{font-size:12px;margin-top:8px}
+  .rv .why input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:4px;width:min(420px,100%)}
+  .dirty{outline:2px solid #ffd815}
+  #login{max-width:340px}
+  #login input{display:block;width:100%;margin:6px 0;padding:8px;border:1px solid var(--line);border-radius:4px;font:inherit}
+</style></head>
+<body><script src="assets/app.js"></script><main>
+<h1>Review queue</h1>
+<div class="sub">Every draft the agent wrote, waiting on you. <b>Approve</b> posts it as written · <b>Edit</b> saves your version and teaches the agent what you changed · <b>Reject</b> kills it with a reason.</div>
+
+<div id="login" class="card" hidden>
+  <h2>Sign in</h2>
+  <div class="sub">Drafts are unpublished copy, so they are not readable without a login.</div>
+  <input id="em" type="email" placeholder="email" autocomplete="username">
+  <input id="pw" type="password" placeholder="password" autocomplete="current-password">
+  <button id="go" class="primary">Sign in</button>
+  <div id="lerr" class="sub"></div>
+</div>
+
+<div id="app" hidden>
+  <div class="sub" id="who"></div>
+  <h2>Pending <span class="pill" id="n"></span></h2>
+  <div id="list"></div>
+  <h2>What you changed <span class="pill" id="nl"></span></h2>
+  <div class="sub">The agent reads this back: agent's text vs the text you kept. This is the only record of your judgement, so it is append-only.</div>
+  <table id="lessons"></table>
+</div>
+</main>
+<script>
+/* Review UI. Drafts stay invisible to anon by design — this page authenticates
+   first, then reads them with the caller's own token. Every decision goes
+   through review_draft(), which writes the revision and the new status in one
+   transaction, so a decision can never be recorded without its edit history. */
+(async () => {
+  const $ = id => document.getElementById(id);
+  let TOKEN = sessionStorage.getItem('sb_tok') || null;
+
+  const H = () => ({ apikey: window.SB_KEY,
+                     Authorization: 'Bearer ' + (TOKEN || window.SB_KEY),
+                     'Content-Type': 'application/json' });
+
+  async function api(path, opts={}) {
+    const r = await fetch(`${window.SB_URL}/rest/v1/${path}`, { headers: H(), ...opts });
+    if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+    return r.status === 204 ? null : r.json();
+  }
+
+  async function signIn(email, password) {
+    const r = await fetch(`${window.SB_URL}/auth/v1/token?grant_type=password`, {
+      method:'POST', headers:{apikey:window.SB_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({email, password})
+    });
+    if (!r.ok) throw new Error((await r.json()).error_description || 'sign-in failed');
+    const j = await r.json();
+    TOKEN = j.access_token; sessionStorage.setItem('sb_tok', TOKEN);
+    return j.user.email;
+  }
+
+  const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  async function render() {
+    const rows = await api('drafts?select=id,thread_id,strategy,format,body,body_original,status,upvotes_suggested,upvotes_reason,prompt_version&status=eq.pending&order=created_at.asc&limit=100');
+    $('n').textContent = rows.length + ' waiting';
+    $('list').innerHTML = rows.length ? '' :
+      '<div class="card">Nothing pending. When the agent drafts, it lands here.</div>';
+
+    for (const d of rows) {
+      const el = document.createElement('div');
+      el.className = 'rv';
+      const up = d.upvotes_suggested == null ? 'no suggestion'
+        : `${d.upvotes_suggested} upvotes — ${esc(d.upvotes_reason || 'no reason given')}`;
+      el.innerHTML = `
+        <div class="meta">
+          <a href="https://www.reddit.com/comments/${esc(d.thread_id)}" target="_blank" rel="noopener">r/ thread ${esc(d.thread_id)}</a>
+          · ${esc(d.strategy || '—')} · ${esc(d.format || '—')}
+          · <span title="what the agent proposes after posting">${up}</span>
+        </div>
+        <textarea></textarea>
+        <div class="why">Reason (required to reject, optional otherwise): <input placeholder="e.g. too salesy, cut the pitch"></div>
+        <div class="acts">
+          <button class="primary" data-a="approve">Approve as written</button>
+          <button data-a="edit" disabled>Save my edit</button>
+          <button data-a="reject">Reject</button>
+          <span class="sub" data-s></span>
+        </div>`;
+      const ta = el.querySelector('textarea'), why = el.querySelector('input');
+      const bEdit = el.querySelector('[data-a=edit]'), bApp = el.querySelector('[data-a=approve]');
+      const stat = el.querySelector('[data-s]');
+      ta.value = d.body || '';
+
+      /* "Approve" must mean the text on screen. If you have typed into the box,
+         approving it unchanged would silently discard your edit — so the
+         buttons swap roles the moment the text differs. */
+      ta.addEventListener('input', () => {
+        const dirty = ta.value !== (d.body || '');
+        bEdit.disabled = !dirty;
+        bApp.disabled = dirty;
+        el.classList.toggle('dirty', dirty);
+        stat.textContent = dirty ? 'edited — save your edit, or revert to approve as written' : '';
+      });
+
+      el.querySelectorAll('button').forEach(b => b.addEventListener('click', async () => {
+        const action = b.dataset.a;
+        if (action === 'reject' && !why.value.trim()) { stat.textContent = 'a reject needs a reason — it is what the agent learns from'; return; }
+        el.querySelectorAll('button').forEach(x => x.disabled = true);
+        stat.textContent = 'saving…';
+        try {
+          await api('rpc/review_draft', { method:'POST', body: JSON.stringify({
+            p_draft_id: d.id, p_action: action,
+            p_body: action === 'edit' ? ta.value : null,
+            p_note: why.value.trim() || null, p_editor: sessionStorage.getItem('sb_email') || 'reviewer'
+          })});
+          el.remove();
+          await refreshLessons();
+          const left = document.querySelectorAll('#list .rv').length;
+          $('n').textContent = left + ' waiting';
+          if (!left) $('list').innerHTML = '<div class="card">Queue clear.</div>';
+        } catch (e) {
+          stat.textContent = 'failed: ' + e.message;
+          el.querySelectorAll('button').forEach(x => x.disabled = false);
+        }
+      }));
+      $('list').appendChild(el);
+    }
+  }
+
+  async function refreshLessons() {
+    const L = await api('edit_lessons?select=at,thread_id,agent_wrote,human_kept,note&limit=25');
+    $('nl').textContent = L.length ? L.length + ' edits' : 'none yet';
+    $('lessons').innerHTML = L.length
+      ? '<tr><th>when</th><th>agent wrote</th><th>you kept</th><th>why</th></tr>' +
+        L.map(x => `<tr><td class="num">${(x.at||'').slice(0,10)}</td><td class="num">${esc((x.agent_wrote||'').slice(0,110))}…</td><td>${esc((x.human_kept||'').slice(0,110))}…</td><td class="num">${esc(x.note||'')}</td></tr>`).join('')
+      : '<tr><td class="num">No edits recorded yet. Once you edit a draft, the before/after shows here and feeds the next prompt.</td></tr>';
+  }
+
+  async function boot() {
+    try { await render(); await refreshLessons();
+          $('app').hidden = false; $('login').hidden = true;
+          $('who').textContent = 'signed in as ' + (sessionStorage.getItem('sb_email') || '—');
+    } catch (e) {
+      if (String(e.message).startsWith('401') || String(e.message).startsWith('403') || !TOKEN) {
+        $('login').hidden = false; $('app').hidden = true;
+      } else { fail(e, 'review'); }
+    }
+  }
+
+  $('go').addEventListener('click', async () => {
+    $('lerr').textContent = 'signing in…';
+    try {
+      const email = await signIn($('em').value.trim(), $('pw').value);
+      sessionStorage.setItem('sb_email', email);
+      $('lerr').textContent = ''; await boot();
+    } catch (e) { $('lerr').textContent = e.message; }
+  });
+  $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('go').click(); });
+
+  if (TOKEN) boot(); else { $('login').hidden = false; }
+})();
+</script></body></html>

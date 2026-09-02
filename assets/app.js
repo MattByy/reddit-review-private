@@ -5,6 +5,7 @@ const NAV = [
   ["dominate.html","3 · Dominate"],
   ["audit.html","4 · Audit"],
   ["history.html","History"],
+  ["review.html","Review"],
   ["experiments.html","Experiments"],
   ["log.html","Log"]
 ];
