@@ -14,11 +14,16 @@
 <table id="tbl"></table>
 </main>
 <script>
-j('data/audits.json').then(a=>{
-  document.getElementById('count').textContent=a.audits.length+' runs';
-  document.getElementById('tbl').innerHTML = a.audits.length
-    ? '<tr><th>date</th><th>engine</th><th>query</th><th>we appear</th><th>cited source</th></tr>'+
-      a.audits.map(r=>`<tr><td class="num">${r.date}</td><td>${r.engine}</td><td>${r.query}</td><td>${r.appears?'✓':'—'}</td><td class="num">${r.cited||''}</td></tr>`).join('')
-    : '<tr><td class="num">No runs yet. Baseline is the next action — nothing posts before it exists.</td></tr>';
-});
+(async () => {
+  try {
+    const audits = await sb('audits', 'select=audit_date,engine,query_id,we_appear,thread_cited&order=audit_date.desc&limit=1000');
+    document.getElementById('count').textContent = audits.length + ' runs';
+    document.getElementById('tbl').innerHTML = audits.length
+      ? '<tr><th>date</th><th>engine</th><th>query</th><th>we appear</th><th>cited source</th></tr>' +
+        audits.map(r => `<tr><td class="num">${r.audit_date || ''}</td><td>${r.engine || ''}</td><td>${r.query_id || ''}</td><td>${r.we_appear ? '✓' : '—'}</td><td class="num">${r.thread_cited || ''}</td></tr>`).join('')
+      : '<tr><td class="num">No runs yet. Baseline is the next action — nothing posts before it exists.</td></tr>';
+  } catch(err) {
+    fail(err, 'audit');
+  }
+})();
 </script></body></html>

@@ -6,8 +6,13 @@
 <table id="tbl"></table>
 </main>
 <script>
-j('data/experiments.json').then(ex=>{
-  document.getElementById('tbl').innerHTML='<tr><th>id</th><th>the idea</th><th>where</th><th>measured by</th><th>status</th></tr>'+
-    ex.experiments.map(e=>`<tr><td>${e.id}</td><td>${e.hypothesis}</td><td class="num">${e.where}</td><td class="num">${e.metric}</td><td>${pill(e.status)}${e.blocker?'<div class="num">'+e.blocker+'</div>':''}</td></tr>`).join('');
-});
+(async () => {
+  try {
+    const experiments = await sb('experiments', 'select=*&limit=1000');
+    document.getElementById('tbl').innerHTML = '<tr><th>id</th><th>the idea</th><th>where</th><th>measured by</th><th>status</th></tr>' +
+      experiments.map(e => `<tr><td>${e.id}</td><td>${e.hypothesis}</td><td class="num">${e.subreddit}</td><td class="num">${e.metric}</td><td>${pill(e.verdict)}${e.notes ? '<div class="num">' + e.notes + '</div>' : ''}</td></tr>`).join('');
+  } catch(err) {
+    fail(err, 'experiments');
+  }
+})();
 </script></body></html>

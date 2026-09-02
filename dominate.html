@@ -36,11 +36,25 @@
 </table>
 </main>
 <script>
-j('data/drafts.json').then(d=>{
-  document.getElementById('dcount').textContent=d.drafts.length+' waiting';
-  document.getElementById('drafts').innerHTML = d.drafts.length
-    ? '<tr><th>thread</th><th>draft</th><th>decision</th></tr>'+
-      d.drafts.map(x=>`<tr><td><a href="${x.url}">${x.url.replace('https://www.reddit.com','').slice(0,45)}</a></td><td class="num">${x.text.slice(0,160)}…</td><td>${pill(x.decision||'pending')}</td></tr>`).join('')
-    : '<tr><td class="num">No drafts queued yet — the daily loop starts after the baseline audit.</td></tr>';
-}).catch(()=>{document.getElementById('dcount').textContent='0';document.getElementById('drafts').innerHTML='<tr><td class="num">No drafts queued yet — the daily loop starts after the baseline audit.</td></tr>';});
+/* Drafts are unpublished copy, so RLS gives the browser no read policy on the
+   table: this public page can only ever receive []. That is deliberate — but it
+   means "empty" here is NOT evidence that no drafts exist, and the page must
+   never imply it is. Approvals happen in Discord, against the database. */
+(async () => {
+  const cnt = document.getElementById('dcount');
+  const tbl = document.getElementById('drafts');
+  try {
+    const d = await sb('drafts', 'select=thread_id,body,status,posted_url&order=created_at.desc&limit=200');
+    if (d.length) {
+      cnt.textContent = d.length + ' waiting';
+      tbl.innerHTML = '<tr><th>thread</th><th>draft</th><th>decision</th></tr>' +
+        d.map(x => `<tr><td><a href="https://www.reddit.com/comments/${x.thread_id}">${x.thread_id}</a></td><td class="num">${(x.body||'').slice(0,160)}…</td><td>${pill(x.status||'pending')}</td></tr>`).join('');
+    } else {
+      cnt.textContent = 'not shown here';
+      tbl.innerHTML = '<tr><td class="num">Drafts are unpublished copy and are not readable from this public page — ' +
+        'the browser has no permission on the table, so this list would look empty either way. ' +
+        'Review and approve them in Discord.</td></tr>';
+    }
+  } catch (err) { fail(err, 'drafts'); }
+})();
 </script></body></html>

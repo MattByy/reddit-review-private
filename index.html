@@ -35,15 +35,39 @@
 
 </main>
 <script>
-Promise.all([j('data/log.json'), j('data/targets.json'), j('data/queries.json')]).then(([log,tg,qs])=>{
-  const sov=Object.entries(log.baseline.share_of_voice).sort((a,b)=>b[1]-a[1]);
-  const max=sov[0][1], geo=log.baseline.share_of_voice["geonode.com"], fc=log.baseline.share_of_voice["firecrawl.dev"];
-  document.getElementById('meta').textContent=`data updated ${tg.updated} · repo geonode-strategy/04-reddit · git = change history`;
-  document.getElementById('s-q').textContent=qs.queries.length;
-  document.getElementById('s-t').textContent=tg.targets.length;
-  document.getElementById('s-sov').textContent=geo+" / "+fc;
-  document.getElementById('s-log').textContent=log.entries.length;
-  document.getElementById('sov').innerHTML='<tr><th>brand</th><th>mentions</th><th></th></tr>'+
-    sov.map(([b,n])=>`<tr><td>${b}${b==='geonode.com'?' ←':''}</td><td class="num">${n}</td><td style="width:55%"><span class="bar${b==='geonode.com'?'':' g'}" style="width:${(n/max*100).toFixed(0)}%"></span></td></tr>`).join('');
-});
+(async () => {
+  try {
+    const [logRows, targets, queries, sovRows] = await Promise.all([
+      sb('activity_log', 'select=*&order=at.desc&limit=1000'),
+      sbAll('targets', 'select=thread_id&order=thread_id.asc'),
+      sb('queries', 'select=id&limit=1000'),
+      sb('sov_baseline', 'select=brand,mentions,caveat,measured_on,source&order=mentions.desc&limit=100')
+    ]);
+
+    /* Share of voice is a DATED MEASUREMENT read from sov_baseline, never a
+       number typed into this page. Its caveat travels with it — the geonode
+       count includes the July Engain-manufactured comments and is inflated. */
+    const sov = sovRows.map(r => [r.brand, r.mentions]);
+    const max = sov.length ? sov[0][1] : 0;
+    const byBrand = Object.fromEntries(sov);
+    const geo = byBrand["geonode.com"], fc = byBrand["firecrawl.dev"];
+
+    document.getElementById('meta').textContent =
+      `data updated ${new Date().toISOString().slice(0,10)} · repo geonode-strategy/04-reddit · git = change history`;
+    document.getElementById('s-q').textContent = queries.length;
+    document.getElementById('s-t').textContent = targets.length;
+    document.getElementById('s-sov').textContent =
+      (geo === undefined || fc === undefined) ? 'no data' : geo + " / " + fc;
+    document.getElementById('s-log').textContent = logRows.length;
+
+    const caveat = sovRows.find(r => r.caveat);
+    document.getElementById('sov').innerHTML = sov.length
+      ? '<tr><th>brand</th><th>mentions</th><th></th></tr>' +
+        sov.map(([b, n]) => `<tr><td>${b}${b === 'geonode.com' ? ' ←' : ''}</td><td class="num">${n}</td><td style="width:55%"><span class="bar${b === 'geonode.com' ? '' : ' g'}" style="width:${(n / max * 100).toFixed(0)}%"></span></td></tr>`).join('') +
+        (caveat ? `<tr><td colspan="3" class="num">${caveat.brand}: ${caveat.caveat}</td></tr>` : '')
+      : '<tr><td class="num">No share-of-voice measurement recorded yet.</td></tr>';
+  } catch(err) {
+    fail(err, 'index');
+  }
+})();
 </script></body></html>
