@@ -1,5 +1,6 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Overview · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
-<body><script src="assets/config.js"></script><script src="assets/app.js"></script><main>
+<body><script src="assets/gate.js"></script>
+<script src="assets/config.js"></script><script src="assets/app.js"></script><main>
 <h1>Overview</h1>
 <div id="meta">loading…</div>
 
@@ -14,17 +15,19 @@
 <div class="stage">
   <a href="queries.html">1 · Queries</a>
   <a href="targets.html">2 · Targets</a>
-  <a href="dominate.html">3 · Dominate</a>
-  <a href="audit.html">4 · Audit</a>
+  <a href="review.html">3 · Review</a>
+  <a href="status.html">4 · Status</a>
+  <a href="audit.html">5 · Audit</a>
 </div>
 <div class="card">
 <b>The play, step by step.</b>
 <ol>
 <li><b>Find out what buyers actually type.</b> Not guesses: Google autocomplete and keyword tools show the real searches ("firecrawl alternative open source", "apify alternative n8n"). Each query is tagged <code>seed</code> (our hypothesis) or <code>autocomplete</code> (real people typed this). Volume data comes next — the list keeps growing forever (<a href="queries.html">Queries</a>).</li>
 <li><b>Find the threads that answer those searches.</b> When someone asks ChatGPT or Google, the answer is assembled from a few Reddit threads that rank. Our own scraper finds exactly which ones, per query (<a href="targets.html">Targets</a>).</li>
-<li><b>Earn a place in those threads.</b> One genuinely helpful comment per thread — a war story, a fix, an honest comparison — written in a chosen style, disclosed as Geonode, approved by a human before posting, then boosted with a few upvotes at most (<a href="dominate.html">Dominate</a>).</li>
+<li><b>Earn a place in those threads.</b> One genuinely helpful comment per thread — a war story, a fix, an honest comparison — written in a chosen style, disclosed as Geonode, scored against the subreddit's rules, and approved by a human before anything is sent (<a href="review.html">Review</a>).</li>
+<li><b>Watch it land.</b> Approved comments go to Engain, which posts through a real account on its own schedule, then upvotes are ordered automatically once the comment is live. Every thread's exact stage is on one page (<a href="status.html">Status</a>).</li>
 <li><b>Check if reality moved.</b> Monthly, from clean sessions, we ask the AIs the same ★ queries and record: are we recommended now, and which thread got cited (<a href="audit.html">Audit</a>).</li>
-<li><b>Double down or drop.</b> Threads and comment styles that moved citations get more attention; the rest get marked done. Side ideas run as 2-week <a href="experiments.html">Experiments</a> first.</li>
+<li><b>Double down or drop.</b> Threads and comment styles that moved citations get more attention; the rest get marked done. Side ideas run as 2-week <a href="experiments.html">experiments</a> first.</li>
 </ol>
 <p><b>Why this beats the old approach:</b> the previous Reddit effort commented broadly and bought upvotes for trending — Reddit-internal metrics. This system starts from real search demand and is scored on one external question: <i>does the AI recommend us when a buyer asks?</i></p>
 </div>

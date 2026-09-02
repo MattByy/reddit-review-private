@@ -46,17 +46,27 @@
   .rv .comment-score{color:var(--dim)}
   .rv .comment-body{color:var(--ink);line-height:1.5;overflow-wrap:break-word}
   
-  /* Draft section (existing) */
+  /* Draft section (existing)
+     These three controls paint a WHITE background inside a dark-themed page.
+     `color:inherit` there inherits --ink (#e8e8e8), i.e. near-white text on
+     white — about 1.1:1, which is how the draft text and the Reject/reason
+     controls shipped effectively invisible. Ink is set explicitly on every
+     light surface; never inherit a colour across a background flip. */
   .rv textarea{width:100%;min-height:150px;font:inherit;line-height:1.5;padding:10px;
-    border:1px solid var(--line);border-radius:4px;background:#fff;color:inherit;resize:vertical}
+    border:1px solid var(--line);border-radius:4px;background:#fff;color:#07090a;resize:vertical}
   .rv .meta{font-size:12px;margin-bottom:8px}
   .rv .acts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .rv button{font:inherit;padding:7px 14px;border:1px solid var(--line);border-radius:4px;
-    background:#fff;cursor:pointer}
+    background:#fff;color:#07090a;cursor:pointer}
   .rv button.primary{background:#07090a;color:#fff;border-color:#07090a}
-  .rv button:disabled{opacity:.45;cursor:default}
+  /* A disabled control has to read as deliberately off, not as a dead button.
+     opacity:.45 alone dropped the label under the contrast floor and looked
+     like a bug — which is exactly how it was reported. */
+  .rv button:disabled{opacity:1;background:var(--line);color:var(--dim);
+    border-color:var(--line);cursor:not-allowed}
   .rv .why{font-size:12px;margin-top:8px}
-  .rv .why input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:4px;width:min(420px,100%)}
+  .rv .why input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:4px;
+    width:min(420px,100%);background:#fff;color:#07090a}
   .dirty{outline:2px solid #ffd815}
   
   #login{max-width:340px}
@@ -65,7 +75,8 @@
   /* Reading legibility: constrain prose width */
   .rv .post-body, .rv .comment-body{max-width:72ch}
 </style></head>
-<body><script src="assets/config.js"></script><script src="assets/app.js"></script><main>
+<body><script src="assets/gate.js"></script>
+<script src="assets/config.js"></script><script src="assets/app.js"></script><main>
 <h1>Review queue</h1>
 <div class="sub">Every draft the agent wrote, waiting on you. Read the thread and top comments, then <b>Approve</b> to post as written · <b>Edit</b> to save your version and teach the agent · <b>Reject</b> to kill it with a reason.</div>
 
@@ -327,7 +338,7 @@
         <div class="why">Reason (required to reject, optional otherwise): <input placeholder="e.g. too salesy, cut the pitch"></div>
         <div class="acts">
           <button class="primary" data-a="approve">Approve as written</button>
-          <button data-a="edit" disabled>Save my edit</button>
+          <button data-a="edit" disabled title="Type in the box above to enable this">Save my edit</button>
           <button data-a="reject">Reject</button>
           <span class="sub" data-s></span>
         </div>`;
@@ -382,12 +393,16 @@
           })});
           el.remove();
           await refreshLessons();
+          await renderQueue();   // an approval lands in the send queue below
           const left = document.querySelectorAll('#list .rv').length;
           $('n').textContent = left + ' waiting';
           if (!left) $('list').innerHTML = '<div class="card">Queue clear.</div>';
         } catch (e) {
-          stat.textContent = 'failed: ' + e.message;
+          /* Loud, and it names the draft. A silent failure here reads as a
+             dead button, which is how the first version was reported. */
+          stat.innerHTML = '<b style="color:var(--bad)">failed: ' + esc(String(e.message || e)) + '</b>';
           el.querySelectorAll('button').forEach(x => x.disabled = false);
+          bEdit.disabled = ta.value === (d.body || '');
         }
       }));
       $('list').appendChild(el);

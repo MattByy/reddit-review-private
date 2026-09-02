@@ -1,13 +1,15 @@
+/* Nav is the flow, in order. Pages that answered a one-off question during
+   setup (experiments, log) are still deployed and reachable by URL — they are
+   just not steps in the daily loop, and a nav that lists everything trains you
+   to read none of it. */
 const NAV = [
   ["index.html","Overview"],
   ["queries.html","1 · Queries"],
   ["targets.html","2 · Targets"],
-  ["dominate.html","3 · Dominate"],
-  ["audit.html","4 · Audit"],
-  ["history.html","History"],
-  ["review.html","Review"],
-  ["experiments.html","Experiments"],
-  ["log.html","Log"]
+  ["review.html","3 · Review"],
+  ["status.html","4 · Status"],
+  ["audit.html","5 · Audit"],
+  ["history.html","History"]
 ];
 function nav(active){
   const here = location.pathname.split("/").pop() || "index.html";
