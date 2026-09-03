@@ -12,6 +12,18 @@
     {
       "path": "/api/cron/pullback",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/dispatch",
+      "schedule": "*/15 * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/dispatch.js": {
+      "maxDuration": 60
+    },
+    "api/cron/pullback.js": {
+      "maxDuration": 60
+    }
+  }
 }

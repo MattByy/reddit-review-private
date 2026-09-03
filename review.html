@@ -103,7 +103,7 @@
 <div class="page-head">
   <div>
     <h1>Review</h1>
-    <p class="lede">Is this comment good enough to publish under Geonode's name? Approving it clears it to send. A watcher runs one final rule check and posts it. You can pull it back on the Sending tab until it publishes.</p>
+    <p class="lede">Is this comment good enough to publish under Geonode's name? Approving sends it: one final rule check, then straight to Engain. You can pull it back on the Sending tab until it publishes.</p>
   </div>
 </div>
 
@@ -129,7 +129,7 @@
 </div>
 
 <div id="panel-send" role="tabpanel" aria-labelledby="tab-send" hidden>
-  <div class="notice info" style="margin-bottom:16px"><div class="body"><b>Approved drafts and everything sent that is not live yet.</b> The watcher (<code>engain-post.py watch</code>, run where the vendor key lives) posts cleared drafts after one final <code>check_draft.py</code> run. A task sits with Engain for hours before it publishes. Engain refuses cancels in a task's first 24 hours, so a pull-back is fired the moment that window opens, by the watcher or by the hourly cron, and the outcome is written back here.</div></div>
+  <div class="notice info" style="margin-bottom:16px"><div class="body"><b>Approved drafts and everything sent that is not live yet.</b> Approving sends: the site runs the rule check and Engain's own check, then hands the comment to Engain, and retries every 15 minutes if anything is still waiting. A task sits with Engain for hours before it publishes. Engain refuses cancels in a task's first 24 hours, so a pull-back is fired the moment that window opens, by the watcher or by the hourly cron, and the outcome is written back here.</div></div>
   <div id="sendlist" class="stack"></div>
 </div>
 
@@ -160,6 +160,20 @@
     return r.status === 204 ? null : r.json();
   }
   const rpc = (fn, args) => api(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
+  /* The poster. Approving sets the flags; this asks the site's own function
+     to act on them right now instead of waiting for a clock. It re-checks
+     every gate itself, so calling it is never an authorization. */
+  async function dispatch() {
+    try { const r = await fetch('/api/dispatch', { method: 'POST' }); return await r.json(); }
+    catch (e) { return { error: String(e.message || e) }; }
+  }
+  function describe(res) {
+    if (!res || res.error) return 'Sending failed: ' + (res && res.error || 'no response') + '. The 15 minute fallback will retry.';
+    const parts = (res.results || []).map(r => r.outcome === 'sent' ? `sent to Engain (task ${r.task}, rule check ${r.rule_verdict}${r.removal_risk != null ? ' ' + r.removal_risk : ''})`
+      : r.outcome === 'refused' ? `refused at the ${r.where}: ${(r.reasons || []).join(' | ')}`
+      : r.outcome === 'deferred' ? 'deferred: ' + r.why : r.outcome + (r.why ? ': ' + r.why : r.error ? ': ' + r.error : ''));
+    return parts.length ? parts.join(' · ') : (res.note || 'nothing to send');
+  }
   /* Postgres wraps RPC errors in JSON; show the sentence, not the envelope. */
   const errText = e => { const m = String(e.message || e); try { const j = JSON.parse(m.replace(/^\d+:\s*/, '')); return j.message || m; } catch (x) { return m; } };
 
@@ -486,10 +500,14 @@
         } else {
           drafts.splice(current, 1);
           if (!drafts.length) showEmpty(); else select(Math.min(current, drafts.length - 1));
-          if (action === 'approve') flash('Approved and cleared. It is on the Sending tab, and you can pull it back there until it publishes.');
         }
         setCounts();
         try { sessionStorage.removeItem('c_nav_stage'); } catch (e) {}
+        if (action === 'approve') {
+          flash('Approved. Sending it to Engain now…');
+          const res = await dispatch();
+          flash(describe(res));
+        }
         await Promise.all([renderSend(), renderLessons()]);
       } catch (e) {
         st.classList.add('bad'); st.textContent = 'Failed: ' + errText(e);
@@ -550,8 +568,8 @@
         state = chip('warn', 'held');
         acts = `<button class="btn primary" data-a="clear">Clear to send</button><span class="st" data-s>Held. The watcher skips it until you clear it again.</span>`;
       } else {
-        state = chip('ok', 'cleared, waiting for the watcher');
-        acts = `<button class="btn" data-a="hold">Put on hold</button><span class="st" data-s>Cleared ${esc(ago(d.send_cleared_at))}. The watcher posts it after one final check_draft.py run.</span>`;
+        state = chip('ok', 'cleared, sending');
+        acts = `<button class="btn" data-a="hold">Put on hold</button><button class="btn primary" data-a="sendnow">Send now</button><span class="st" data-s>Cleared ${esc(ago(d.send_cleared_at))}. The site sends it on approval and retries every 15 minutes. If it is still here, press Send now and read what comes back.</span>`;
       }
       el.innerHTML = `
         <div class="head">
@@ -573,8 +591,14 @@
       });
       bind('[data-a=clear]', async b => {
         b.disabled = true; stat.textContent = 'Clearing…';
-        try { await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', body: JSON.stringify({ send_cleared_at: new Date().toISOString(), pullback_requested_at: null }) }); await renderSend(); }
+        try { await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', body: JSON.stringify({ send_cleared_at: new Date().toISOString(), pullback_requested_at: null }) }); flashSend(describe(await dispatch())); await renderSend(); }
         catch (e) { b.disabled = false; stat.classList.add('bad'); stat.textContent = 'Failed: ' + errText(e); }
+      });
+      bind('[data-a=sendnow]', async b => {
+        b.disabled = true; stat.textContent = 'Sending…';
+        const res = await dispatch();
+        flashSend(describe(res));
+        await renderSend();
       });
       bind('[data-a=pullback]', async b => {
         b.disabled = true; stat.textContent = 'Requesting…';
