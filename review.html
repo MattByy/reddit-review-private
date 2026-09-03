@@ -568,16 +568,16 @@
           <span class="st" data-s>${t.cancel_requested_at ? esc(open ? 'Pull-back fires within the hour.' : 'Pull-back fires when the window opens, unless it publishes first.') : (c && !passes(c) ? 'This one does not pass the current ceiling. Pull it back if you do not want it published.' : 'Possible until it publishes.')}</span>`;
       } else if (d.gate_failed_at) {
         state = chip('bad', 'not sent');
-        acts = `<span class="st bad">${esc((d.gate_failure || '').replace(/^[^:]*: /, ''))}</span><span class="st">Edit or reject it on the To review tab.</span>`;
+        acts = `<span class="st bad">${esc((d.gate_failure || '').replace(/^[^:]*: /, ''))}</span>${rejectRow('Edit it on the To review tab, or reject it here.')}`;
       } else if (d.redirect_pending) {
         state = chip('warn', 'with the agent');
         acts = `<span class="st">Back on To review when the agent delivers.</span>`;
       } else if (d.pullback_requested_at || !d.send_cleared_at) {
         state = chip('warn', 'held');
-        acts = `<button class="btn primary" data-a="clear">Send</button><span class="st" data-s>Held. Nothing happens until you press Send.</span>`;
+        acts = `<button class="btn primary" data-a="clear">Send</button>${rejectRow('Held. Nothing happens until you press Send.')}`;
       } else {
         state = chip('ok', 'sending');
-        acts = `<button class="btn" data-a="hold">Put on hold</button><button class="btn primary" data-a="sendnow">Send now</button><span class="st" data-s>Approved ${esc(ago(d.send_cleared_at))}. Retries every 15 minutes. If it is still here, press Send now and read the answer.</span>`;
+        acts = `<button class="btn" data-a="hold">Put on hold</button><button class="btn primary" data-a="sendnow">Send now</button>${rejectRow(`Approved ${esc(ago(d.send_cleared_at))}. Retries every 15 minutes. If it is still here, press Send now and read the answer.`)}`;
       }
       el.innerHTML = `
         <div class="head">
@@ -592,6 +592,17 @@
         <div class="acts">${acts}</div>`;
       const stat = el.querySelector('[data-s]');
       const bind = (sel, fn) => { const b = el.querySelector(sel); if (b) b.addEventListener('click', () => fn(b)); };
+      bind('[data-a=reject]', async b => {
+        const why = el.querySelector('[data-why]');
+        if (!why.value.trim()) { stat.classList.add('bad'); stat.textContent = 'A reject needs a reason. It is what the agent learns from.'; why.focus(); return; }
+        b.disabled = true; stat.classList.remove('bad'); stat.textContent = 'Rejecting…';
+        try {
+          await rpc('review_draft', { p_draft_id: d.id, p_action: 'reject', p_body: null, p_note: why.value.trim(), p_editor: 'reviewer' });
+          drafts = drafts.filter(x => x.id !== d.id); setCounts(); if (!drafts.length) showEmpty(); else renderQueueList();
+          try { sessionStorage.removeItem('c_nav_stage'); } catch (e) {}
+          await Promise.all([renderSend(), renderLessons()]);
+        } catch (e) { b.disabled = false; stat.classList.add('bad'); stat.textContent = 'Failed: ' + errText(e); }
+      });
       bind('[data-a=hold]', async b => {
         b.disabled = true; stat.textContent = 'Holding…';
         try { await rpc('request_pullback', { p_draft_id: d.id, p_editor: 'reviewer', p_note: 'held on the Sending tab' }); await renderSend(); }
@@ -619,6 +630,11 @@
       box.appendChild(el);
     }
   }
+  /* Reject, right here, for anything not yet sent. Same RPC as the review
+     tab, same rule: a reason is required, it is what the agent learns from. */
+  const rejectRow = note => `<span class="st" data-s>${note}</span>
+        <label class="field" style="width:min(420px,100%)"><span class="muted small" style="white-space:nowrap">Reason</span><input data-why placeholder="why this should not go out"></label>
+        <button class="btn danger" data-a="reject">Reject</button>`;
   function flashSend(text) {
     const el = document.createElement('div'); el.className = 'notice ok'; el.setAttribute('role', 'status');
     el.innerHTML = `${ICON.check}<div class="body">${esc(text)}</div>`;
