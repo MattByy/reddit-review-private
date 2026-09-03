@@ -47,7 +47,8 @@ async function sb(method, path, body, prefer) {
   if (prefer) headers.Prefer = prefer;
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!r.ok) throw new Error(`supabase ${r.status} on ${method} ${path.split("?")[0]}: ${(await r.text()).slice(0, 300)}`);
-  return r.status === 204 ? null : r.json();
+  const text = await r.text();
+  return text.trim() ? JSON.parse(text) : null;   // return=minimal answers 201/204 with an empty body
 }
 async function log(action, detail) { try { await sb("POST", "activity_log", [{ actor: ACTOR, action, detail }], "return=minimal"); } catch {} }
 async function engain(method, path, body, params) {

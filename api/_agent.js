@@ -72,7 +72,8 @@ async function sb(method, path, body, prefer) {
     const text = await r.text();
     throw new HttpError(r.status === 404 ? 404 : 502, `supabase ${r.status} on ${method} ${path.split("?")[0]}`, { supabase: text.slice(0, 600) });
   }
-  return r.status === 204 ? null : r.json();
+  const text = await r.text();
+  return text.trim() ? JSON.parse(text) : null;   // return=minimal answers 201/204 with an empty body
 }
 
 const limitOf = (sp, dflt = 50) => Math.min(Math.max(parseInt(sp.get("limit") || dflt, 10) || dflt, 1), MAX_LIMIT);
