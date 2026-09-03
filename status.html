@@ -68,10 +68,11 @@
 
     function facts(r) {
       const f = [];
-      if (r.rule_verdict) f.push(['Rule check', `${r.rule_verdict}${r.removal_risk != null ? ', removal risk ' + r.removal_risk + ' of 100' : ''}`]);
+      if (r.removal_risk != null) f.push(['Score', (r.rule_verdict !== 'fail' && r.removal_risk <= 40) ? `passes, risk ${r.removal_risk}` : `does not pass, risk ${r.removal_risk} over 40`]);
+      else if (r.rule_verdict) f.push(['Score', 'not scored']);
       if (r.upvotes_suggested != null) f.push(['Upvotes proposed', String(r.upvotes_suggested)]);
       if (r.mode && r.mode !== 'comment') f.push(['Mode', r.mode]);
-      if (r.gate_failure) f.push(['Final gate', r.gate_failure]);
+      if (r.gate_failure) f.push(['Not sent', r.gate_failure.replace(/^[^:]*: /, '')]);
       if (r.task_status) f.push(['Engain task', `${r.task_status}${r.task_id ? ', id ' + r.task_id : ''}`]);
       if (r.cancel_requested_at) f.push(['Pull back', `requested ${ago(r.cancel_requested_at)}${r.cancel_result ? ', ' + r.cancel_result : ', not attempted yet'}`]);
       if (r.published_at) f.push(['Published', `${fmtDate(r.published_at)}, ${ago(r.published_at)}`]);

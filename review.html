@@ -130,7 +130,7 @@
 </div>
 
 <div id="panel-send" role="tabpanel" aria-labelledby="tab-send" hidden>
-  <div class="notice info" style="margin-bottom:16px"><div class="body"><b>Approved drafts and everything sent that is not live yet.</b> Approving sends: the site runs the rule check and Engain's own check, then hands the comment to Engain, and retries every 15 minutes if anything is still waiting. A task sits with Engain for hours before it publishes. Engain refuses cancels in a task's first 24 hours, so a pull-back is fired the moment that window opens, by the watcher or by the hourly cron, and the outcome is written back here.</div></div>
+  <div class="notice info" style="margin-bottom:16px"><div class="body"><b>Approved, not live yet.</b> Engain publishes hours after it receives a comment. Pull back works from 24 hours after sending until it publishes.</div></div>
   <div id="sendlist" class="stack"></div>
 </div>
 
@@ -170,9 +170,9 @@
   }
   function describe(res) {
     if (!res || res.error) return 'Sending failed: ' + (res && res.error || 'no response') + '. The 15 minute fallback will retry.';
-    const parts = (res.results || []).map(r => r.outcome === 'sent' ? `sent to Engain (task ${r.task}, rule check ${r.rule_verdict}${r.removal_risk != null ? ' ' + r.removal_risk : ''})`
-      : r.outcome === 'refused' ? `refused at the ${r.where}: ${(r.reasons || []).join(' | ')}`
-      : r.outcome === 'deferred' ? 'deferred: ' + r.why : r.outcome + (r.why ? ': ' + r.why : r.error ? ': ' + r.error : ''));
+    const parts = (res.results || []).map(r => r.outcome === 'sent' ? `Sent to Engain. Risk ${r.removal_risk}.`
+      : r.outcome === 'refused' ? `Not sent. ${(r.reasons || [])[0] || r.where}`
+      : r.outcome === 'deferred' ? 'Not sent yet. Retries within 15 minutes.' : r.outcome + (r.why ? ': ' + r.why : r.error ? ': ' + r.error : ''));
     return parts.length ? parts.join(' · ') : (res.note || 'nothing to send');
   }
   /* Postgres wraps RPC errors in JSON; show the sentence, not the envelope. */
@@ -238,7 +238,12 @@
   const threadUrl = d => (d.thread_context && d.thread_context.url) || `https://www.reddit.com/comments/${d.thread_id}`;
   const threadTitle = d => (d.thread_context && d.thread_context.title) || (d.kind === 'post' ? d.title : '') || `thread ${d.thread_id}`;
   const threadSub = d => (d.thread_context && d.thread_context.subreddit) || d.subreddit || '';
-  const verdictKind = v => v === 'pass' ? 'ok' : v === 'warn' ? 'warn' : 'bad';
+  /* One vocabulary for the score, everywhere on this page. A draft either
+     passes (Engain risk at or under the ceiling, not a fail) or it does not.
+     No warn, no fail, no vendor words. */
+  const passes = c => !!c && c.verdict !== 'fail' && c.removal_risk != null && c.removal_risk <= CEILING;
+  const scoreChip = c => !c || c.removal_risk == null ? chip('', 'not scored')
+    : passes(c) ? chip('ok', `passes · risk ${c.removal_risk}`) : chip('bad', `does not pass · risk ${c.removal_risk} over ${CEILING}`);
   const commentId = u => { const m = String(u || '').match(/\/comments\/[A-Za-z0-9]+\/[^/?#]+\/([A-Za-z0-9]+)/); return m ? m[1].toLowerCase() : null; };
   const absUrl = u => /^https?:/i.test(u || '') ? u : 'https://www.reddit.com' + (u || '');
   const fmtWhen = iso => iso ? new Date(iso).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : '';
@@ -294,10 +299,11 @@
   }
 
   function checkPanel(c) {
-    if (!c) return `<div class="notice" style="margin-top:12px">${ICON.info}<div class="body"><b>No rule-check on file.</b> It is scored again when you approve.</div></div>`;
-    const viol = (c.violated_rules || []).length ? `<div class="small" style="margin-top:6px;color:var(--bad)">Rules named: ${c.violated_rules.map(esc).join(' · ')}</div>` : '';
-    return `<div class="notice" style="margin-top:12px"><div class="body"><div class="flex">${chip(verdictKind(c.verdict), 'rule check ' + c.verdict)}<span class="small">removal risk ${c.removal_risk == null ? 'not recorded' : esc(String(c.removal_risk))} of 100</span><span class="muted tiny right">${esc(ago(c.checked_at))}</span></div>
-      <div class="muted small" style="margin-top:6px">${esc(c.summary || '')} Under the ceiling of ${CEILING}, so it reached you. It is scored once more when you approve, and only an outright fail stops it then.</div>${viol}</div></div>`;
+    if (!c || c.removal_risk == null) return `<div class="notice" style="margin-top:12px"><div class="body"><div class="flex">${scoreChip(c)}<span class="small">scored when you approve</span></div></div></div>`;
+    const ok = passes(c);
+    const viol = (c.violated_rules || []).length ? `<div class="small" style="margin-top:6px;color:var(--bad)">${c.violated_rules.map(esc).join(' · ')}</div>` : '';
+    return `<div class="notice ${ok ? '' : 'bad'}" style="margin-top:12px"><div class="body"><div class="flex">${scoreChip(c)}<span class="muted tiny right">${esc(ago(c.checked_at))}</span></div>
+      <div class="small" style="margin-top:6px">${esc((c.summary || '').replace(/^[^:]*: /, ''))}</div>${viol}</div></div>`;
   }
 
   const MODE_WHY = {
@@ -311,8 +317,8 @@
   const CEILING = 40;   // 02-RUNBOOK.md ceiling; the API door enforces the same number (RISK_CEILING)
 
   function stateChip(d) {
-    if (d.gate_failed_at) return chip('bad', 'final gate refused');
-    if (d.redirect_pending) return chip('warn', 'with the agent: ' + d.mode);
+    if (d.gate_failed_at) return chip('bad', 'not sent');
+    if (d.redirect_pending) return chip('warn', 'with the agent');
     if (d.status === 'edited') return chip('warn', 'edited by you');
     if (d.kind === 'reply') return chip('info', 'reply');
     if (d.mode === 'sharpen') return chip('info', 'sharpened');
@@ -324,7 +330,7 @@
     const q = $('queue'), p = $('pick');
     q.innerHTML = drafts.map((d, i) => {
       const c = checks[d.id];
-      const v = stateChip(d) || (c ? chip(verdictKind(c.verdict), c.verdict) : chip('', 'unscored'));
+      const v = stateChip(d) || scoreChip(c);
       return `<button type="button" data-i="${i}" aria-current="${i === current}"><div class="qs"><span>r/${esc(threadSub(d) || '?')}</span>${v}</div><div class="qt">${esc(cleanTitle(threadTitle(d)))}</div></button>`;
     }).join('');
     q.querySelectorAll('button').forEach(b => b.addEventListener('click', () => select(+b.dataset.i)));
@@ -344,7 +350,7 @@
     const up = d.upvotes_suggested == null ? 'none proposed' : `${d.upvotes_suggested} proposed${d.upvotes_reason ? ', ' + d.upvotes_reason : ''}`;
     const isReply = d.kind === 'reply';
     const models = d.models ? Object.entries(d.models).map(([k, v]) => `${k} ${String(v).split('/').pop()}`).join(', ') : '';
-    const gateNote = d.gate_failed_at ? `<div class="notice bad" style="margin-top:12px">${ICON.alert}<div class="body"><b>The final check refused this at post time.</b> ${esc(d.gate_failure || '')} Nothing was sent. Edit the text (it comes back for approval) or reject it.</div></div>` : '';
+    const gateNote = d.gate_failed_at ? `<div class="notice bad" style="margin-top:12px">${ICON.alert}<div class="body"><b>Not sent.</b> ${esc((d.gate_failure || '').replace(/^[^:]*: /, ''))} Edit it or reject it.</div></div>` : '';
     const redirNote = d.redirect_pending ? `<div class="notice warn" style="margin-top:12px">${ICON.alert}<div class="body"><b>With the agent.</b> You changed the mode to <b>${esc(d.mode)}</b>${d.redirect_note ? ' (' + esc(d.redirect_note) + ')' : ''} ${esc(ago(d.redirected_at))}. The body below is the old one. Approve is off until a new body arrives.</div></div>` : '';
     const editor = `
       <div class="editor">
@@ -555,23 +561,23 @@
         const open = Date.now() >= opens.getTime();
         if (t.cancelled_at || t.status === 'cancelled') state = chip('bad', 'pulled back');
         else if (t.cancel_requested_at) state = chip('warn', open ? 'pull back requested, window open' : 'pull back requested, waiting for the window');
-        else state = chip('info', `sent to Engain ${ago(t.submitted_at)}`);
-        win = `<div class="win">Task <code>${esc(t.id)}</code> · ${esc(t.status || '')} · cancel window ${open ? 'opened' : 'opens'} ${esc(fmtWhen(opens.toISOString()))}${t.cancel_result ? ` · last attempt ${esc(ago(t.last_cancel_attempt_at))}: ${esc(t.cancel_result)}` : ''}</div>`;
+        else state = chip('info', `sent to Engain ${ago(t.submitted_at)}, not published yet`);
+        win = `<div class="win">Task <code>${esc(t.id)}</code> · can be pulled back ${open ? 'now' : 'from ' + esc(fmtWhen(opens.toISOString()))}${t.cancel_result ? ` · ${esc(t.cancel_result)}` : ''}</div>`;
         if (!(t.cancelled_at || t.status === 'cancelled')) acts = `
           <button class="btn danger" data-a="pullback" ${t.cancel_requested_at ? 'disabled' : ''}>${t.cancel_requested_at ? 'Pull back requested' : 'Pull back'}</button>
-          <span class="st" data-s>${t.cancel_requested_at ? esc(open ? 'The watcher or the hourly cron fires the cancel on its next run and writes the outcome here.' : 'Engain refuses cancels in the first 24 hours. The cancel fires when the window opens, unless it publishes first.') : 'Cancel is only possible before it publishes. Once Engain hands back a URL, the only fix is removing it on Reddit.'}</span>`;
+          <span class="st" data-s>${t.cancel_requested_at ? esc(open ? 'Pull-back fires within the hour.' : 'Pull-back fires when the window opens, unless it publishes first.') : (c && !passes(c) ? 'This one does not pass the current ceiling. Pull it back if you do not want it published.' : 'Possible until it publishes.')}</span>`;
       } else if (d.gate_failed_at) {
-        state = chip('bad', 'final gate refused');
-        acts = `<span class="st bad">${esc(d.gate_failure || '')} Nothing was sent. Fix it on the To review tab, or reject it there.</span>`;
+        state = chip('bad', 'not sent');
+        acts = `<span class="st bad">${esc((d.gate_failure || '').replace(/^[^:]*: /, ''))}</span><span class="st">Edit or reject it on the To review tab.</span>`;
       } else if (d.redirect_pending) {
-        state = chip('warn', 'with the agent: ' + d.mode);
-        acts = `<span class="st">You sent this back. It reappears on To review when the agent delivers.</span>`;
+        state = chip('warn', 'with the agent');
+        acts = `<span class="st">Back on To review when the agent delivers.</span>`;
       } else if (d.pullback_requested_at || !d.send_cleared_at) {
         state = chip('warn', 'held');
-        acts = `<button class="btn primary" data-a="clear">Clear to send</button><span class="st" data-s>Held. The watcher skips it until you clear it again.</span>`;
+        acts = `<button class="btn primary" data-a="clear">Send</button><span class="st" data-s>Held. Nothing happens until you press Send.</span>`;
       } else {
-        state = chip('ok', 'cleared, sending');
-        acts = `<button class="btn" data-a="hold">Put on hold</button><button class="btn primary" data-a="sendnow">Send now</button><span class="st" data-s>Cleared ${esc(ago(d.send_cleared_at))}. The site sends it on approval and retries every 15 minutes. If it is still here, press Send now and read what comes back.</span>`;
+        state = chip('ok', 'sending');
+        acts = `<button class="btn" data-a="hold">Put on hold</button><button class="btn primary" data-a="sendnow">Send now</button><span class="st" data-s>Approved ${esc(ago(d.send_cleared_at))}. Retries every 15 minutes. If it is still here, press Send now and read the answer.</span>`;
       }
       el.innerHTML = `
         <div class="head">
@@ -579,7 +585,7 @@
           ${threadSub(d) ? `<span>r/${esc(threadSub(d))}</span>` : ''}
           ${d.kind !== 'comment' ? chip('info', d.kind) : ''}${d.mode === 'sharpen' ? chip('info', 'sharpened') : ''}
           <span>${d.upvotes_suggested == null ? 'no upvotes proposed' : esc(String(d.upvotes_suggested)) + ' upvotes proposed'}</span>
-          ${c ? chip(verdictKind(c.verdict), 'rule check ' + c.verdict) : chip('', 'rule check pending')}
+          ${scoreChip(c)}
           <span data-state>${state}</span>
         </div>
         <div class="txt">${esc(d.body || '')}</div>${win}
@@ -669,7 +675,7 @@
          many, so an empty queue is never mistaken for a clean one. */
       const held = drafts.filter(d => { const c = checks[d.id]; return !d.gate_failed_at && !d.redirect_pending && (!c || c.verdict === 'fail' || c.removal_risk == null || c.removal_risk > CEILING); });
       drafts = drafts.filter(d => !held.includes(d));
-      if (held.length) $('held').hidden = false, $('held').querySelector('.body').innerHTML = `<b>${held.length} draft${held.length === 1 ? '' : 's'} held back</b> because ${held.length === 1 ? 'it' : 'they'} scored over ${CEILING} on Engain's rule check, or never got a score. Nothing over the ceiling is shown here. The agent has to rewrite from a different angle.`;
+      if (held.length) $('held').hidden = false, $('held').querySelector('.body').innerHTML = `<b>${held.length} held back:</b> ${held.length === 1 ? 'it does' : 'they do'} not pass (risk over ${CEILING}, or not scored). Not shown. The agent rewrites.`;
       setCounts();
       if (!drafts.length) showEmpty(); else { $('ws').hidden = false; select(0); }
       await Promise.all([renderSend(), renderLessons()]);
