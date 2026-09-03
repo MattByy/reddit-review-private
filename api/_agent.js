@@ -25,6 +25,14 @@ const { check } = require("./_rules.js");
 const SB_URL   = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
 const SB_KEY   = process.env.SUPABASE_SERVICE_KEY || "";
 const AGENT_KEY = process.env.AGENT_API_KEY || "";
+const ENG_KEY   = process.env.ENGAIN_API_KEY || "";
+const ENG_URL   = "https://api.engain.io";
+// Swello, 2026-09-03: a draft is accepted and shown to him ONLY if it scores
+// at or under this on Engain's rule-check. Above it, the door refuses and
+// nothing is stored. 40 is 02-RUNBOOK.md's ceiling (write-comment.py uses the
+// same number on a 5-run mean); the door gets one run because the vendor
+// allows five a minute.
+const RISK_CEILING = parseInt(process.env.RISK_CEILING || "40", 10);
 const ACTOR    = "agent-api";
 const MAX_LIMIT = 200;
 
@@ -82,6 +90,38 @@ const enc = encodeURIComponent;
 const threadId = raw => String(raw || "").trim().replace(/^t3_/, "");
 const isRedditUrl = u => /^https?:\/\/(www\.|old\.)?reddit\.com\//i.test(String(u || ""));
 
+/* Engain's rule-check, the vendor's own opinion of whether the subreddit
+   will remove this. Returns {verdict, removal_risk, marketing, summary,
+   violated_rules} or {unavailable, status}. Never throws. */
+async function vendorCheck(body, kind, subreddit, title) {
+  if (!ENG_KEY) return { unavailable: true, status: 0, why: "ENGAIN_API_KEY not configured" };
+  try {
+    const me = await fetch(`${ENG_URL}/api/v1/me`, { headers: { "X-API-Key": ENG_KEY, "User-Agent": "geonode-reddit-agent/1.0 (+api)" } }).then(r => r.json());
+    const pid = process.env.ENGAIN_PROJECT_ID || ((me.projects || []).find(p => p.name === "geonode.com") || {}).id;
+    if (!pid) return { unavailable: true, status: 0, why: "no geonode.com project on the vendor key" };
+    const r = await fetch(`${ENG_URL}/api/v1/rule-check`, { method: "POST",
+      headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "geonode-reddit-agent/1.0 (+api)" },
+      body: JSON.stringify({ projectId: pid, subreddit, taskType: kind, content: body, mediaKind: "text", context: { postTitle: title || "" } }) });
+    const text = await r.text(); let j; try { j = JSON.parse(text); } catch { j = { raw: text.slice(0, 300) }; }
+    if (!r.ok) return { unavailable: true, status: r.status, why: r.status === 429 ? "vendor rule-check rate limit (5 per minute). Retry in 60 seconds." : `vendor ${r.status}: ${JSON.stringify(j).slice(0, 200)}` };
+    return { verdict: j.verdict || "unavailable", removal_risk: j.removalRisk ?? null, marketing: j.marketingIntentRisk ?? null,
+             summary: j.summary || "", violated_rules: j.violatedRules || [], ceiling: RISK_CEILING };
+  } catch (e) { return { unavailable: true, status: 0, why: String(e.message).slice(0, 200) }; }
+}
+/* The door's verdict on a vendor score. Refuses on `fail`, on a risk over
+   the ceiling, and on no score at all (absence of evidence blocks). */
+function overCeiling(vc) {
+  if (vc.unavailable) return `the vendor rule-check could not run (${vc.why}). Nothing is filed without a score.`;
+  if (vc.verdict === "fail") return `Engain rule-check FAIL, removal risk ${vc.removal_risk} of 100: ${vc.summary}`;
+  if (vc.removal_risk == null) return "Engain returned no removal risk. Nothing is filed without a score.";
+  if (vc.removal_risk > RISK_CEILING) return `removal risk ${vc.removal_risk} is over the ceiling of ${RISK_CEILING}: ${vc.summary}`;
+  return null;
+}
+async function recordCheck(draftId, subreddit, vc, note) {
+  await sb("POST", "rule_checks", [{ draft_id: draftId, subreddit, verdict: vc.verdict, removal_risk: vc.removal_risk,
+    violated_rules: vc.violated_rules, summary: `${note}: ${vc.summary}${vc.marketing != null ? ` marketingIntentRisk ${vc.marketing}.` : ""}` }], "return=minimal");
+}
+
 async function log(action, detail) {
   try { await sb("POST", "activity_log", [{ actor: ACTOR, action, detail }], "return=minimal"); }
   catch { /* logging must never fail the request */ }
@@ -102,12 +142,13 @@ const HELP = {
     "POST /api/agent/drafts":               "file a draft for human review {kind,mode,thread_id,parent_url,subreddit,title,body,models,sharpen,thread_context,...}",
     "PATCH /api/agent/drafts/:id":          "revise a pending draft: yours, or one the reviewer sent back (needs_agent). {body,models,sharpen,...} clears redirect_pending",
     "POST /api/agent/drafts/:id/withdraw":  "pull a pending draft {reason}",
-    "POST /api/agent/check":                "dry-run the copy rules on a body {body,kind}",
+    "POST /api/agent/check":                "dry-run the copy rules AND the vendor rule-check on a body {body,kind,subreddit,title}. would_file says whether the door would take it",
     "GET  /api/agent/lessons":              "what the reviewer changed, rejected and sent back (redirects), and why. Read before writing.",
     "GET  /api/agent/our-comments":         "permalinks of comments WE published. A reply's parent must never be one of these.",
     "GET  /api/agent/status":               "where every thread stands. ?stage=draft|approved|cleared|sent|published|upvotes|done|failed|removed",
   },
   not_here: "approve, clear-to-send, post, upvote and pull-back. Humans on /review and engain-post.py only.",
+  door: `a draft is filed only if Engain's rule-check scores it at or under ${RISK_CEILING} of 100 and not 'fail'. Above that it is refused with the vendor's reason and nothing is stored. Rewrite from a different angle; do not hill-climb the same idea.`,
   modes: "comment = top-level answer. reply = answer under ONE real stranger's comment (parent_url, and send thread_context.parent so the reviewer sees it). sharpen = you ran a small model to simulate the sub's reaction and used it as PRIVATE context; put it in `sharpen`, never in the body. Never file both sides of a conversation.",
 };
 
@@ -252,16 +293,25 @@ function optional(body, out) {
 
 async function postDraft(body) {
   const d = shapeDraft(body);
+  let thread = null;
   if (d.thread_id) {
     const t = await sb("GET", `threads?select=id,archived,locked,subreddit&id=eq.${enc(d.thread_id)}`);
     if (!t.length) bad(422, `thread ${d.thread_id} is not registered. POST /api/agent/threads first so the reviewer sees what you saw.`);
     if (t[0].archived === true || t[0].locked === true) bad(409, `thread ${d.thread_id} is ${t[0].archived ? "archived" : "locked"}. Nothing can be posted there.`);
+    thread = t[0];
   }
   if (d.kind === "reply" && await isOurs(d.parent_url)) {
     bad(422, "parent_url is one of OUR OWN published comments. A reply answers a real stranger, never our own account (02-RUNBOOK.md §0 rule 8). GET /api/agent/our-comments lists them.");
   }
   const verdict = check(d.body, { kind: d.kind });
   if (!verdict.ok) bad(422, "the draft breaks a hard rule. Fix and refile.", { verdict });
+  // The door: Engain's own score, at or under the ceiling, or it is not filed.
+  const sub = d.subreddit || (thread && thread.subreddit) || null;
+  if (!sub) bad(422, "the thread has no subreddit on record, so the vendor rule-check cannot run. Register the thread with its subreddit.");
+  const vc = await vendorCheck(d.body, d.kind, sub, d.title || (body.thread_context && body.thread_context.title) || "");
+  const over = overCeiling(vc);
+  if (over) bad(vc.unavailable ? 503 : 422, `not filed: ${over}`, { verdict, vendor: vc, next: vc.unavailable ? "retry in 60 seconds" : "rewrite from a different angle and refile. Read /lessons. Do not hill-climb the same idea." });
+  verdict.vendor = vc;
   if (d.kind === "reply" && !(body.thread_context && body.thread_context.parent && body.thread_context.parent.body)) {
     verdict.warns.push("no thread_context.parent {author, body, score, permalink, created_utc}: the reviewer has to open Reddit to see whose comment this answers. Send it.");
   }
@@ -277,7 +327,8 @@ async function postDraft(body) {
     prompt_version: body.prompt_version ? String(body.prompt_version) : "agent-api-v1",
   });
   const [saved] = await sb("POST", `drafts?select=${DRAFT_COLS}`, [row], "return=representation");
-  await log("draft_filed", { draft: saved.id, kind: d.kind, thread: d.thread_id, subreddit: d.subreddit, words: verdict.words });
+  await recordCheck(saved.id, sub, vc, "filed through the door");
+  await log("draft_filed", { draft: saved.id, kind: d.kind, thread: d.thread_id, subreddit: sub, words: verdict.words, removal_risk: vc.removal_risk, verdict: vc.verdict });
   return { draft: saved, verdict, next: "A human reads it on /review. Poll GET /api/agent/drafts/" + saved.id + " or read /api/agent/lessons later." };
 }
 
@@ -293,6 +344,13 @@ async function patchDraft(id, body) {
   if (body.body !== undefined) {
     const verdict = check(String(body.body), { kind: cur.kind });
     if (!verdict.ok) bad(422, "the revision breaks a hard rule.", { verdict });
+    const t = cur.thread_id ? await sb("GET", `threads?select=subreddit&id=eq.${enc(cur.thread_id)}`) : [];
+    const sub = cur.subreddit || (t[0] && t[0].subreddit) || null;
+    if (!sub) bad(422, "no subreddit on record for the vendor rule-check");
+    const vc = await vendorCheck(String(body.body), cur.kind, sub, cur.title || "");
+    const over = overCeiling(vc);
+    if (over) bad(vc.unavailable ? 503 : 422, `not accepted: ${over}`, { verdict, vendor: vc });
+    verdict.vendor = vc; patch._vc = [sub, vc];
     patch.body = String(body.body); patch.body_original = patch.body; patch._verdict = verdict;
     if (cur.redirect_pending) patch.redirect_pending = false;   // delivered: approval opens again
   }
@@ -304,8 +362,10 @@ async function patchDraft(id, body) {
     patch.title = t;
   }
   const verdict = patch._verdict; delete patch._verdict;
+  const vcRec = patch._vc; delete patch._vc;
   if (!Object.keys(patch).length) bad(400, "nothing to change. Editable while pending: body, title (posts), upvotes_suggested, upvotes_reason, agent_note, thread_context, models, sharpen.");
   const [saved] = await sb("PATCH", `drafts?id=eq.${enc(id)}&select=${DRAFT_COLS}`, patch, "return=representation");
+  if (vcRec) await recordCheck(id, vcRec[0], vcRec[1], "revised through the door");
   await log("draft_revised", { draft: id, fields: Object.keys(patch) });
   return { draft: saved, verdict: verdict || null };
 }
@@ -368,7 +428,14 @@ module.exports = async function handler(req, res) {
     else if (a === "drafts" && b && !c && m === "GET")         out = await getDraft(b);
     else if (a === "drafts" && b && !c && m === "PATCH")       out = await patchDraft(b, await readBody(req));
     else if (a === "drafts" && b && c === "withdraw" && m === "POST") out = await withdrawDraft(b, await readBody(req));
-    else if (a === "check" && !b && m === "POST") { const body = await readBody(req); out = { verdict: check(String(body.body || ""), { kind: body.kind || "comment" }) }; }
+    else if (a === "check" && !b && m === "POST") {
+      const body = await readBody(req);
+      const verdict = check(String(body.body || ""), { kind: body.kind || "comment" });
+      // With a subreddit the dry-run also asks the vendor, so the agent sees
+      // the same door verdict it will get on filing. Free, 5 per minute.
+      if (verdict.ok && body.subreddit) { const vc = await vendorCheck(String(body.body || ""), body.kind || "comment", String(body.subreddit).replace(/^r\//, ""), body.title || ""); verdict.vendor = vc; verdict.refusal = overCeiling(vc); verdict.would_file = !verdict.refusal; }
+      out = { verdict, ceiling: RISK_CEILING };
+    }
     else if (a === "lessons" && !b && m === "GET")             out = await getLessons(sp);
     else if (a === "our-comments" && !b && m === "GET")        out = { comments: await ourComments(), note: "never file a reply whose parent_url is one of these. Never two of our accounts in one exchange." };
     else if (a === "status" && !b && m === "GET")              out = await getStatus(sp);

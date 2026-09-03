@@ -118,6 +118,7 @@
   <div id="policy" class="notice warn" hidden>
     <div class="body"><b>No drafts are visible to this page.</b> Either none have been written yet, or the anon policy on <code>drafts</code> is missing. Apply <code>supabase/migrations/008-review-anon.sql</code>. This page will not show an empty queue as good news.</div>
   </div>
+  <div id="held" class="notice warn" hidden style="margin-bottom:12px"><div class="body"></div></div>
   <div id="none" class="empty" hidden><b>Nothing to review.</b>When the agent writes a draft it lands here. Run <code>agent-file.py</code> or <code>write-comment.py</code> to draft the next thread.</div>
   <div id="ws" class="ws" hidden>
     <aside class="queue" id="queue" aria-label="Drafts waiting"></aside>
@@ -293,10 +294,10 @@
   }
 
   function checkPanel(c) {
-    if (!c) return `<div class="notice" style="margin-top:12px">${ICON.info}<div class="body"><b>No rule-check on file.</b> The watcher scores it before posting. It is evidence for you, not a gate.</div></div>`;
+    if (!c) return `<div class="notice" style="margin-top:12px">${ICON.info}<div class="body"><b>No rule-check on file.</b> It is scored again when you approve.</div></div>`;
     const viol = (c.violated_rules || []).length ? `<div class="small" style="margin-top:6px;color:var(--bad)">Rules named: ${c.violated_rules.map(esc).join(' · ')}</div>` : '';
     return `<div class="notice" style="margin-top:12px"><div class="body"><div class="flex">${chip(verdictKind(c.verdict), 'rule check ' + c.verdict)}<span class="small">removal risk ${c.removal_risk == null ? 'not recorded' : esc(String(c.removal_risk))} of 100</span><span class="muted tiny right">${esc(ago(c.checked_at))}</span></div>
-      <div class="muted small" style="margin-top:6px">${esc(c.summary || '')} Scores drift between runs, so this is evidence for you, not a gate.</div>${viol}</div></div>`;
+      <div class="muted small" style="margin-top:6px">${esc(c.summary || '')} Under the ceiling of ${CEILING}, so it reached you. It is scored once more when you approve, and only an outright fail stops it then.</div>${viol}</div></div>`;
   }
 
   const MODE_WHY = {
@@ -307,6 +308,7 @@
 
   /* ── state ─────────────────────────────────────────────────────────── */
   let drafts = [], checks = {}, current = 0, ourIds = new Set();
+  const CEILING = 40;   // 02-RUNBOOK.md ceiling; the API door enforces the same number (RISK_CEILING)
 
   function stateChip(d) {
     if (d.gate_failed_at) return chip('bad', 'final gate refused');
@@ -662,6 +664,12 @@
         const rc = await api(`rule_checks?select=draft_id,verdict,removal_risk,violated_rules,summary,checked_at&draft_id=in.(${drafts.map(r => r.id).join(',')})&order=checked_at.desc`);
         for (const c of rc) if (!checks[c.draft_id]) checks[c.draft_id] = c;
       }
+      /* Swello, 2026-09-03: only show what scored at or under the ceiling.
+         Anything unscored or over it is held back, and the page says how
+         many, so an empty queue is never mistaken for a clean one. */
+      const held = drafts.filter(d => { const c = checks[d.id]; return !d.gate_failed_at && !d.redirect_pending && (!c || c.verdict === 'fail' || c.removal_risk == null || c.removal_risk > CEILING); });
+      drafts = drafts.filter(d => !held.includes(d));
+      if (held.length) $('held').hidden = false, $('held').querySelector('.body').innerHTML = `<b>${held.length} draft${held.length === 1 ? '' : 's'} held back</b> because ${held.length === 1 ? 'it' : 'they'} scored over ${CEILING} on Engain's rule check, or never got a score. Nothing over the ceiling is shown here. The agent has to rewrite from a different angle.`;
       setCounts();
       if (!drafts.length) showEmpty(); else { $('ws').hidden = false; select(0); }
       await Promise.all([renderSend(), renderLessons()]);
