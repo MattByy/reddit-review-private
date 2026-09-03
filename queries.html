@@ -1,86 +1,86 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Queries · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Queries · Reddit GEO Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  td.q{min-width:260px}
+  td.q .chip{margin-left:8px;vertical-align:1px}
+  @media (max-width:720px){.page-head .tools{width:100%}.page-head .tools .field.grow{flex-basis:100%}}
+</style></head>
 <body><script src="assets/gate.js"></script>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
-<h1>1 · Queries</h1>
-<div class="sub">Ranked by search volume (Google monthly searches, exact match), then by how many Reddit threads rank for each.</div>
-
-<h2>The list <span class="pill" id="count"></span></h2>
-<div style="display:flex;gap:8px;margin:12px 0">
-<input id="qs" placeholder="search…" style="background:var(--panel);border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:6px;font:13px ui-monospace,monospace;flex:1">
+<div class="page-head">
+  <div>
+    <h1>Queries</h1>
+    <p class="lede">What do buyers search before choosing a scraper? Every thread we target ranks for at least one of these.</p>
+  </div>
+  <div class="tools">
+    <label class="field grow" aria-label="Search queries"><span data-icon></span><input id="qs" placeholder="Search queries"></label>
+    <select class="field" id="shape" aria-label="Shape">
+      <option value="">All shapes</option><option value="cost">cost</option><option value="blocked">blocked</option>
+      <option value="alternative">alternative</option><option value="unlimited">unlimited</option><option value="category">category</option>
+    </select>
+    <select class="field" id="sort" aria-label="Sort">
+      <option value="volume">Sort: search volume</option><option value="threads">Sort: threads ranking</option><option value="id">Sort: id</option>
+    </select>
+  </div>
 </div>
-<table id="tbl"></table>
-<div class="sub" id="qshown"></div>
+
+<div class="tablewrap" id="wrap"><div style="padding:16px" id="loading"><div class="sk" style="width:70%"></div><div class="sk" style="width:55%"></div><div class="sk" style="width:62%"></div></div><table id="tbl" hidden></table></div>
+<p class="muted small" id="shown" style="margin-top:8px"></p>
+
+<section>
+  <details class="dx quiet">
+    <summary>About this list</summary>
+    <div class="dx-body prose">
+      <p>The shape is the kind of question a query asks, and it tells the drafting agent which argument to lead with: <b>cost</b> leads with price math, <b>blocked</b> with the fix, <b>alternative</b> with an honest comparison, <b>unlimited</b> with whether flat-rate is real. A canonical query is one we measure ourselves on every month with identical wording. Volume is monthly exact-match Google searches, and "no data" means the keyword tool reported nothing, not zero.</p>
+    </div>
+  </details>
+</section>
 </main>
 <script>
 (async () => {
+  const $ = id => document.getElementById(id);
+  document.querySelector('[data-icon]').innerHTML = ICON.search;
   try {
-    // Paginated fetch helper: fetches all rows by looping until a page is smaller than limit
-    async function sbPaginated(table, baseQuery, pageSize = 1000) {
-      const allRows = [];
-      let offset = 0;
-      while (true) {
-        const query = baseQuery + (baseQuery ? '&' : '') + `limit=${pageSize}&offset=${offset}`;
-        const rows = await sb(table, query);
-        allRows.push(...rows);
-        if (rows.length < pageSize) break;
-        offset += pageSize;
-      }
-      return allRows;
-    }
-    
-    // Fetch queries and observations with pagination
     const [qs, obs] = await Promise.all([
-      sb('queries', 'select=*&order=id.asc'),
-      sbPaginated('observations', 'select=obs_date,query_id,thread_id,position&order=id.asc')
+      sb('queries', 'select=id,q,shape,volume,canonical&order=id.asc&limit=1000'),
+      sbAll('observations', 'select=obs_date,query_id,thread_id,position&order=id.asc')
     ]);
-    
-    // Compute per-query stats from observations
-    const queryStats = {};
-    qs.forEach(q => {
-      queryStats[q.id] = { threads: new Set(), best_pos: 999, last_checked: null };
-    });
-    
-    // Find max obs_date (latest run)
-    let maxDate = null;
-    obs.forEach(o => {
-      if (!maxDate || o.obs_date > maxDate) maxDate = o.obs_date;
-    });
-    
-    // For each query, get stats from latest date
-    obs.forEach(o => {
-      const stat = queryStats[o.query_id];
-      if (stat) {
-        if (o.obs_date === maxDate) {
-          stat.threads.add(o.thread_id || '');
-          if (o.position != null && o.position < stat.best_pos) {
-            stat.best_pos = o.position;
-          }
-          stat.last_checked = maxDate;
-        }
-      }
-    });
-    
-    // Convert sets to counts and clean up
-    qs.forEach(q => {
-      const stat = queryStats[q.id];
-      q.threads = stat.threads.size;
-      q.best_pos = stat.best_pos === 999 ? null : stat.best_pos;
-      q.last_checked = stat.last_checked;
-    });
-    
-    const $=id=>document.getElementById(id);
-    const render=()=>{
-      const s=$('qs').value.toLowerCase();
-      const rows=qs.filter(x=>!s||x.q.includes(s)||(x.shape||'').includes(s));
-      $('count').textContent=qs.length+' queries';
-      $('tbl').innerHTML='<tr><th>#</th><th>query</th><th>volume</th><th>threads</th></tr>'+
-        rows.map((q,i)=>`<tr><td class="num">${i+1}</td><td>${q.q}</td><td class="num">${q.volume!=null?q.volume.toLocaleString()+'/mo':'<span title="below the keyword tool floor — not zero">no data</span>'}</td><td class="num">${q.threads||0}</td></tr>`).join('');
-      $('qshown').textContent=rows.length+' of '+qs.length+' shown';
-    };
-    $('qs').addEventListener('input',render);
+
+    /* Threads ranking = what the LATEST sweep saw, not everything ever seen. */
+    let latest = null;
+    for (const o of obs) if (!latest || o.obs_date > latest) latest = o.obs_date;
+    const stats = {};
+    for (const q of qs) stats[q.id] = { threads: new Set(), best: null };
+    for (const o of obs) {
+      const s = stats[o.query_id];
+      if (!s || o.obs_date !== latest) continue;
+      s.threads.add(o.thread_id);
+      if (o.position != null && (s.best == null || o.position < s.best)) s.best = o.position;
+    }
+    for (const q of qs) { q.threads = stats[q.id].threads.size; q.best = stats[q.id].best; }
+
+    function render() {
+      const s = $('qs').value.trim().toLowerCase(), shape = $('shape').value, sort = $('sort').value;
+      let rows = qs.filter(q => (!s || q.q.toLowerCase().includes(s) || q.id.includes(s)) && (!shape || q.shape === shape));
+      const cmp = {
+        volume: (a, b) => (b.volume ?? -1) - (a.volume ?? -1) || b.threads - a.threads,
+        threads: (a, b) => b.threads - a.threads || (b.volume ?? -1) - (a.volume ?? -1),
+        id: (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })
+      }[sort];
+      rows = rows.slice().sort(cmp);
+      $('tbl').innerHTML = '<thead><tr><th class="num">#</th><th>Query</th><th>Shape</th><th class="num">Volume</th><th class="num">Threads ranking</th><th class="num">Best position</th></tr></thead><tbody>' +
+        rows.map((q, i) => `<tr><td class="num mute">${i + 1}</td><td class="q">${esc(q.q)}${q.canonical ? chip('ink', 'canonical') : ''}</td><td class="mute">${esc(q.shape)}</td>` +
+          `<td class="num">${q.volume != null ? fmtN(q.volume) + '/mo' : '<span class="muted" title="Below the keyword tool floor, not zero">no data</span>'}</td>` +
+          `<td class="num">${q.threads || '<span class="muted">0</span>'}</td><td class="num">${q.best != null ? '#' + q.best : '<span class="muted">none</span>'}</td></tr>`).join('') + '</tbody>';
+      $('shown').textContent = `${rows.length} of ${qs.length} shown` + (latest ? ` · threads counted from the ${latest} sweep` : ' · no sweep recorded yet');
+    }
+    ['qs', 'shape', 'sort'].forEach(id => $(id).addEventListener('input', render));
+    $('loading').hidden = true; $('tbl').hidden = false;
     render();
-  } catch(err) {
-    fail(err, 'queries');
+  } catch (err) {
+    $('loading').hidden = true;
+    fail(err, 'the query list');
   }
 })();
 </script></body></html>

@@ -1,451 +1,444 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Review · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Review · Reddit GEO Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
 <style>
-  .rv{border:1px solid var(--line);border-radius:6px;padding:14px;margin:14px 0}
-  
-  /* Thread context section */
-  .rv .thread-section{background:var(--well);border:1px solid var(--line);border-radius:4px;padding:12px;margin-bottom:14px}
-  .rv .thread-header{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
-  .rv .thread-header a{font-size:14px;font-weight:500;color:var(--link)}
-  .rv .thread-meta{display:flex;gap:12px;font-size:12px;color:var(--dim);flex-wrap:wrap}
-  /* Rule-check panel. Verdict colour is a marker, never the only signal —
-     the word "pass"/"warn"/"fail" is printed too, so it survives greyscale
-     and colour-blindness. Text sits on --ink/--mut, both above the floor on
-     this panel; the verdict tints are borders and glyphs, not body copy. */
-  .rv .rc{border:1px solid var(--line);border-left-width:3px;border-radius:4px;
-          padding:8px 10px;margin-bottom:10px;font-size:12px;line-height:1.55;
-          display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;background:var(--well)}
-  .rv .rc-v{font:600 11px/1 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.06em}
-  .rv .rc-r{color:var(--mut);font-family:ui-monospace,monospace;font-size:11px}
-  .rv .rc-s{color:var(--mut);flex:1 1 100%}
-  .rv .rc-viol{flex:1 1 100%;color:var(--bad);font-size:11px}
-  .rv .rc-pass{border-left-color:var(--ok)}    .rv .rc-pass .rc-v{color:var(--ok)}
-  .rv .rc-warn{border-left-color:var(--acc)}   .rv .rc-warn .rc-v{color:var(--acc)}
-  .rv .rc-fail{border-left-color:var(--bad)}   .rv .rc-fail .rc-v{color:var(--bad)}
-  .rv .rc-none{border-left-color:var(--dim);color:var(--mut)}
-  .rv .thread-meta span{display:flex;gap:4px;align-items:center}
-  .rv .thread-error{background:var(--line);border:1px solid var(--dim);border-radius:4px;padding:8px 10px;font-size:13px;color:var(--mut);margin-bottom:10px}
-  .rv .thread-archived{background:#663535;border:1px solid var(--bad);border-radius:4px;padding:8px 10px;margin-bottom:10px;font-size:13px;color:var(--bad);font-weight:500}
-  
-  /* Post body (selftext) */
-  .rv .post-body{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:10px;margin-bottom:10px;font-size:13px;line-height:1.6;color:var(--ink);max-height:400px;overflow:hidden;overflow-y:auto}
-  .rv .post-body.expanded{max-height:none}
-  .rv .post-body-collapse{text-align:center;margin:6px 0 0;color:var(--acc);font-size:12px;cursor:pointer}
-  .rv .post-body-collapse:hover{text-decoration:underline}
-  .rv .post-body-empty{color:var(--dim);font-style:italic}
-  
-  /* Top comments section */
-  .rv .comments-section{margin-bottom:14px}
-  .rv .comments-toggle{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--acc);cursor:pointer;user-select:none}
-  .rv .comments-toggle:hover{text-decoration:underline}
-  .rv .comment-list{display:none;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px;margin-top:8px}
-  .rv .comment-list.show{display:block}
-  .rv .comment{border-left:2px solid var(--line);padding:8px 0 8px 10px;margin:8px 0;font-size:12px}
-  .rv .comment:last-child{margin-bottom:0}
-  .rv .comment-meta{display:flex;gap:8px;align-items:center;margin-bottom:4px}
-  .rv .comment-author{color:var(--link)}
-  .rv .comment-score{color:var(--dim)}
-  .rv .comment-body{color:var(--ink);line-height:1.5;overflow-wrap:break-word}
-  
-  /* Draft section (existing)
-     These three controls paint a WHITE background inside a dark-themed page.
-     `color:inherit` there inherits --ink (#e8e8e8), i.e. near-white text on
-     white — about 1.1:1, which is how the draft text and the Reject/reason
-     controls shipped effectively invisible. Ink is set explicitly on every
-     light surface; never inherit a colour across a background flip. */
-  .rv textarea{width:100%;min-height:150px;font:inherit;line-height:1.5;padding:10px;
-    border:1px solid var(--line);border-radius:4px;background:#fff;color:#07090a;resize:vertical}
-  .rv .meta{font-size:12px;margin-bottom:8px}
-  .rv .acts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .rv button{font:inherit;padding:7px 14px;border:1px solid var(--line);border-radius:4px;
-    background:#fff;color:#07090a;cursor:pointer}
-  .rv button.primary{background:#07090a;color:#fff;border-color:#07090a}
-  /* A disabled control has to read as deliberately off, not as a dead button.
-     opacity:.45 alone dropped the label under the contrast floor and looked
-     like a bug — which is exactly how it was reported. */
-  .rv button:disabled{opacity:1;background:var(--line);color:var(--dim);
-    border-color:var(--line);cursor:not-allowed}
-  .rv .why{font-size:12px;margin-top:8px}
-  .rv .why input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:4px;
-    width:min(420px,100%);background:#fff;color:#07090a}
-  .dirty{outline:2px solid #ffd815}
-  
-  #login{max-width:340px}
-  #login input{display:block;width:100%;margin:6px 0;padding:8px;border:1px solid var(--line);border-radius:4px;font:inherit}
-  
-  /* Reading legibility: constrain prose width */
-  .rv .post-body, .rv .comment-body{max-width:72ch}
+  /* The workspace: the queue on the left, one draft at a time on the right.
+     On a phone the queue becomes a dropdown above the draft. */
+  .ws{display:grid;grid-template-columns:272px minmax(0,1fr);gap:20px;align-items:start}
+  .queue{position:sticky;top:68px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .queue button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:11px 14px;
+    font:inherit;cursor:pointer;color:var(--text)}
+  .queue button:last-child{border-bottom:0}
+  .queue button:hover{background:#faf9f6}
+  .queue button[aria-current=true]{background:var(--panel);box-shadow:inset 3px 0 0 var(--accent)}
+  .queue .qs{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;justify-content:space-between}
+  .queue .qt{font-size:13.5px;color:var(--ink);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .pick{display:none;margin-bottom:12px}
+  .pick select{flex:1;width:100%;min-width:0;text-overflow:ellipsis}
+  @media (max-width:900px){.ws{grid-template-columns:1fr}.queue{display:none}.pick{display:flex;width:100%}}
+
+  .work-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .work-head .pos{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+  .work-head .nav{margin-left:auto;display:flex;gap:6px}
+
+  /* Thread context */
+  .thread .t{font-size:15px;font-weight:600;line-height:1.35}
+  .op{margin-top:12px;font-size:14px;line-height:1.6;color:var(--text);max-width:70ch;white-space:pre-wrap;overflow-wrap:anywhere}
+  .op.clamp{max-height:9.6em;overflow:hidden;position:relative}
+  .op.clamp::after{content:"";position:absolute;inset:auto 0 0 0;height:3em;background:linear-gradient(transparent,var(--surface))}
+  .cm{border-top:1px solid var(--line);padding:10px 0}
+  .cm:first-child{border-top:0;padding-top:4px}
+  .cm .who{font-size:12.5px;color:var(--muted);margin-bottom:3px}
+  .cm .who b{color:var(--ink);font-weight:500}
+  .cm .txt{font-size:13.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;max-width:70ch}
+
+  /* Editor: the part that matters. Big, calm, the text is the hero. */
+  .editor{margin-top:16px}
+  .editor label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+  .editor textarea{font-size:16px;min-height:220px;line-height:1.65;font-family:var(--font)}
+  .editor textarea.dirty{border-color:var(--warn);box-shadow:0 0 0 3px rgba(138,90,0,.12)}
+  .checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 16px;margin-top:10px;font-size:13px}
+  .checks div{display:flex;gap:7px;align-items:flex-start;color:var(--muted);padding:3px 0;transition:color .15s var(--ease)}
+  .checks svg{width:15px;height:15px;flex:none;margin-top:2px}
+  .checks .ok svg{color:var(--ok)}
+  .checks .bad{color:var(--bad)}
+  .checks .warn{color:var(--warn)}
+  .wc{font-size:13px;color:var(--muted);margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .wc .meter{flex:1;max-width:220px;min-width:120px;height:6px;background:var(--panel);border-radius:3px;position:relative;overflow:hidden}
+  .wc .meter i{position:absolute;top:0;bottom:0;left:20%;width:40%;background:#cfe8d8}
+  .wc .meter b{position:absolute;top:-1px;width:2px;height:8px;background:var(--ink);border-radius:1px;transition:left .15s var(--ease)}
+  .facts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:14px}
+  .facts b{color:var(--text);font-weight:500}
+  .decide{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+  .decide .why{margin-bottom:10px;width:min(520px,100%)}
+  .decide .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .decide .st{font-size:13px;color:var(--muted);flex-basis:100%}
+  .decide .st.bad{color:var(--bad)}
+
+  /* Send tab */
+  .send .txt{white-space:pre-wrap;font-size:14.5px;line-height:1.6;max-width:70ch;margin-top:10px}
+  .send .head{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:13px;color:var(--muted)}
+  .send .head a{font-size:14px;font-weight:500}
+  .send .acts{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .send .acts .st{font-size:13px;color:var(--muted);flex-basis:100%}
+
+  /* Your edits tab */
+  .diff{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}
+  .diff>div{font-size:13.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+  .diff .h{font-size:12px;color:var(--muted);margin-bottom:4px;white-space:normal}
+  @media (max-width:720px){.diff{grid-template-columns:1fr}}
 </style></head>
 <body>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
-<h1>Review queue</h1>
-<div class="sub">Every draft the agent wrote, waiting on you. Read the thread and top comments, then <b>Approve</b> to post as written · <b>Edit</b> to save your version and teach the agent · <b>Reject</b> to kill it with a reason.</div>
-
-<div id="login" class="card" hidden>
-  <h2>Sign in</h2>
-  <div class="sub">Drafts are unpublished copy, so they are not readable without a login.</div>
-  <input id="em" type="email" placeholder="email" autocomplete="username">
-  <input id="pw" type="password" placeholder="password" autocomplete="current-password">
-  <button id="go" class="primary">Sign in</button>
-  <div id="lerr" class="sub"></div>
+<div class="page-head">
+  <div>
+    <h1>Review</h1>
+    <p class="lede">Is this comment good enough to publish under Geonode's name? Approving the text is one decision. Clearing it to send is a second one, on the next tab.</p>
+  </div>
 </div>
 
-<div id="app" hidden>
-  <div class="sub" id="who"></div>
-  <h2>Pending <span class="pill" id="n"></span></h2>
-  <div id="list"></div>
-  <h2>Approved, waiting to send <span class="pill" id="nq"></span></h2>
-  <div class="sub">Approving the text above does not send anything. Sending is a
-    second, separate decision — this is the last screen before a comment becomes
-    public under Geonode's name, and nothing here has been sent yet.</div>
-  <div id="queue"></div>
-  <h2>What you changed <span class="pill" id="nl"></span></h2>
-  <div class="sub">The agent reads this back: agent's text vs the text you kept. This is the only record of your judgement, so it is append-only.</div>
-  <table id="lessons"></table>
+<div class="tabs" role="tablist" aria-label="Review stages">
+  <button role="tab" id="tab-review" aria-selected="true" aria-controls="panel-review">To review <span class="c" id="n">…</span></button>
+  <button role="tab" id="tab-send" aria-selected="false" aria-controls="panel-send">Ready to send <span class="c" id="nq">…</span></button>
+  <button role="tab" id="tab-history" aria-selected="false" aria-controls="panel-history">Your edits <span class="c" id="nl">…</span></button>
+</div>
+
+<div id="panel-review" role="tabpanel" aria-labelledby="tab-review">
+  <div id="loading"><div class="sk" style="width:60%"></div><div class="sk" style="width:90%"></div><div class="sk" style="width:80%"></div></div>
+  <div id="policy" class="notice warn" hidden>
+    <div class="body"><b>No drafts are visible to this page.</b> Either none have been written yet, or the anon policy on <code>drafts</code> is missing. Apply <code>supabase/migrations/008-review-anon.sql</code>. This page will not show an empty queue as good news.</div>
+  </div>
+  <div id="none" class="empty" hidden><b>Nothing to review.</b>When the agent writes a draft it lands here. Run <code>write-comment.py</code> to draft the next thread.</div>
+  <div id="ws" class="ws" hidden>
+    <aside class="queue" id="queue" aria-label="Drafts waiting"></aside>
+    <div>
+      <label class="field pick"><span class="muted small">Draft</span><select id="pick" aria-label="Choose a draft"></select></label>
+      <div id="work"></div>
+    </div>
+  </div>
+</div>
+
+<div id="panel-send" role="tabpanel" aria-labelledby="tab-send" hidden>
+  <div class="notice info" style="margin-bottom:16px"><div class="body"><b>This is the last screen before a comment becomes public.</b> Clearing writes a flag. The posting itself is done by <code>engain-post.py</code>, run by a person with the vendor key, which re-checks approval and clearance before it spends anything.</div></div>
+  <div id="sendlist" class="stack"></div>
+</div>
+
+<div id="panel-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+  <p class="muted small" style="margin-bottom:12px">Every time you change a draft, the agent's text and the text you kept are recorded side by side. The agent reads this back before writing the next one. It is append-only.</p>
+  <div id="lessons" class="rows"></div>
 </div>
 </main>
 <script>
-/* Review UI. Drafts stay invisible to anon by design — this page authenticates
-   first, then reads them with the caller's own token. Every decision goes
-   through review_draft(), which writes the revision and the new status in one
+/* Review UI. No login and no code on this page: it is opened from a phone to
+   approve, and the founders' call (2026-09-03) is that nothing may stand
+   between the link and that decision. Drafts are readable and reviewable with
+   the anon key (migration 008), the same key every other page ships.
+
+   What still cannot happen from a browser: posting. Approving and "clear to
+   send" only write flags; engain-post.py, run by a human with the vendor key,
+   re-checks both before anything goes public. Every decision goes through
+   review_draft(), which writes the revision and the new status in one
    transaction, so a decision can never be recorded without its edit history. */
 (async () => {
   const $ = id => document.getElementById(id);
-  let TOKEN = sessionStorage.getItem('sb_tok') || null;
-
-  const H = () => ({ apikey: window.SB_KEY,
-                     Authorization: 'Bearer ' + (TOKEN || window.SB_KEY),
-                     'Content-Type': 'application/json' });
-
-  async function api(path, opts={}) {
+  const H = () => ({ apikey: window.SB_KEY, Authorization: 'Bearer ' + window.SB_KEY, 'Content-Type': 'application/json' });
+  async function api(path, opts = {}) {
     const r = await fetch(`${window.SB_URL}/rest/v1/${path}`, { headers: H(), ...opts });
     if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
     return r.status === 204 ? null : r.json();
   }
 
-  async function signIn(email, password) {
-    const r = await fetch(`${window.SB_URL}/auth/v1/token?grant_type=password`, {
-      method:'POST', headers:{apikey:window.SB_KEY},
-      body: JSON.stringify({email, password})
-    });
-    if (!r.ok) throw new Error((await r.json()).error_description || 'sign-in failed');
-    const j = await r.json();
-    TOKEN = j.access_token; sessionStorage.setItem('sb_tok', TOKEN);
-    return j.user.email;
+  /* ── the rules, mirrored in the browser ────────────────────────────────
+     02-RUNBOOK.md §0 and check_draft.py are the authority; this is the same
+     list run live while the reviewer types, so a violation is seen before the
+     button, not after the poster refuses it. Hard rules disable Approve and
+     Save. Soft rules only warn. Reject is always available. */
+  const FORBIDDEN = [
+    ['owned ip', 'never "owned IPs"'], ['own the network', 'never "we own the network"'],
+    ['owned end to end', 'never "owned end to end"'], ['gdpr', 'no GDPR claims'],
+    ['dpa available', 'no DPA claims'], ['85,000', '"85,000 customers" is not a real figure'],
+    ['85000', '"85,000 customers" is not a real figure'], ['/v1/scrape', 'the endpoint is /v1/extract'],
+    ['good luck with your', 'no sign-off pleasantries'], ['great question', 'never open with "Great question"'],
+    ['hope this helps', 'no sign-off pleasantries']
+  ];
+  function runChecks(text) {
+    const t = text.trim();
+    const words = t ? t.split(/\s+/).length : 0;
+    const paras = t.split(/\n\s*\n/);
+    const low = t.toLowerCase();
+    const hit = FORBIDDEN.find(([p]) => low.includes(p));
+    const items = [
+      { ok: words > 0, hard: true, yes: '', no: 'Nothing written yet.' },
+      { ok: !/[—–]/.test(t) && !/\s-\s/.test(t), hard: true, yes: 'No dashes', no: 'Dash found. Use a period.' },
+      { ok: !/;/.test(t), hard: true, yes: 'No semicolons', no: 'Semicolon found. Use a period.' },
+      { ok: !/\?\s*$/.test(t), hard: true, yes: 'Does not close on a question', no: 'Closes on a question. Say the thing and stop.' },
+      { ok: words <= 200, hard: true, soft: words > 0 && (words < 40 || words > 120),
+        yes: words < 40 ? 'Under 40 words, thin for the subreddit' : words > 120 ? 'Over 120 words, longer than the median reply' : 'Length in the 40 to 120 band',
+        no: 'Over 200 words. This fails outright.' },
+      { ok: !hit, hard: true, yes: 'No forbidden phrases', no: hit ? `"${hit[0]}": ${hit[1]}` : '' },
+      { ok: !paras.some(p => /geonode/i.test(p) && /\d/.test(p)), hard: false,
+        yes: 'No figure next to the Geonode mention', no: 'A figure sits in the same paragraph as Geonode. Our own numbers are never quoted.' },
+      { ok: !/https?:\/\/|www\./i.test(t), hard: false, yes: 'No link', no: 'Contains a link. No link unless someone asked.' }
+    ];
+    const hardFail = items.some(i => i.hard && !i.ok);
+    return { items: items.filter(i => i.yes || !i.ok), hardFail, words };
+  }
+  function renderChecks(el, wcEl, text) {
+    const c = runChecks(text);
+    el.innerHTML = c.items.map(i => {
+      const cls = i.ok ? (i.soft ? 'warn' : 'ok') : (i.hard ? 'bad' : 'warn');
+      const icon = i.ok && !i.soft ? ICON.check : (i.hard && !i.ok ? ICON.x : ICON.alert);
+      return `<div class="${cls}">${icon}<span>${esc(i.ok ? i.yes : i.no)}</span></div>`;
+    }).join('');
+    const pct = Math.min(100, c.words / 200 * 100);
+    wcEl.innerHTML = `<span class="tnum">${c.words} words</span><span class="meter" aria-hidden="true"><i></i><b style="left:${pct}%"></b></span><span class="tiny">40 to 120 is the band, 200 is the ceiling</span>`;
+    return c;
   }
 
-  const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
-
-  function formatAge(days) {
-    if (!days) return 'unknown';
-    if (days < 1) return 'today';
-    if (days < 7) return days + ' day' + (days === 1 ? '' : 's') + ' old';
-    const weeks = Math.floor(days / 7);
-    if (weeks < 4) return weeks + ' week' + (weeks === 1 ? '' : 's') + ' old';
-    const months = Math.floor(days / 30);
-    if (months < 12) return months + ' month' + (months === 1 ? '' : 's') + ' old';
-    const years = Math.floor(days / 365);
-    return years + ' year' + (years === 1 ? '' : 's') + ' old';
+  function age(days) {
+    if (days == null) return '';
+    if (days < 1) return 'posted today';
+    const w = Math.floor(days / 7), m = Math.floor(days / 30), y = Math.floor(days / 365);
+    if (days < 7) return `${days} day${days === 1 ? '' : 's'} old`;
+    if (days < 30) return `${w} week${w === 1 ? '' : 's'} old`;
+    if (days < 365) return `${m} month${m === 1 ? '' : 's'} old`;
+    return `${y} year${y === 1 ? '' : 's'} old`;
   }
+  const threadUrl = d => (d.thread_context && d.thread_context.url) || `https://www.reddit.com/comments/${d.thread_id}`;
+  const threadTitle = d => (d.thread_context && d.thread_context.title) || `thread ${d.thread_id}`;
+  const threadSub = d => (d.thread_context && d.thread_context.subreddit) || '';
+  const verdictKind = v => v === 'pass' ? 'ok' : v === 'warn' ? 'warn' : 'bad';
 
-  function renderThreadSection(d) {
+  function threadPanel(d) {
     const tc = d.thread_context;
-    
-    if (!tc) {
-      return `<div class="thread-section"><div class="thread-error">
-        Thread not fetched yet — run scripts/fetch-thread.py
-      </div></div>`;
-    }
-
-    let html = '<div class="thread-section">';
-    
-    if (tc.archived) {
-      html += '<div class="thread-archived">⚠ ARCHIVED — this thread cannot be commented on</div>';
-    }
-    
-    html += '<div class="thread-header">';
-    if (tc.url) {
-      html += `<a href="${esc(tc.url)}" target="_blank" rel="noopener">${esc(tc.title || 'Untitled')}</a>`;
-    } else {
-      html += `<span>${esc(tc.title || 'Untitled')}</span>`;
-    }
-    html += '</div>';
-    
-    html += '<div class="thread-meta">';
-    if (tc.subreddit) {
-      html += `<span>r/${esc(tc.subreddit)}</span>`;
-    }
-    if (tc.score !== undefined) {
-      html += `<span>${tc.score} points</span>`;
-    }
-    if (tc.num_comments !== undefined) {
-      html += `<span>${tc.num_comments} comment${tc.num_comments === 1 ? '' : 's'}</span>`;
-    }
-    if (tc.age_days !== undefined) {
-      html += `<span>${formatAge(tc.age_days)}</span>`;
-    }
-    html += '</div>';
-    
-    if (tc.selftext) {
-      const text = tc.selftext.trim();
-      const isLong = text.length > 600;
-      html += `<div class="post-body ${isLong ? '' : 'expanded'}" data-expanded="${!isLong}">`;
-      html += esc(text).replace(/\n\n/g, '</p><p>').replace(/^/,'<p>').replace(/$/, '</p>');
-      if (isLong) {
-        html += `</div><div class="post-body-collapse" data-toggle="body">show more…`;
-      }
-      html += '</div>';
-    }
-    
-    if (tc.top_comments && tc.top_comments.length > 0) {
-      html += '<div class="comments-section">';
-      html += `<div class="comments-toggle" data-toggle="comments">`;
-      html += `<span>▸</span> <span>Top comments (${tc.top_comments.length})</span>`;
-      html += `</div>`;
-      html += '<div class="comment-list" data-list="comments">';
-      for (const cm of tc.top_comments.slice(0, 3)) {
-        html += '<div class="comment">';
-        html += '<div class="comment-meta">';
-        if (cm.author) {
-          html += `<span class="comment-author">u/${esc(cm.author)}</span>`;
-        }
-        if (cm.score !== undefined) {
-          html += `<span class="comment-score">${cm.score}</span>`;
-        }
-        html += '</div>';
-        if (cm.body) {
-          html += `<div class="comment-body">${esc(cm.body).replace(/\n/g, '<br>')}</div>`;
-        }
-        html += '</div>';
-      }
-      html += '</div></div>';
-    }
-    
-    html += '</div>';
-    return html;
+    if (!tc) return `<details class="dx" open><summary>Thread<span class="hint">not fetched</span></summary><div class="dx-body">
+      <div class="notice warn">${ICON.alert}<div class="body">Thread not fetched yet. Run <code>scripts/fetch-thread.py</code> so the text you judge is the text that was there.</div></div></div></details>`;
+    const meta = [tc.subreddit ? 'r/' + tc.subreddit : '', tc.score != null ? `${fmtN(tc.score)} points` : '',
+      tc.num_comments != null ? `${fmtN(tc.num_comments)} comment${tc.num_comments === 1 ? '' : 's'}` : '', age(tc.age_days)].filter(Boolean);
+    const flags = (tc.archived ? `<div class="notice bad" style="margin-top:10px">${ICON.alert}<div class="body"><b>Archived.</b> This thread accepts no comments. Reject the draft with that reason.</div></div>` : '') +
+      (tc.locked ? `<div class="notice bad" style="margin-top:10px">${ICON.alert}<div class="body"><b>Locked.</b> This thread accepts no comments.</div></div>` : '');
+    const text = (tc.selftext || '').trim();
+    const long = text.length > 700;
+    const op = text ? `<div class="op ${long ? 'clamp' : ''}" data-op>${esc(text)}</div>${long ? '<button class="btn small" style="margin-top:8px" data-more>Show full post</button>' : ''}`
+      : `<p class="muted small" style="margin-top:10px">The post has no body, only a title. Drafts on title-only threads drift into generalities.</p>`;
+    const cms = (tc.top_comments || []).slice(0, 3);
+    const comments = cms.length ? `<details class="dx quiet" style="margin-top:8px"><summary>Top comments<span class="hint">${cms.length}</span></summary><div class="dx-body">` +
+      cms.map(c => `<div class="cm"><div class="who"><b>u/${esc(c.author || 'unknown')}</b>${c.score != null ? ` · ${fmtN(c.score)} points` : ''}</div><div class="txt">${esc((c.body || '').trim())}</div></div>`).join('') +
+      `</div></details>` : '';
+    return `<details class="dx thread" open><summary>Thread<span class="hint">${esc(meta.join(' · '))}</span></summary><div class="dx-body">
+      <div class="t"><a href="${esc(tc.url || threadUrl(d))}" class="ext" target="_blank" rel="noopener">${esc(tc.title || 'Untitled')}</a></div>
+      ${flags}${op}${comments}</div></details>`;
   }
 
-  /* The send queue: approved drafts that have not been posted.
-
-     This page marks intent; it does not call Engain. The Engain key never
-     enters a browser — it lives in ~/.geonode/engain.env, chmod 600, and only
-     engain-post.py reads it. Marking "cleared to send" sets send_cleared_at,
-     and the script's gates still run on top of that. So a compromised browser
-     session cannot post: it can only ask a human-run script to consider it. */
-  async function renderQueue() {
-    const rows = await api('drafts?select=id,thread_id,body,status,upvotes_suggested,send_cleared_at,thread_context&status=eq.approved&order=created_at.asc&limit=50');
-    /* Key the "already sent" check on the DRAFT id, never the thread id.
-       A thread carries several drafts over its life (retired, superseded,
-       current) — 1ug1lht has three — so matching on thread_id hides every
-       later draft the moment any earlier one is sent. The identical bug in
-       engain-post.py's clearance lookup was caught because it blocked a
-       cleared draft; with the ordering reversed it would have SENT an
-       uncleared one. Any per-item check keys on the item's own id. */
-    const sent = await api('engain_tasks?select=draft_id,thread_id,status,reddit_url&status=neq.test_artifact');
-    const sentIds = new Set(sent.map(t => t.draft_id));
-    const waiting = rows.filter(r => !sentIds.has(r.id));
-
-    $('nq').textContent = waiting.length + ' approved';
-    const q = $('queue');
-    if (!waiting.length) {
-      q.innerHTML = '<div class="card">Nothing approved and unsent. Approve a draft above and it appears here.</div>';
-      return;
-    }
-    q.innerHTML = '';
-    for (const d of waiting) {
-      const el = document.createElement('div');
-      el.className = 'rv';
-      const tc = d.thread_context || {};
-      const cleared = !!d.send_cleared_at;
-      el.innerHTML = `
-        <div class="meta">
-          <a href="https://www.reddit.com/comments/${esc(d.thread_id)}" target="_blank" rel="noopener">${esc(tc.title || 'thread ' + d.thread_id)}</a>
-          ${tc.subreddit ? ' · r/' + esc(tc.subreddit) : ''}
-          · ${d.upvotes_suggested == null ? 'no upvotes proposed' : esc(String(d.upvotes_suggested)) + ' upvotes proposed'}
-        </div>
-        <div class="post-body" style="max-height:none">${esc(d.body || '')}</div>
-        <div class="acts">
-          <button class="primary" data-a="clear" ${cleared ? 'disabled' : ''}>${cleared ? 'Cleared to send' : 'Clear this to send'}</button>
-          <button data-a="hold" ${cleared ? '' : 'disabled'}>Put back on hold</button>
-          <span class="sub" data-s>${cleared ? 'waiting for engain-post.py to pick it up' : 'not cleared — the poster will skip it'}</span>
-        </div>`;
-      const stat = el.querySelector('[data-s]');
-      el.querySelector('[data-a=clear]').addEventListener('click', async e => {
-        e.target.disabled = true; stat.textContent = 'marking…';
-        try {
-          await api(`drafts?id=eq.${d.id}`, {method:'PATCH', body: JSON.stringify({send_cleared_at: new Date().toISOString()})});
-          stat.textContent = 'cleared — engain-post.py will pick it up on the next run';
-          el.querySelector('[data-a=hold]').disabled = false;
-          e.target.textContent = 'Cleared to send';
-        } catch (err) { e.target.disabled = false; stat.textContent = String(err.message || err); }
-      });
-      el.querySelector('[data-a=hold]').addEventListener('click', async e => {
-        e.target.disabled = true; stat.textContent = 'holding…';
-        try {
-          await api(`drafts?id=eq.${d.id}`, {method:'PATCH', body: JSON.stringify({send_cleared_at: null})});
-          stat.textContent = 'on hold — the poster will skip it';
-          const cb = el.querySelector('[data-a=clear]');
-          cb.disabled = false; cb.textContent = 'Clear this to send';
-        } catch (err) { e.target.disabled = false; stat.textContent = String(err.message || err); }
-      });
-      q.appendChild(el);
-    }
+  function checkPanel(c) {
+    if (!c) return `<div class="notice" style="margin-top:12px">${ICON.info}<div class="body"><b>No rule-check on file.</b> Score it with <code>scripts/score.py</code> before approving. The poster refuses drafts without one.</div></div>`;
+    const viol = (c.violated_rules || []).length ? `<div class="small" style="margin-top:6px;color:var(--bad)">Rules named: ${c.violated_rules.map(esc).join(' · ')}</div>` : '';
+    return `<div class="notice" style="margin-top:12px"><div class="body"><div class="flex">${chip(verdictKind(c.verdict), 'rule check ' + c.verdict)}<span class="small">removal risk ${c.removal_risk == null ? 'not recorded' : esc(String(c.removal_risk))} of 100</span><span class="muted tiny right">${esc(ago(c.checked_at))}</span></div>
+      <div class="muted small" style="margin-top:6px">${esc(c.summary || '')} Scores drift between runs, so this is evidence for you, not a gate.</div>${viol}</div></div>`;
   }
 
-  async function render() {
-    const rows = await api('drafts?select=id,thread_id,strategy,format,body,body_original,status,upvotes_suggested,upvotes_reason,prompt_version,thread_context&status=eq.pending&order=created_at.asc&limit=100');
+  /* ── state ─────────────────────────────────────────────────────────── */
+  let drafts = [], checks = {}, current = 0;
 
-    /* The rule-check is what decides whether a comment survives contact with
-       the subreddit, so it belongs on screen next to the text being approved.
-       Scores are nondeterministic (same text has scored 58 and 78 minutes
-       apart), so the summary records how many runs the number came from and
-       approving is never gated on it — it is evidence for a human, not a gate. */
-    let checks = {};
-    if (rows.length) {
-      const ids = rows.map(r => r.id).join(',');
-      const rc = await api(`rule_checks?select=draft_id,verdict,removal_risk,violated_rules,summary,checked_at&draft_id=in.(${ids})&order=checked_at.desc`);
-      for (const c of rc) if (!checks[c.draft_id]) checks[c.draft_id] = c;
-    }
-
-    $('n').textContent = rows.length + ' waiting';
-    $('list').innerHTML = rows.length ? '' :
-      '<div class="card">Nothing pending. When the agent drafts, it lands here.</div>';
-
-    for (const d of rows) {
-      const el = document.createElement('div');
-      el.className = 'rv';
-      const up = d.upvotes_suggested == null ? 'no suggestion'
-        : `${d.upvotes_suggested} upvotes — ${esc(d.upvotes_reason || 'no reason given')}`;
-
-      const threadHtml = renderThreadSection(d);
-      const bodyContent = d.body ? esc(d.body) : '<span style="color:var(--dim);font-style:italic">Not written yet</span>';
-
+  function renderQueueList() {
+    const q = $('queue'), p = $('pick');
+    q.innerHTML = drafts.map((d, i) => {
       const c = checks[d.id];
-      let checkHtml = '<div class="rc rc-none">No rule-check on file. Score it with scripts/score.py before approving.</div>';
-      if (c) {
-        const v = c.verdict;
-        const viol = (c.violated_rules || []).length
-          ? `<div class="rc-viol">flags: ${(c.violated_rules || []).map(esc).join(' · ')}</div>` : '';
-        checkHtml = `<div class="rc rc-${esc(v)}">
-            <span class="rc-v">${esc(v)}</span>
-            <span class="rc-r">removal risk ${c.removal_risk == null ? '—' : esc(String(c.removal_risk))}</span>
-            <span class="rc-s">${esc(c.summary || '')}</span>
-            ${viol}
-          </div>`;
-      }
+      const v = c ? chip(verdictKind(c.verdict), c.verdict) : chip('', 'unscored');
+      return `<button type="button" data-i="${i}" aria-current="${i === current}"><div class="qs"><span>r/${esc(threadSub(d) || '?')}</span>${v}</div><div class="qt">${esc(cleanTitle(threadTitle(d)))}</div></button>`;
+    }).join('');
+    q.querySelectorAll('button').forEach(b => b.addEventListener('click', () => select(+b.dataset.i)));
+    p.innerHTML = drafts.map((d, i) => `<option value="${i}" ${i === current ? 'selected' : ''}>${i + 1} of ${drafts.length}: r/${esc(threadSub(d))} · ${esc(cleanTitle(threadTitle(d)).slice(0, 44))}</option>`).join('');
+  }
+  function select(i) {
+    current = Math.max(0, Math.min(i, drafts.length - 1));
+    renderQueueList();
+    renderWork();
+  }
 
-      el.innerHTML = `
-        ${threadHtml}
-        ${checkHtml}
-        <div class="meta">
-          <a href="https://www.reddit.com/comments/${esc(d.thread_id)}" target="_blank" rel="noopener">r/ thread ${esc(d.thread_id)}</a>
-          · ${esc(d.strategy || '—')} · ${esc(d.format || '—')}
-          · <span title="what the agent proposes after posting">${up}</span>
+  function renderWork() {
+    const d = drafts[current];
+    const w = $('work');
+    if (!d) { w.innerHTML = ''; return; }
+    const c = checks[d.id];
+    const up = d.upvotes_suggested == null ? 'none proposed' : `${d.upvotes_suggested} proposed${d.upvotes_reason ? ', ' + d.upvotes_reason : ''}`;
+    w.innerHTML = `
+      <div class="work-head">
+        <span class="pos">Draft ${current + 1} of ${drafts.length}</span>
+        ${d.status === 'edited' ? chip('warn', 'edited by you, not yet approved') : ''}
+        <div class="nav">
+          <button class="btn small" data-prev ${current === 0 ? 'disabled' : ''} aria-label="Previous draft">${ICON.left}</button>
+          <button class="btn small" data-next ${current >= drafts.length - 1 ? 'disabled' : ''} aria-label="Next draft">${ICON.right}</button>
         </div>
-        <textarea></textarea>
-        <div class="why">Reason (required to reject, optional otherwise): <input placeholder="e.g. too salesy, cut the pitch"></div>
+      </div>
+      ${threadPanel(d)}
+      ${checkPanel(c)}
+      <div class="editor">
+        <label for="body">The comment, as it will be posted</label>
+        <textarea id="body" class="field" spellcheck="true"></textarea>
+        <div class="wc" data-wc></div>
+        <div class="checks" data-checks aria-live="polite"></div>
+        <div class="facts">
+          <span>Angle <b>${esc(d.strategy || 'not set')}</b></span>
+          <span>Upvotes <b>${esc(up)}</b></span>
+          <span>Prompt <b>${esc(d.prompt_version || 'unknown')}</b></span>
+          <span>Written <b>${esc(ago(d.created_at))}</b></span>
+          <a href="${esc(threadUrl(d))}" class="ext" target="_blank" rel="noopener">Open thread</a>
+        </div>
+      </div>
+      <div class="decide">
+        <label class="field why"><span class="muted small" style="white-space:nowrap">Reason</span><input data-why placeholder="required to reject, optional otherwise"></label>
         <div class="acts">
-          <button class="primary" data-a="approve">Approve as written</button>
-          <button data-a="edit" disabled title="Type in the box above to enable this">Save my edit</button>
-          <button data-a="reject">Reject</button>
-          <span class="sub" data-s></span>
-        </div>`;
-      
-      const ta = el.querySelector('textarea'), why = el.querySelector('input');
-      const bEdit = el.querySelector('[data-a=edit]'), bApp = el.querySelector('[data-a=approve]');
-      const stat = el.querySelector('[data-s]');
-      ta.value = d.body || '';
+          <button class="btn primary" data-a="approve">Approve as written</button>
+          <button class="btn" data-a="edit" disabled>Save my edit</button>
+          <button class="btn danger" data-a="reject">Reject</button>
+          <span class="st" data-st></span>
+        </div>
+      </div>`;
 
-      /* Toggle thread post body */
-      const bodyToggle = el.querySelector('[data-toggle="body"]');
-      if (bodyToggle) {
-        bodyToggle.addEventListener('click', () => {
-          const pb = el.querySelector('[data-toggle="body"]').parentElement;
-          pb.classList.toggle('expanded');
-          bodyToggle.textContent = pb.classList.contains('expanded') ? 'show less…' : 'show more…';
-        });
-      }
+    const ta = w.querySelector('#body'), why = w.querySelector('[data-why]');
+    const bApp = w.querySelector('[data-a=approve]'), bEdit = w.querySelector('[data-a=edit]'), bRej = w.querySelector('[data-a=reject]');
+    const st = w.querySelector('[data-st]');
+    ta.value = d.body || '';
+    const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.max(220, ta.scrollHeight + 12) + 'px'; };
+    grow();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(grow);
+    window.addEventListener('resize', grow, { passive: true });
 
-      /* Toggle comments visibility */
-      const commentsToggle = el.querySelector('[data-toggle="comments"]');
-      if (commentsToggle) {
-        const commentList = el.querySelector('[data-list="comments"]');
-        commentsToggle.addEventListener('click', () => {
-          commentList.classList.toggle('show');
-          const arrow = commentsToggle.querySelector('span:first-child');
-          arrow.textContent = commentList.classList.contains('show') ? '▾' : '▸';
-        });
-      }
+    /* "Approve" must mean the text on screen. Once the text differs from what
+       the agent wrote, approving unchanged would silently discard the edit,
+       so the buttons swap roles. Hard rule failures switch both off. */
+    function refresh() {
+      const dirty = ta.value !== (d.body || '');
+      const c = renderChecks(w.querySelector('[data-checks]'), w.querySelector('[data-wc]'), ta.value);
+      ta.classList.toggle('dirty', dirty);
+      bApp.disabled = dirty || c.hardFail;
+      bEdit.disabled = !dirty || c.hardFail;
+      st.classList.remove('bad');
+      st.textContent = c.hardFail ? 'A hard rule fails above. Fix the text, or reject with a reason.'
+        : dirty ? 'You changed the text. Save your edit, or revert it to approve as written.' : '';
+    }
+    ta.addEventListener('input', () => { grow(); refresh(); });
+    refresh();
 
-      /* "Approve" must mean the text on screen. If you have typed into the box,
-         approving it unchanged would silently discard your edit — so the
-         buttons swap roles the moment the text differs. */
-      ta.addEventListener('input', () => {
-        const dirty = ta.value !== (d.body || '');
-        bEdit.disabled = !dirty;
-        bApp.disabled = dirty;
-        el.classList.toggle('dirty', dirty);
-        stat.textContent = dirty ? 'edited — save your edit, or revert to approve as written' : '';
-      });
+    const more = w.querySelector('[data-more]');
+    if (more) more.addEventListener('click', () => {
+      const op = w.querySelector('[data-op]'); op.classList.toggle('clamp');
+      more.textContent = op.classList.contains('clamp') ? 'Show full post' : 'Show less';
+    });
+    w.querySelector('[data-prev]').addEventListener('click', () => select(current - 1));
+    w.querySelector('[data-next]').addEventListener('click', () => select(current + 1));
 
-      el.querySelectorAll('button').forEach(b => b.addEventListener('click', async () => {
-        const action = b.dataset.a;
-        if (action === 'reject' && !why.value.trim()) { stat.textContent = 'a reject needs a reason — it is what the agent learns from'; return; }
-        el.querySelectorAll('button').forEach(x => x.disabled = true);
-        stat.textContent = 'saving…';
-        try {
-          await api('rpc/review_draft', { method:'POST', body: JSON.stringify({
-            p_draft_id: d.id, p_action: action,
-            p_body: action === 'edit' ? ta.value : null,
-            p_note: why.value.trim() || null, p_editor: sessionStorage.getItem('sb_email') || 'reviewer'
-          })});
-          el.remove();
-          await refreshLessons();
-          await renderQueue();   // an approval lands in the send queue below
-          const left = document.querySelectorAll('#list .rv').length;
-          $('n').textContent = left + ' waiting';
-          if (!left) $('list').innerHTML = '<div class="card">Queue clear.</div>';
-        } catch (e) {
-          /* Loud, and it names the draft. A silent failure here reads as a
-             dead button, which is how the first version was reported. */
-          stat.innerHTML = '<b style="color:var(--bad)">failed: ' + esc(String(e.message || e)) + '</b>';
-          el.querySelectorAll('button').forEach(x => x.disabled = false);
-          bEdit.disabled = ta.value === (d.body || '');
+    [bApp, bEdit, bRej].forEach(b => b.addEventListener('click', async () => {
+      const action = b.dataset.a;
+      if (action === 'reject' && !why.value.trim()) { st.classList.add('bad'); st.textContent = 'A reject needs a reason. It is what the agent learns from.'; why.focus(); return; }
+      [bApp, bEdit, bRej].forEach(x => x.disabled = true);
+      st.classList.remove('bad'); st.textContent = 'Saving…';
+      try {
+        await api('rpc/review_draft', { method: 'POST', body: JSON.stringify({
+          p_draft_id: d.id, p_action: action, p_body: action === 'edit' ? ta.value : null,
+          p_note: why.value.trim() || null, p_editor: 'reviewer' }) });
+        if (action === 'edit') {
+          /* The edited text comes back for a second look, so approving the
+             version you wrote is its own decision, not a side effect. */
+          d.body = ta.value; d.status = 'edited';
+          renderQueueList(); renderWork();
+          $('work').querySelector('[data-st]').textContent = 'Saved. This is now the text. Approve it as written when you are happy with it.';
+        } else {
+          drafts.splice(current, 1);
+          if (!drafts.length) showEmpty(); else select(Math.min(current, drafts.length - 1));
         }
-      }));
-      $('list').appendChild(el);
+        setCounts();
+        try { sessionStorage.removeItem('c_nav_stage'); } catch (e) {}
+        await Promise.all([renderSend(), renderLessons()]);
+      } catch (e) {
+        st.classList.add('bad'); st.textContent = 'Failed: ' + String(e.message || e);
+        bRej.disabled = false; refresh();
+      }
+    }));
+  }
+
+  function showEmpty() { $('ws').hidden = true; $('none').hidden = false; }
+  function setCounts() { $('n').textContent = drafts.length; }
+
+  /* ── ready to send ─────────────────────────────────────────────────── */
+  async function renderSend() {
+    const rows = await api('drafts?select=id,thread_id,body,status,upvotes_suggested,send_cleared_at,thread_context,created_at&status=eq.approved&order=created_at.asc&limit=50');
+    const sent = await api('engain_tasks?select=thread_id&status=neq.test_artifact');
+    const sentIds = new Set(sent.map(t => t.thread_id));
+    const waiting = rows.filter(r => !sentIds.has(r.thread_id));
+    const rc = {};
+    if (waiting.length) {
+      const list = await api(`rule_checks?select=draft_id,verdict,removal_risk&draft_id=in.(${waiting.map(r => r.id).join(',')})&order=checked_at.desc`);
+      for (const c of list) if (!rc[c.draft_id]) rc[c.draft_id] = c;
+    }
+    $('nq').textContent = waiting.length;
+    const box = $('sendlist');
+    if (!waiting.length) { box.innerHTML = '<div class="empty"><b>Nothing approved and unsent.</b>Approve a draft on the first tab and it appears here for the send decision.</div>'; return; }
+    box.innerHTML = '';
+    for (const d of waiting) {
+      const cleared = !!d.send_cleared_at;
+      const c = rc[d.id];
+      const el = document.createElement('div'); el.className = 'card send';
+      el.innerHTML = `
+        <div class="head">
+          <a href="${esc(threadUrl(d))}" class="ext" target="_blank" rel="noopener">${esc(cleanTitle(threadTitle(d)))}</a>
+          ${threadSub(d) ? `<span>r/${esc(threadSub(d))}</span>` : ''}
+          <span>${d.upvotes_suggested == null ? 'no upvotes proposed' : esc(String(d.upvotes_suggested)) + ' upvotes proposed'}</span>
+          ${c ? chip(verdictKind(c.verdict), 'rule check ' + c.verdict) : chip('bad', 'no rule check, poster will refuse')}
+          <span data-state>${cleared ? chip('ok', 'cleared') : chip('warn', 'on hold')}</span>
+        </div>
+        <div class="txt">${esc(d.body || '')}</div>
+        <div class="acts">
+          <button class="btn primary" data-a="clear" ${cleared ? 'disabled' : ''}>${cleared ? 'Cleared to send' : 'Clear to send'}</button>
+          <button class="btn" data-a="hold" ${cleared ? '' : 'disabled'}>Put on hold</button>
+          <span class="st" data-s>${cleared ? 'Cleared. engain-post.py picks it up on its next run.' : 'On hold. The poster skips it until you clear it.'}</span>
+        </div>`;
+      const stat = el.querySelector('[data-s]'), bc = el.querySelector('[data-a=clear]'), bh = el.querySelector('[data-a=hold]'), state = el.querySelector('[data-state]');
+      bc.addEventListener('click', async () => {
+        bc.disabled = true; stat.textContent = 'Marking…';
+        try {
+          await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', body: JSON.stringify({ send_cleared_at: new Date().toISOString() }) });
+          stat.textContent = 'Cleared. engain-post.py picks it up on its next run.'; bc.textContent = 'Cleared to send'; bh.disabled = false;
+          state.innerHTML = chip('ok', 'cleared');
+        } catch (e) { bc.disabled = false; stat.textContent = 'Failed: ' + String(e.message || e); }
+      });
+      bh.addEventListener('click', async () => {
+        bh.disabled = true; stat.textContent = 'Holding…';
+        try {
+          await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', body: JSON.stringify({ send_cleared_at: null }) });
+          stat.textContent = 'On hold. The poster skips it until you clear it.'; bc.disabled = false; bc.textContent = 'Clear to send';
+          state.innerHTML = chip('warn', 'on hold');
+        } catch (e) { bh.disabled = false; stat.textContent = 'Failed: ' + String(e.message || e); }
+      });
+      box.appendChild(el);
     }
   }
 
-  async function refreshLessons() {
-    const L = await api('edit_lessons?select=at,thread_id,agent_wrote,human_kept,note&limit=25');
-    $('nl').textContent = L.length ? L.length + ' edits' : 'none yet';
-    $('lessons').innerHTML = L.length
-      ? '<tr><th>when</th><th>agent wrote</th><th>you kept</th><th>why</th></tr>' +
-        L.map(x => `<tr><td class="num">${(x.at||'').slice(0,10)}</td><td class="num">${esc((x.agent_wrote||'').slice(0,110))}…</td><td>${esc((x.human_kept||'').slice(0,110))}…</td><td class="num">${esc(x.note||'')}</td></tr>`).join('')
-      : '<tr><td class="num">No edits recorded yet. Once you edit a draft, the before/after shows here and feeds the next prompt.</td></tr>';
+  /* ── your edits ────────────────────────────────────────────────────── */
+  async function renderLessons() {
+    const L = await api('edit_lessons?select=at,thread_id,strategy,agent_wrote,human_kept,note&limit=50');
+    $('nl').textContent = L.length;
+    $('lessons').innerHTML = L.length ? L.map(x => `
+      <details class="row">
+        <summary><span class="sub">${esc(fmtDate(x.at))}</span><span class="title">${esc(x.note || 'no reason given')}</span><span class="side">${chip('', 'thread ' + x.thread_id)}</span></summary>
+        <div class="body"><div class="diff"><div><div class="h">Agent wrote</div>${esc(x.agent_wrote || '')}</div><div><div class="h">You kept</div>${esc(x.human_kept || '')}</div></div></div>
+      </details>`).join('')
+      : '<div class="empty"><b>No edits yet.</b>Once you save an edit, the before and after shows here and feeds the next prompt.</div>';
   }
 
+  /* ── tabs ──────────────────────────────────────────────────────────── */
+  const tabs = [...document.querySelectorAll('[role=tab]')];
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => { x.setAttribute('aria-selected', x === t); $(x.getAttribute('aria-controls')).hidden = x !== t; });
+    try { sessionStorage.setItem('review_tab', t.id); } catch (e) {}
+  }));
+  try { const t = sessionStorage.getItem('review_tab'); if (t && $(t)) $(t).click(); } catch (e) {}
+  $('pick').addEventListener('change', e => select(+e.target.value));
+
+  /* Anon gets [] from a table it may not read, and [] also means "nothing to
+     review". Tell the two apart by asking for ANY draft, of any status: a
+     project with drafts in it that returns none here has the policy missing,
+     and the page says so instead of printing an empty queue as good news. */
   async function boot() {
-    try { await render(); await renderQueue(); await refreshLessons();
-          $('app').hidden = false; $('login').hidden = true;
-          $('who').textContent = 'signed in as ' + (sessionStorage.getItem('sb_email') || '—');
-    } catch (e) {
-      if (String(e.message).startsWith('401') || String(e.message).startsWith('403') || !TOKEN) {
-        $('login').hidden = false; $('app').hidden = true;
-      } else { fail(e, 'review'); }
-    }
-  }
-
-  $('go').addEventListener('click', async () => {
-    $('lerr').textContent = 'signing in…';
     try {
-      const email = await signIn($('em').value.trim(), $('pw').value);
-      sessionStorage.setItem('sb_email', email);
-      $('lerr').textContent = ''; await boot();
-    } catch (e) { $('lerr').textContent = e.message; }
-  });
-  $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('go').click(); });
-
-  if (TOKEN) boot(); else { $('login').hidden = false; }
+      const probe = await api('drafts?select=id&limit=1');
+      $('loading').hidden = true;
+      if (!probe.length) {
+        $('policy').hidden = false;
+        $('n').textContent = '?'; $('nq').textContent = '?'; $('nl').textContent = '?';
+        return;
+      }
+      drafts = await api('drafts?select=id,thread_id,strategy,format,body,body_original,status,upvotes_suggested,upvotes_reason,prompt_version,thread_context,created_at&status=in.(pending,edited)&order=created_at.asc&limit=100');
+      if (drafts.length) {
+        const rc = await api(`rule_checks?select=draft_id,verdict,removal_risk,violated_rules,summary,checked_at&draft_id=in.(${drafts.map(r => r.id).join(',')})&order=checked_at.desc`);
+        for (const c of rc) if (!checks[c.draft_id]) checks[c.draft_id] = c;
+      }
+      setCounts();
+      if (!drafts.length) showEmpty(); else { $('ws').hidden = false; select(0); }
+      await Promise.all([renderSend(), renderLessons()]);
+    } catch (e) { $('loading').hidden = true; fail(e, 'the review queue'); }
+  }
+  boot();
 })();
 </script></body></html>

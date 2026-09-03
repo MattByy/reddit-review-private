@@ -1,87 +1,108 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Overview · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Overview · Reddit GEO Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  /* "Needs you" is a list of links, each one a single sentence and a place to go. */
+  .todo a.row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:14px 16px;color:var(--ink);font-size:15px}
+  .todo a.row:hover{background:#faf9f6;text-decoration:none}
+  .todo a.row .go{color:var(--info);font-size:13px;white-space:nowrap;display:flex;align-items:center;gap:4px}
+  .todo a.row .go svg{width:14px;height:14px}
+  .todo .n{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:13px;background:var(--accent);
+    color:var(--ink);font-weight:600;font-size:13px;margin-right:10px;font-variant-numeric:tabular-nums}
+  .todo .n.quiet{background:var(--panel);color:var(--muted)}
+
+  /* The loop, as a numbered flow. The number is the step, the line is the order. */
+  .flow{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+  .flow li{display:grid;grid-template-columns:36px 1fr auto;gap:0 14px;align-items:start;padding:14px 16px;border-bottom:1px solid var(--line);position:relative}
+  .flow li:last-child{border-bottom:0}
+  .flow .num{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line-strong);display:grid;place-items:center;
+    font-size:12px;font-weight:600;color:var(--muted);background:var(--surface);position:relative;z-index:1}
+  .flow li::before{content:"";position:absolute;left:28.5px;top:40px;bottom:-1px;width:1px;background:var(--line)}
+  .flow li:last-child::before{display:none}
+  .flow .what a{font-size:15px;font-weight:600;color:var(--ink)}
+  .flow .what .q{color:var(--muted);font-size:13.5px;margin-top:2px;max-width:60ch}
+  .flow .stat{text-align:right;font-size:13px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .flow .stat b{display:block;font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+  @media (max-width:600px){.flow li{grid-template-columns:36px 1fr}.flow .stat{grid-column:2;text-align:left;margin-top:6px}.flow .stat b{display:inline;margin-right:6px}}
+</style></head>
 <body><script src="assets/gate.js"></script>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
-<h1>Overview</h1>
-<div id="meta">loading…</div>
-
-<div class="card">
-  <b>What needs your attention right now</b>
-  <div id="attention"></div>
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <p class="lede">Buyers ask ChatGPT and Google which scraper to use, and the answers are assembled from Reddit threads. We find those threads, put the best honest answer in them, and measure whether the engines start naming us.</p>
+  </div>
 </div>
 
-<div class="grid">
-  <div class="stat"><div class="v" id="s-q">–</div><div class="l">buyer queries mapped</div></div>
-  <div class="stat"><div class="v" id="s-t">–</div><div class="l">target threads found</div></div>
-  <div class="stat"><div class="v" id="s-sov">–</div><div class="l">our mentions vs firecrawl</div></div>
-</div>
+<section style="margin-top:0">
+  <div class="section-head"><h2>Needs you</h2><span class="count" id="asof"></span></div>
+  <div id="todo" class="rows todo"><div style="padding:16px"><div class="sk" style="width:60%"></div><div class="sk" style="width:45%"></div></div></div>
+</section>
 
-<h2>Share of voice — Reddit mentions <span class="pill">Engain · baseline 2026-09-01</span></h2>
+<section>
+  <div class="section-head"><h2>The loop</h2><span class="count">five steps, in order, one page each</span></div>
+  <ol class="flow" id="flow">
+    <li><span class="num">1</span><div class="what"><a href="queries.html">Queries</a><div class="q">What do buyers search before choosing a scraper?</div></div><div class="stat" id="f1"><b>…</b>queries mapped</div></li>
+    <li><span class="num">2</span><div class="what"><a href="targets.html">Targets</a><div class="q">Which Reddit threads rank for those searches, and which did Engain's feed find?</div></div><div class="stat" id="f2"><b>…</b>threads ranking</div></li>
+    <li><span class="num">3</span><div class="what"><a href="review.html">Review</a><div class="q">Is this comment good enough to publish? Approve the text, then separately clear the send.</div></div><div class="stat" id="f3"><b>…</b>waiting for you</div></li>
+    <li><span class="num">4</span><div class="what"><a href="status.html">Status</a><div class="q">What actually happened to each thread after we sent a comment?</div></div><div class="stat" id="f4"><b>…</b>live on Reddit</div></li>
+    <li><span class="num">5</span><div class="what"><a href="audit.html">Audit</a><div class="q">Do the AI engines name us yet when a buyer asks?</div></div><div class="stat" id="f5"><b>…</b>audit runs</div></li>
+  </ol>
+</section>
 
-<table id="sov"></table>
-
+<section>
+  <details class="dx quiet">
+    <summary>How the loop runs, and the rules that never move</summary>
+    <div class="dx-body prose">
+      <p>The agent maps buyer queries, sweeps the search results for the Reddit threads that rank, and listens to Engain's mentions feed for threads no query found. For each thread worth answering it writes one comment, checks it against the subreddit's rules, and puts it in the review queue. A person approves the text. A person then separately clears it to send. A script posts it through Engain, orders a small capped upvote drip, and records what happened. Once a month the canonical queries are asked of the AI engines again, and the answers are recorded.</p>
+      <p>Nothing posts without a human clearing it. Every comment discloses the affiliation and names something a rival does better. No dashes, no semicolons, no closing on a question, no quoting our own numbers, no invented stories. A comment fails all of that in the editor before it can be approved.</p>
+      <p><a href="history.html">Sweep history</a> is the evidence trail: what each sweep checked and what moved.</p>
+    </div>
+  </details>
+</section>
 </main>
 <script>
 (async () => {
   try {
-    const [threadActivity, queries, sovRows] = await Promise.all([
-      sbAll('thread_activity', 'select=thread_id,stage&order=thread_id.asc'),
-      sb('queries', 'select=id&limit=1000'),
-      sb('sov_baseline', 'select=brand,mentions,caveat,measured_on,source&order=mentions.desc&limit=100')
+    const [acts, nq, nt, na] = await Promise.all([
+      sbAll('thread_activity', 'select=stage&stage=neq.no_draft'),
+      sbCount('queries'),
+      sbCount('targets'),
+      sbCount('audits')
     ]);
-
-    /* Count threads (unique thread_ids in thread_activity) and stages */
-    const uniqueThreads = new Set(threadActivity.map(r => r.thread_id)).size;
-    const draftPending = threadActivity.filter(r => r.stage === 'draft_pending_review').length;
-    const waitingEngain = threadActivity.filter(r => r.stage === 'waiting_on_engain').length;
-    const publishedAwaiting = threadActivity.filter(r => r.stage === 'published_awaiting_upvotes').length;
-    const upvotesRunning = threadActivity.filter(r => r.stage === 'upvotes_running').length;
-    const upvotesDelivered = threadActivity.filter(r => r.stage === 'upvotes_delivered').length;
+    const n = s => acts.filter(r => r.stage === s).length;
+    const pending = n('draft_pending_review');
+    const approved = n('approved_not_cleared');
+    const cleared = n('cleared_not_sent');
+    const sent = n('waiting_on_engain');
     /* "Live" means live. A comment sitting with Engain has not been published
-       and must never be counted as if it were on Reddit — that is the same
-       false all-clear that made `upvote` claim every published comment had an
-       order when nothing was published. */
-    const commentsLive = publishedAwaiting + upvotesRunning + upvotesDelivered;
+       and is never counted as if it were on Reddit. */
+    const live = n('published_awaiting_upvotes') + n('upvotes_running') + n('upvotes_delivered');
+    const bad = n('send_failed') + n('removed');
 
-    /* Build the attention card */
-    let attentionHTML = '';
-    if (draftPending > 0) {
-      attentionHTML += `<div style="color:var(--acc);margin:8px 0"><b>${draftPending} draft(s) awaiting review</b> → <a href="review.html">Review now</a></div>`;
-    }
-    if (commentsLive > 0) {
-      attentionHTML += `<div style="color:var(--ok);margin:8px 0">${commentsLive} comment(s) live on Reddit</div>`;
-    }
-    if (waitingEngain > 0) {
-      attentionHTML += `<div style="color:var(--mut);margin:8px 0">${waitingEngain} sent, waiting on Engain to publish → <a href="status.html">Status</a></div>`;
-    }
-    if (!attentionHTML) {
-      attentionHTML = '<div style="color:var(--mut);margin:8px 0">Nothing waiting on you.</div>';
-    }
+    const $ = id => document.getElementById(id);
+    const items = [];
+    const add = (count, text, href, go, hot) => items.push({ count, text, href, go, hot });
+    if (pending) add(pending, `draft${pending === 1 ? '' : 's'} waiting for your review`, 'review.html', 'Review', true);
+    if (approved) add(approved, `approved, not yet cleared to send`, 'review.html', 'Ready to send', true);
+    if (cleared) add(cleared, `cleared, waiting for the poster to run`, 'status.html', 'Status', false);
+    if (sent) add(sent, `sent to Engain, not published yet. Normal: it schedules through aged accounts.`, 'status.html', 'Status', false);
+    if (live) add(live, `comment${live === 1 ? '' : 's'} live on Reddit`, 'status.html', 'Status', false);
+    if (bad) add(bad, `failed or removed. Read why before drafting the thread again.`, 'status.html', 'Status', false);
 
-    document.getElementById('attention').innerHTML = attentionHTML;
+    $('todo').innerHTML = items.length ? items.map(i =>
+      `<a class="row" href="${i.href}"><span><span class="n ${i.hot ? '' : 'quiet'}">${i.count}</span>${esc(i.text)}</span><span class="go">${esc(i.go)}${ICON.right}</span></a>`).join('')
+      : '<div class="empty"><b>Nothing waiting on you.</b>Drafts appear here when the agent writes one.</div>';
+    $('asof').textContent = 'as of ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + 'Z';
 
-    /* Share of voice is a DATED MEASUREMENT read from sov_baseline, never a
-       number typed into this page. Its caveat travels with it — the geonode
-       count includes the July Engain-manufactured comments and is inflated. */
-    const sov = sovRows.map(r => [r.brand, r.mentions]);
-    const max = sov.length ? sov[0][1] : 0;
-    const byBrand = Object.fromEntries(sov);
-    const geo = byBrand["geonode.com"], fc = byBrand["firecrawl.dev"];
-
-    document.getElementById('meta').textContent =
-      `data updated ${new Date().toISOString().slice(0,10)} · repo geonode-strategy/04-reddit · git = change history`;
-    document.getElementById('s-q').textContent = queries.length;
-    document.getElementById('s-t').textContent = uniqueThreads;
-    document.getElementById('s-sov').textContent =
-      (geo === undefined || fc === undefined) ? 'no data' : geo + " / " + fc;
-
-    const caveat = sovRows.find(r => r.caveat);
-    document.getElementById('sov').innerHTML = sov.length
-      ? '<tr><th>brand</th><th>mentions</th><th></th></tr>' +
-        sov.map(([b, n]) => `<tr><td>${b}${b === 'geonode.com' ? ' ←' : ''}</td><td class="num">${n}</td><td style="width:55%"><span class="bar${b === 'geonode.com' ? '' : ' g'}" style="width:${(n / max * 100).toFixed(0)}%"></span></td></tr>`).join('') +
-        (caveat ? `<tr><td colspan="3" class="num">${caveat.brand}: ${caveat.caveat}</td></tr>` : '')
-      : '<tr><td class="num">No share-of-voice measurement recorded yet.</td></tr>';
-  } catch(err) {
-    fail(err, 'index');
+    const set = (id, v, l) => { $(id).innerHTML = `<b>${fmtN(v)}</b>${esc(l)}`; };
+    set('f1', nq, 'queries mapped');
+    set('f2', nt, 'threads ranking');
+    set('f3', pending + approved, 'waiting for you');
+    set('f4', live, sent ? `live on Reddit, ${sent} sent` : 'live on Reddit');
+    set('f5', na, 'audit runs');
+  } catch (err) {
+    fail(err, 'the overview');
   }
 })();
 </script></body></html>

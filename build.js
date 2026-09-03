@@ -33,10 +33,10 @@ console.log("wrote assets/config.js for", url);
 // The gate must load BEFORE config.js and app.js so nothing renders behind it.
 //
 // UNGATED is a deliberate list, not an oversight. review.html is the page
-// Swello opens to approve or reject a comment, often on a phone — a code
-// between him and that decision only slows the one action the whole pipeline
-// waits on. The gate was never protecting the data anyway (the anon key ships
-// in config.js), so exempting the working page costs nothing real.
+// Swello opens from a phone to approve or reject a comment, and the founders'
+// call (2026-09-03) is that nothing — no gate, no login — stands between the
+// link and that decision. The gate never protected data anyway: the anon key
+// ships in config.js, and migration 008 lets that key read and review drafts.
 const UNGATED = new Set(["review.html"]);
 const GATE = '<script src="assets/gate.js"></script>';
 let gated = 0, already = 0, skipped = 0;

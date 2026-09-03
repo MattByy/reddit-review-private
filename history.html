@@ -1,145 +1,107 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>History · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>History · Reddit GEO Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
 <style>
-.up{color:#4ade80}.down{color:#f87171}
-.mono{font:12px ui-monospace,monospace;color:var(--mut)}
+  td.t{min-width:240px}
+  @media (max-width:720px){.strip{grid-template-columns:repeat(2,1fr)}}
 </style></head>
 <body><script src="assets/gate.js"></script>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
-<h1>Search history</h1>
-<div class="sub">Search results are not a fact, they're a photo taken on a day. Every time we look up a query we save what we saw and when — so a thread that ranked #1 last week and #9 today shows that, instead of silently overwriting itself.</div>
-
-<div class="grid">
- <div class="stat"><div class="v" id="s-runs">–</div><div class="l">runs recorded</div></div>
- <div class="stat"><div class="v" id="s-obs">–</div><div class="l">sightings logged</div></div>
- <div class="stat"><div class="v" id="s-thr">–</div><div class="l">threads ever seen</div></div>
- <div class="stat"><div class="v" id="s-q">–</div><div class="l">queries checked</div></div>
+<div class="page-head">
+  <div>
+    <h1>History</h1>
+    <p class="lede">When was each sweep run, and what changed? A ranking is a photo taken on a day, so every sighting is kept and nothing is overwritten.</p>
+  </div>
 </div>
 
-<h2>Runs</h2>
-<table id="runs"></table>
-
-<h2>What changed in the latest run</h2>
-<div class="sub" id="chsub"></div>
-<table id="changes"></table>
-
-<div class="card" style="margin-top:20px">
-<b>How this works.</b> Observations are append-only — one row per query × thread × date, never edited. The targets view is rebuilt from observations, so the thread list can never drift from the evidence. Re-run with <code>python3 scripts/serp-snapshot.py --top 45</code>; git history keeps every version.
+<div class="strip">
+  <div><div class="v" id="s-runs">…</div><div class="l">sweeps recorded</div></div>
+  <div><div class="v" id="s-obs">…</div><div class="l">sightings logged</div></div>
+  <div><div class="v" id="s-thr">…</div><div class="l">threads ever seen</div></div>
+  <div><div class="v" id="s-q">…</div><div class="l">queries checked</div></div>
 </div>
+
+<section>
+  <div class="section-head"><h2>Sweeps</h2></div>
+  <div class="tablewrap"><table id="runs"></table></div>
+</section>
+
+<section>
+  <div class="section-head" style="flex-wrap:wrap"><h2>What changed in the latest sweep</h2><span class="count" id="chsub"></span>
+    <select class="field right" id="fch" aria-label="Change type"><option value="">All changes</option><option value="moved">moved</option><option value="new">newly ranking</option><option value="gone">dropped out</option></select>
+  </div>
+  <div class="tablewrap"><table id="changes"></table></div>
+  <p class="muted small" id="chfoot" style="margin-top:8px"></p>
+</section>
+
+<section>
+  <details class="dx quiet">
+    <summary>How this works</summary>
+    <div class="dx-body prose">
+      <p>Observations are append-only: one row per query, thread and date, never edited. The target list is rebuilt from them, so it cannot drift from the evidence. A thread only counts as dropped out when the query it ranked for was actually re-checked in the latest sweep. A query that errored is not a query that was checked, so its threads are neither moved nor gone. Re-run with <code>serp-snapshot-db.py</code>.</p>
+    </div>
+  </details>
+</section>
 </main>
 <script>
 (async () => {
+  const $ = id => document.getElementById(id);
   try {
-    // Paginated fetch helper
-    async function sbPaginated(table, baseQuery, pageSize = 1000) {
-      const allRows = [];
-      let offset = 0;
-      while (true) {
-        const query = baseQuery + (baseQuery ? '&' : '') + `limit=${pageSize}&offset=${offset}`;
-        const rows = await sb(table, query);
-        allRows.push(...rows);
-        if (rows.length < pageSize) break;
-        offset += pageSize;
-      }
-      return allRows;
-    }
-    
-    // Fetch all needed data with pagination
     const [obs, queries, runs] = await Promise.all([
-      sbPaginated('observations', 'select=*&order=id.asc'),
-      sb('queries', 'select=id,q&limit=5000'),
-      sb('runs', 'select=*&order=run_date.desc&limit=100')
+      sbAll('observations', 'select=obs_date,query_id,thread_id,position,approx,url,title&order=id.asc'),
+      sb('queries', 'select=id,q&limit=1000'),
+      sb('runs', 'select=*&order=run_date.desc,started_at.desc&limit=100')
     ]);
-    
-    const $ = id => document.getElementById(id);
-    const qmap = Object.fromEntries(queries.map(q => [q.id, q.q]));
-    
-    // Find latest run
-    const lastRun = runs.length > 0 ? runs[0] : null;
-    const LAST = lastRun ? lastRun.run_date : null;
-    const CHECKED = new Set(lastRun ? (lastRun.checked_query_ids || []) : []);
-    
-    // Populate stats
-    $('s-runs').textContent = runs.length;
-    $('s-obs').textContent = obs.length.toLocaleString();
-    $('s-thr').textContent = new Set(obs.map(x => x.thread_id)).size;
-    $('s-q').textContent = new Set(obs.map(x => x.query_id)).size;
-    
-    // Populate runs table
-    $('runs').innerHTML = '<tr><th>date</th><th>engine</th><th>queries</th><th>reddit results</th><th>new rows</th><th>errors</th><th>note</th></tr>' +
-      runs.slice().map(r => `<tr><td>${r.run_date}</td><td class="num">${r.engine}</td><td class="num">${r.queries_attempted ?? '–'}</td><td class="num">${r.hits}</td><td class="num">${r.new_rows}</td><td class="num">${r.errors}</td><td class="mono">${r.note || ''}</td></tr>`).join('');
-    
-    // Detect changes: per query+thread, compare last two REAL positions (non-approx)
-    const key = x => x.query_id + '|' + x.thread_id;
+    const qtext = Object.fromEntries(queries.map(q => [q.id, q.q]));
+    const last = runs[0] || null;
+    const LAST = last ? last.run_date : null;
+    const CHECKED = new Set(last ? (last.checked_query_ids || []) : []);
+
+    $('s-runs').textContent = fmtN(runs.length);
+    $('s-obs').textContent = fmtN(obs.length);
+    $('s-thr').textContent = fmtN(new Set(obs.map(x => x.thread_id)).size);
+    $('s-q').textContent = fmtN(new Set(obs.map(x => x.query_id)).size);
+
+    $('runs').innerHTML = runs.length
+      ? '<thead><tr><th>Date</th><th>Engine</th><th class="num">Queries</th><th class="num">Reddit results</th><th class="num">New rows</th><th class="num">Errors</th><th>Note</th></tr></thead><tbody>' +
+        runs.map(r => `<tr><td class="tnum">${esc(r.run_date)}</td><td class="mute">${esc(r.engine)}</td><td class="num">${r.queries_attempted != null ? fmtN(r.queries_attempted) : '<span class="muted">unknown</span>'}</td><td class="num">${fmtN(r.hits)}</td><td class="num">${fmtN(r.new_rows)}</td><td class="num">${r.errors ? `<span style="color:var(--bad)">${fmtN(r.errors)}</span>` : '0'}</td><td class="mute small">${esc(r.note || '')}</td></tr>`).join('') + '</tbody>'
+      : '<tbody><tr><td class="mute">No sweep recorded yet.</td></tr></tbody>';
+
+    /* Per query and thread, compare the last two REAL positions. Approx rows are
+       backfilled and excluded from movement math. */
     const hist = {};
-    obs.forEach(x => {
-      const k = key(x);
-      (hist[k] = hist[k] || []).push(x);
-    });
-    
+    for (const x of obs) (hist[x.query_id + '|' + x.thread_id] = hist[x.query_id + '|' + x.thread_id] || []).push(x);
     const rows = [];
-    Object.values(hist).forEach(h => {
+    for (const h of Object.values(hist)) {
       h.sort((a, b) => a.obs_date.localeCompare(b.obs_date));
-      const last = h[h.length - 1];
-      const prev = h.length > 1 ? h[h.length - 2] : null;
-      
-      // Gone: last obs is not from latest run, but we checked this query
-      if (last.obs_date !== LAST) {
-        if (CHECKED.has(last.query_id)) {
-          rows.push({
-            t: 'gone',
-            q: last.query_id,
-            from: last.position,
-            to: null,
-            url: last.url,
-            title: last.title,
-            since: last.obs_date
-          });
-        }
-        return;
+      const lastO = h[h.length - 1], prev = h.length > 1 ? h[h.length - 2] : null;
+      if (lastO.obs_date !== LAST) {
+        if (CHECKED.has(lastO.query_id)) rows.push({ t: 'gone', q: lastO.query_id, from: lastO.position, to: null, url: lastO.url, title: lastO.title, since: lastO.obs_date });
+        continue;
       }
-      
-      // New: no previous observation
-      if (!prev) {
-        rows.push({
-          t: 'new',
-          q: last.query_id,
-          from: null,
-          to: last.position,
-          url: last.url,
-          title: last.title
-        });
-        return;
-      }
-      
-      // Moved: positions differ and previous was not approx
-      if (prev.position != null && last.position != null && prev.position !== last.position && !prev.approx) {
-        rows.push({
-          t: 'moved',
-          q: last.query_id,
-          from: prev.position,
-          to: last.position,
-          url: last.url,
-          title: last.title
-        });
-      }
-    });
-    
+      if (!prev) { rows.push({ t: 'new', q: lastO.query_id, from: null, to: lastO.position, url: lastO.url, title: lastO.title }); continue; }
+      if (prev.position != null && lastO.position != null && prev.position !== lastO.position && !prev.approx)
+        rows.push({ t: 'moved', q: lastO.query_id, from: prev.position, to: lastO.position, url: lastO.url, title: lastO.title });
+    }
     const order = { moved: 0, new: 1, gone: 2 };
     rows.sort((a, b) => order[a.t] - order[b.t] || Math.abs((b.from ?? 0) - (b.to ?? 0)) - Math.abs((a.from ?? 0) - (a.to ?? 0)));
-    
-    $('chsub').textContent = rows.filter(r => r.t === 'moved').length + ' moved · ' +
-      rows.filter(r => r.t === 'new').length + ' newly ranking · ' +
-      rows.filter(r => r.t === 'gone').length + ' dropped out (as of ' + (LAST || 'N/A') + ')';
-    
-    $('changes').innerHTML = '<tr><th>change</th><th>query</th><th>thread</th><th>position</th></tr>' +
-      rows.slice(0, 200).map(r => {
-        const badge = r.t === 'new' ? '<span class="up">NEW</span>' : r.t === 'gone' ? '<span class="down">DROPPED</span>' :
-          (r.to < r.from ? `<span class="up">▲${r.from - r.to}</span>` : `<span class="down">▼${r.to - r.from}</span>`);
-        const t = (r.title || '').replace(/^r\/[^:]+\s+on\s+Reddit:\s+/, '') || r.url.split('/comments/')[1];
-        return `<tr><td>${badge}</td><td class="mono">${r.q} · ${qmap[r.q] || ''}</td><td><a href="${r.url}" target="_blank" rel="noopener">${t}</a></td><td class="num">${r.from ?? '–'} → ${r.to ?? 'out'}</td></tr>`;
-      }).join('');
-  } catch(err) {
-    fail(err, 'history');
+    const nMoved = rows.filter(r => r.t === 'moved').length, nNew = rows.filter(r => r.t === 'new').length, nGone = rows.filter(r => r.t === 'gone').length;
+    $('chsub').textContent = LAST ? `${nMoved} moved · ${nNew} newly ranking · ${nGone} dropped out, as of ${LAST}` : 'no sweep yet';
+
+    function render() {
+      const f = $('fch').value;
+      const list = rows.filter(r => !f || r.t === f);
+      const badge = r => r.t === 'new' ? chip('info', 'new') : r.t === 'gone' ? chip('', 'dropped') : (r.to < r.from ? chip('ok', `up ${r.from - r.to}`) : chip('bad', `down ${r.to - r.from}`));
+      $('changes').innerHTML = list.length
+        ? '<thead><tr><th>Change</th><th>Query</th><th>Thread</th><th class="num">Position</th></tr></thead><tbody>' +
+          list.slice(0, 300).map(r => `<tr><td>${badge(r)}</td><td class="small"><span class="id">${esc(r.q)}</span> ${esc(qtext[r.q] || '')}</td><td class="t"><a href="${esc(r.url)}" class="ext" target="_blank" rel="noopener">${esc(cleanTitle(r.title, r.url))}</a></td><td class="num">${r.from != null ? '#' + r.from : 'none'} to ${r.to != null ? '#' + r.to : 'out'}</td></tr>`).join('') + '</tbody>'
+        : `<tbody><tr><td class="mute">${rows.length ? 'No change of this type in the latest sweep.' : 'Nothing moved, arrived or dropped in the latest sweep.'}</td></tr></tbody>`;
+      $('chfoot').textContent = `${Math.min(list.length, 300)} of ${list.length} shown`;
+    }
+    $('fch').addEventListener('input', render);
+    render();
+  } catch (err) {
+    fail(err, 'the sweep history');
   }
 })();
 </script></body></html>

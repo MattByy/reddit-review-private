@@ -4,7 +4,7 @@
 // exactly as it did in Swello's browser. That injection is why the previous
 // harness passed a site that was broken for every real visitor.
 const BASE = "https://site-phi-two-38.vercel.app";
-const PAGES = ["index", "queries", "targets", "history", "dominate", "audit", "experiments", "log", "review"];
+const PAGES = ["index", "queries", "targets", "review", "status", "audit", "history"];
 
 (async () => {
   for (const p of PAGES) {

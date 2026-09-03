@@ -1,130 +1,169 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Targets · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Targets · Reddit GEO Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
 <style>
-.controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
-.controls input{background:var(--panel);border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:6px;font:13px ui-monospace,monospace;flex:1;min-width:220px}
-.controls select{background:var(--panel);border:1px solid var(--line);color:var(--mut);padding:8px 10px;border-radius:6px;font:13px ui-monospace,monospace}
-.trow{border-bottom:1px solid var(--line);padding:10px 0;cursor:pointer}
-.trow:hover{background:var(--panel)}
-.trow .head{display:flex;gap:10px;align-items:center}
-.trow .title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.trow .sr{color:var(--acc);font-size:12px;min-width:130px}
-.trow .rank{color:var(--ink);font-weight:600;min-width:40px;text-align:center}
-.trow .detail{display:none;padding:10px 0 4px 0}
-.trow.open .detail{display:block}
-.qchip{display:inline-block;background:var(--well);border:1px solid var(--line);border-radius:12px;padding:2px 10px;margin:3px 4px 0 0;font-size:12px;color:var(--mut)}
-.qchip b{color:var(--ink);font-weight:600}
-.detail a{font-size:13px}
-.gone{opacity:.5}
-.htab{width:100%;margin-top:10px;font-size:12px}
-.htab td,.htab th{padding:3px 8px 3px 0;text-align:left;color:var(--mut)}
+  .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .qh{width:100%;font-size:13px}
+  .qh td,.qh th{padding:5px 10px 5px 0;border-bottom:1px solid var(--line)}
+  .qh tr:last-child td{border-bottom:0}
+  .qh .pos{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}
+  .qh .pos b{color:var(--ink);font-weight:500}
+  .opp{margin-top:8px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;max-width:70ch}
+  .opp.clamp{max-height:7.8em;overflow:hidden;position:relative}
+  .opp.clamp::after{content:"";position:absolute;inset:auto 0 0 0;height:2.6em;background:linear-gradient(transparent,var(--surface))}
+  @media (max-width:720px){.tools .field.grow{flex-basis:100%}.qh .pos{white-space:normal}.qh td:nth-child(2){min-width:110px}}
 </style></head>
 <body><script src="assets/gate.js"></script>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
-<h1>2 · Targets</h1>
-<div class="sub">Ranked by query coverage: the single best signal is one thread reaching many searches. Click a row to see position history.</div>
-
-<div class="controls">
-  <input id="q" placeholder="search title, subreddit, query…">
-  <select id="fsort"><option value="cov">sort: coverage</option><option value="pos">sort: position</option><option value="first">sort: newest</option></select>
+<div class="page-head">
+  <div>
+    <h1>Targets</h1>
+    <p class="lede">Which Reddit threads rank for those searches, and which did Engain's feed find that no query did? One thread reaching many searches is the strongest signal.</p>
+  </div>
 </div>
 
-<div id="list"></div>
-<div class="sub" id="shown"></div>
+<div class="tabs" role="tablist" aria-label="Where targets come from">
+  <button role="tab" id="tab-rank" aria-selected="true" aria-controls="panel-rank">Ranking in search <span class="c" id="n-rank">…</span></button>
+  <button role="tab" id="tab-feed" aria-selected="false" aria-controls="panel-feed">Found by Engain <span class="c" id="n-feed">…</span></button>
+</div>
+
+<div id="panel-rank" role="tabpanel" aria-labelledby="tab-rank">
+  <div class="tools">
+    <label class="field grow" aria-label="Search threads"><span data-icon></span><input id="q" placeholder="Search title, subreddit or query id"></label>
+    <select class="field" id="fsub" aria-label="Subreddit"><option value="">All subreddits</option></select>
+    <select class="field" id="fshow" aria-label="Show">
+      <option value="">Show: everything</option><option value="ranking">still ranking</option><option value="gone">dropped out</option>
+      <option value="new">new this sweep</option><option value="ours">has our comment</option>
+    </select>
+    <select class="field" id="fsort" aria-label="Sort">
+      <option value="cov">Sort: query coverage</option><option value="pos">Sort: best position</option><option value="first">Sort: newest</option>
+    </select>
+  </div>
+  <div class="rows" id="list"><div style="padding:16px"><div class="sk" style="width:70%"></div><div class="sk" style="width:55%"></div><div class="sk" style="width:62%"></div></div></div>
+  <p class="muted small" id="shown" style="margin-top:8px"></p>
+</div>
+
+<div id="panel-feed" role="tabpanel" aria-labelledby="tab-feed" hidden>
+  <div class="tools">
+    <label class="field grow" aria-label="Search the feed"><span data-icon></span><input id="oq" placeholder="Search title or subreddit"></label>
+    <select class="field" id="okind" aria-label="Kind"><option value="">All kinds</option><option value="new_opportunities">new opportunities</option><option value="seo_opportunities">SEO opportunities</option></select>
+    <select class="field" id="osort" aria-label="Sort"><option value="rel">Sort: relevance</option><option value="new">Sort: newest</option><option value="cm">Sort: most comments</option></select>
+  </div>
+  <div class="rows" id="olist"><div style="padding:16px"><div class="sk" style="width:70%"></div><div class="sk" style="width:55%"></div></div></div>
+  <p class="muted small" id="oshown" style="margin-top:8px"></p>
+</div>
+
+<section>
+  <details class="dx quiet">
+    <summary>Where these come from</summary>
+    <div class="dx-body prose">
+      <p>Ranking threads come from sweeping every query through search and keeping the Reddit results, one dated sighting per query and thread, so the list is derived from evidence and cannot drift. The Engain feed is its mentions and opportunity feed, which finds threads that name us or a rival before any query surfaces them. It is included in the subscription, so it runs first. See the <a href="history.html">sweep history</a> for what each sweep checked and what moved.</p>
+    </div>
+  </details>
+</section>
 </main>
 <script>
 (async () => {
+  const $ = id => document.getElementById(id);
+  document.querySelectorAll('[data-icon]').forEach(e => e.innerHTML = ICON.search);
+
+  const tabs = [...document.querySelectorAll('[role=tab]')];
+  tabs.forEach(t => t.addEventListener('click', () => tabs.forEach(x => { x.setAttribute('aria-selected', x === t); $(x.getAttribute('aria-controls')).hidden = x !== t; })));
+
   try {
-    async function sbPaginated(table, baseQuery, pageSize = 1000) {
-      const allRows = [];
-      let offset = 0;
-      while (true) {
-        const query = baseQuery + (baseQuery ? '&' : '') + `limit=${pageSize}&offset=${offset}`;
-        const rows = await sb(table, query);
-        allRows.push(...rows);
-        if (rows.length < pageSize) break;
-        offset += pageSize;
-      }
-      return allRows;
-    }
-    
-    const [targets, queries, obs, runs] = await Promise.all([
-      sbPaginated('targets', 'select=*&order=thread_id.asc'),
-      sb('queries', 'select=*&limit=5000'),
-      sbPaginated('observations', 'select=obs_date,query_id,thread_id,position,approx&order=id.asc'),
-      sb('runs', 'select=run_date,checked_query_ids&order=run_date.desc&limit=10')
+    const [targets, queries, obs, runs, opps] = await Promise.all([
+      sbAll('targets', 'select=thread_id,url,title,subreddit,query_ids,n_queries,best_pos,first_seen,last_seen,move,still_ranking,is_new,status,our_comments&order=thread_id.asc'),
+      sb('queries', 'select=id,q&limit=1000'),
+      sbAll('observations', 'select=obs_date,engine,query_id,thread_id,position,approx&order=id.asc'),
+      sb('runs', 'select=run_date&order=run_date.desc&limit=1'),
+      sbAll('opportunities', 'select=id,kind,thread_id,subreddit,title,content,score,num_comments,relevance,reasons,posted_utc&order=relevance.desc')
     ]);
-    
-    const qmap = Object.fromEntries(queries.map(q => [q.id, q]));
-    const lastRunDate = runs.length > 0 ? runs[0].run_date : null;
-    
-    const obsHistoryMap = {};
-    obs.forEach(o => {
-      const key = o.thread_id;
-      if (!obsHistoryMap[key]) obsHistoryMap[key] = [];
-      obsHistoryMap[key].push(o);
-    });
-    
-    const T = targets.map(t => {
-      const m = t.url.match(/\/r\/([^/]+)/);
-      t.sub = m ? m[1] : '';
-      t.title = (t.title || '').replace(/^r\/[^:]+\s+on\s+Reddit:\s+/, '') || t.url.split('/comments/')[1].replace(/_/g, ' ');
-      
-      t.history = {};
-      t.query_ids.forEach(qid => {
-        const qObs = obs.filter(o => o.thread_id === t.thread_id && o.query_id === qid);
-        qObs.sort((a, b) => a.obs_date.localeCompare(b.obs_date));
-        t.history[qid] = qObs.map(o => ({
-          date: o.obs_date,
-          pos: o.position,
-          approx: o.approx
-        }));
-      });
-      
-      return t;
-    });
-    
-    const $ = id => document.getElementById(id);
-    
-    function render() {
-      const q = $('q').value.toLowerCase(), so = $('fsort').value;
+    const qtext = Object.fromEntries(queries.map(q => [q.id, q.q]));
+    const lastRun = runs.length ? runs[0].run_date : null;
+
+    /* position history per thread and query, oldest first */
+    const engines = new Set(obs.map(o => o.engine));
+    const hist = {};
+    for (const o of obs) (hist[o.thread_id + '|' + o.query_id] = hist[o.thread_id + '|' + o.query_id] || []).push(o);
+    for (const k in hist) hist[k].sort((a, b) => a.obs_date.localeCompare(b.obs_date));
+
+    const T = targets.map(t => ({ ...t, sub: t.subreddit || subOf(t.url), name: cleanTitle(t.title, t.url) }));
+    const subs = [...new Set(T.map(t => t.sub).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    $('fsub').insertAdjacentHTML('beforeend', subs.map(s => `<option value="${esc(s)}">r/${esc(s)}</option>`).join(''));
+    $('n-rank').textContent = T.length;
+
+    const statusChip = s => s === 'drafted' ? chip('warn', 'drafted') : (s === 'posted' || s === 'done') ? chip('ok', s) : s === 'skip' ? chip('', 'skipped') : '';
+
+    function renderRank() {
+      const q = $('q').value.trim().toLowerCase(), sub = $('fsub').value, show = $('fshow').value, so = $('fsort').value;
       let rows = T.filter(t =>
-        !q || t.title.toLowerCase().includes(q) || t.sub.toLowerCase().includes(q) || t.query_ids.join(' ').toLowerCase().includes(q));
-      
+        (!q || t.name.toLowerCase().includes(q) || t.sub.toLowerCase().includes(q) || t.query_ids.some(id => id.toLowerCase() === q)) &&
+        (!sub || t.sub === sub) &&
+        (!show || (show === 'ranking' && t.still_ranking) || (show === 'gone' && !t.still_ranking) || (show === 'new' && t.is_new) || (show === 'ours' && t.our_comments > 0)));
       const cmp = {
-        cov: (a, b) => (b.n_queries - a.n_queries) || ((a.best_pos || 99) - (b.best_pos || 99)),
-        pos: (a, b) => (a.best_pos || 99) - (b.best_pos || 99),
-        first: (a, b) => b.first_seen.localeCompare(a.first_seen) || (b.n_queries - a.n_queries)
-      };
-      rows.sort(cmp[so]);
-      
-      $('list').innerHTML = rows.map(t => `
-        <div class="trow${t.still_ranking ? '' : ' gone'}">
-          <div class="head">
-            <span class="sr">r/${t.sub}</span>
-            <span class="title">${t.title}</span>
-            <span class="rank">${t.n_queries}q</span>
-            ${pill(t.status)}
+        cov: (a, b) => b.n_queries - a.n_queries || (a.best_pos ?? 99) - (b.best_pos ?? 99),
+        pos: (a, b) => (a.best_pos ?? 99) - (b.best_pos ?? 99) || b.n_queries - a.n_queries,
+        first: (a, b) => String(b.first_seen).localeCompare(String(a.first_seen)) || b.n_queries - a.n_queries
+      }[so];
+      rows = rows.slice().sort(cmp);
+      $('list').innerHTML = rows.length ? rows.slice(0, 400).map(t => `
+        <details class="row ${t.still_ranking ? '' : 'faded'}">
+          <summary>
+            <span class="sub">r/${esc(t.sub || '?')}</span>
+            <span class="title">${esc(t.name)}</span>
+            <span class="side">${t.is_new ? chip('info', 'new') : ''}${t.still_ranking ? '' : chip('', 'dropped out')}${chip('', `${t.n_queries} ${t.n_queries === 1 ? 'query' : 'queries'}`)}${t.best_pos != null ? chip('ink', '#' + t.best_pos) : ''}${statusChip(t.status)}${t.our_comments > 0 ? chip('ok', `${t.our_comments} of ours`) : ''}</span>
+          </summary>
+          <div class="body">
+            <div style="overflow-x:auto"><table class="qh"><tbody>${t.query_ids.map(id => {
+              const h = hist[t.thread_id + '|' + id] || [];
+              return `<tr><td class="id">${esc(id)}</td><td>${esc(qtext[id] || '')}</td><td class="pos">${h.map(o => `${esc(o.obs_date.slice(5))}${engines.size > 1 && o.engine ? ' <span class="tiny">' + esc(o.engine) + '</span>' : ''} <b>${o.position != null ? '#' + o.position : 'seen'}</b>${o.approx ? ' <span class="tiny">approx</span>' : ''}`).join(' · ') || 'no sightings'}</td></tr>`;
+            }).join('')}</tbody></table></div>
+            <div class="flex" style="margin-top:10px"><a href="${esc(t.url)}" class="ext" target="_blank" rel="noopener">Open thread</a><span class="muted small">first seen ${esc(fmtDate(t.first_seen))}, last seen ${esc(fmtDate(t.last_seen))}</span></div>
           </div>
-          <div class="detail">
-            ${t.query_ids.map(id => `<span class="qchip"><b>${id}</b></span>`).join('')}
-            <table class="htab"><tr><th>query</th><th>position history</th></tr>
-            ${t.query_ids.map(id => `<tr><td>${id}</td><td>${(t.history[id] || []).map(h => `${h.date.slice(5)}: ${h.pos ?? '–'}${h.approx ? '<i> approx</i>' : ''}`).join('  →  ')}</td></tr>`).join('')}
-            </table>
-            <div style="margin-top:8px"><a href="${t.url}" rel="noopener" target="_blank">open thread ↗</a></div>
-          </div>
-        </div>`).join('');
-      
-      $('shown').textContent = rows.length + ' of ' + T.length + ' shown · data from ' + runs.length + ' run(s), latest ' + (lastRunDate || 'N/A');
-      
-      [...document.querySelectorAll('.trow')].forEach(r => r.addEventListener('click', e => {
-        if (e.target.tagName !== 'A') r.classList.toggle('open');
-      }));
+        </details>`).join('')
+        : '<div class="empty"><b>No thread matches.</b>Loosen the search or the filters.</div>';
+      $('shown').textContent = `${Math.min(rows.length, 400)} of ${T.length} shown` + (lastRun ? ` · latest sweep ${lastRun}` : '');
     }
-    
-    ['q', 'fsort'].forEach(id => $(id).addEventListener('input', render));
-    render();
-  } catch(err) {
-    fail(err, 'targets');
+    ['q', 'fsub', 'fshow', 'fsort'].forEach(id => $(id).addEventListener('input', renderRank));
+    renderRank();
+
+    /* ── Engain feed ─────────────────────────────────────────────────── */
+    const O = opps.map(o => ({ ...o, name: cleanTitle(o.title, ''), sub: o.subreddit || '' }));
+    $('n-feed').textContent = O.length;
+    function renderFeed() {
+      const q = $('oq').value.trim().toLowerCase(), kind = $('okind').value, so = $('osort').value;
+      let rows = O.filter(o => (!q || o.name.toLowerCase().includes(q) || o.sub.toLowerCase().includes(q)) && (!kind || o.kind === kind));
+      const cmp = {
+        rel: (a, b) => (b.relevance ?? -1) - (a.relevance ?? -1) || (b.num_comments ?? 0) - (a.num_comments ?? 0),
+        new: (a, b) => String(b.posted_utc).localeCompare(String(a.posted_utc)),
+        cm: (a, b) => (b.num_comments ?? 0) - (a.num_comments ?? 0)
+      }[so];
+      rows = rows.slice().sort(cmp);
+      $('olist').innerHTML = rows.length ? rows.map(o => {
+        const text = (o.content || '').trim(); const long = text.length > 600;
+        return `
+        <details class="row">
+          <summary>
+            <span class="sub">r/${esc(o.sub || '?')}</span>
+            <span class="title">${esc(o.name)}</span>
+            <span class="side">${o.relevance != null ? chip(o.relevance >= 80 ? 'ok' : '', `relevance ${o.relevance}`) : ''}${o.num_comments != null ? chip('', `${fmtN(o.num_comments)} comments`) : ''}</span>
+          </summary>
+          <div class="body">
+            ${text ? `<div class="opp ${long ? 'clamp' : ''}" data-op>${esc(text)}</div>${long ? '<button class="btn small" style="margin-top:8px" data-more>Show full post</button>' : ''}` : '<p class="muted small">Title only, no post body.</p>'}
+            ${(o.reasons || []).length ? `<p class="muted small" style="margin-top:10px">Why Engain flagged it: ${o.reasons.map(esc).join(', ')}</p>` : ''}
+            <div class="flex" style="margin-top:10px">${o.thread_id ? `<a href="https://www.reddit.com/comments/${esc(o.thread_id)}" class="ext" target="_blank" rel="noopener">Open thread</a>` : ''}<span class="muted small">${o.posted_utc ? 'posted ' + esc(fmtDate(o.posted_utc)) : ''} · ${esc(String(o.kind || '').replace('_', ' '))}</span></div>
+          </div>
+        </details>`; }).join('')
+        : '<div class="empty"><b>Nothing in the feed matches.</b>Run <code>engain-sync.py</code> to pull the latest opportunities.</div>';
+      $('olist').querySelectorAll('[data-more]').forEach(b => b.addEventListener('click', () => {
+        const op = b.previousElementSibling; op.classList.toggle('clamp'); b.textContent = op.classList.contains('clamp') ? 'Show full post' : 'Show less';
+      }));
+      $('oshown').textContent = `${rows.length} of ${O.length} shown`;
+    }
+    ['oq', 'okind', 'osort'].forEach(id => $(id).addEventListener('input', renderFeed));
+    renderFeed();
+  } catch (err) {
+    fail(err, 'the target list');
   }
 })();
 </script></body></html>

@@ -1,23 +1,109 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Audit · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css"></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Audit · Reddit GEO Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .sov td.b{width:50%}
+  .cites{list-style:none;margin:10px 0 0;padding:0;font-size:13.5px}
+  .cites li{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-top:1px solid var(--line)}
+  .cites li:first-child{border-top:0}
+  .ans{font-size:14.5px;line-height:1.6;max-width:70ch}
+  .facts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted);margin-top:10px}
+  .facts b{color:var(--text);font-weight:500}
+  @media (max-width:720px){.page-head .tools{width:100%}.page-head .tools .field{flex:1}}
+</style></head>
 <body><script src="assets/gate.js"></script>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
-<h1>5 · Audit</h1>
-<div class="sub">Did the answers change after we posted? Tracks whether Geonode appears in search results for canonical queries.</div>
+<div class="page-head">
+  <div>
+    <h1>Audit</h1>
+    <p class="lede">Do the AI engines name us yet when a buyer asks? A baseline is recorded before we post, then the same canonical queries are asked again each month.</p>
+  </div>
+  <div class="tools">
+    <select class="field" id="feng" aria-label="Engine"><option value="">All engines</option></select>
+    <select class="field" id="fq" aria-label="Query"><option value="">All queries</option></select>
+  </div>
+</div>
 
-<h2>Runs <span class="pill" id="count"></span></h2>
-<table id="tbl"></table>
+<section style="margin-top:0">
+  <div class="section-head"><h2>What the engines answer</h2><span class="count" id="acount"></span></div>
+  <div class="rows" id="list"><div style="padding:16px"><div class="sk" style="width:70%"></div><div class="sk" style="width:55%"></div></div></div>
+</section>
+
+<section>
+  <div class="section-head"><h2>Share of voice on Reddit</h2><span class="count" id="sovmeta"></span></div>
+  <div class="tablewrap"><table class="sov" id="sov"></table></div>
+</section>
+
+<section>
+  <details class="dx quiet">
+    <summary>How to read this</summary>
+    <div class="dx-body prose">
+      <p>Engines cite the thread, not the comment inside it, so which threads we choose matters more than how high our comment sits. Share of voice is a dated measurement from Engain's mentions feed, and its caveat travels with it. Nothing on this page is typed in by hand.</p>
+    </div>
+  </details>
+</section>
 </main>
 <script>
 (async () => {
+  const $ = id => document.getElementById(id);
   try {
-    const audits = await sb('audits', 'select=audit_date,engine,query_id,we_appear,thread_cited&order=audit_date.desc&limit=1000');
-    document.getElementById('count').textContent = audits.length + ' runs';
-    document.getElementById('tbl').innerHTML = audits.length
-      ? '<tr><th>date</th><th>engine</th><th>query</th><th>we appear</th><th>cited source</th></tr>' +
-        audits.map(r => `<tr><td class="num">${r.audit_date || ''}</td><td>${r.engine || ''}</td><td>${r.query_id || ''}</td><td>${r.we_appear ? '✓' : '—'}</td><td class="num">${r.thread_cited || ''}</td></tr>`).join('')
-      : '<tr><td colspan="5" class="num">No runs yet.</td></tr>';
-  } catch(err) {
-    fail(err, 'audit');
+    const [audits, cites, queries, sov] = await Promise.all([
+      sb('audits', 'select=id,audit_date,engine,query_id,we_appear,thread_cited,model,prompt,answer,web_search,n_citations,brands_named&order=audit_date.desc,id.desc&limit=1000'),
+      sbAll('audit_citations', 'select=audit_id,url,domain,thread_id,is_reddit,is_ours,position&order=id.asc'),
+      sb('queries', 'select=id,q,canonical&limit=1000'),
+      sb('sov_baseline', 'select=brand,mentions,caveat,measured_on,source&order=mentions.desc&limit=100')
+    ]);
+    const qtext = Object.fromEntries(queries.map(q => [q.id, q.q]));
+    const byAudit = {};
+    for (const c of cites) (byAudit[c.audit_id] = byAudit[c.audit_id] || []).push(c);
+
+    const engines = [...new Set(audits.map(a => a.engine).filter(Boolean))].sort();
+    $('feng').insertAdjacentHTML('beforeend', engines.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join(''));
+    const qids = [...new Set(audits.map(a => a.query_id).filter(Boolean))].sort();
+    $('fq').insertAdjacentHTML('beforeend', qids.map(id => `<option value="${esc(id)}">${esc(id)} · ${esc((qtext[id] || '').slice(0, 50))}</option>`).join(''));
+
+    function render() {
+      const eng = $('feng').value, qid = $('fq').value;
+      const rows = audits.filter(a => (!eng || a.engine === eng) && (!qid || a.query_id === qid));
+      $('acount').textContent = audits.length ? `${rows.length} of ${audits.length} runs` : '';
+      $('list').innerHTML = rows.length ? rows.map(a => {
+        const cs = byAudit[a.id] || [];
+        const brands = (a.brands_named || []).filter(Boolean);
+        return `
+        <details class="row">
+          <summary>
+            <span class="sub">${esc(a.engine || '?')}</span>
+            <span class="title">${esc(qtext[a.query_id] || a.prompt || a.query_id || '')}</span>
+            <span class="side">${a.we_appear ? chip('ok', 'names us') : chip('', 'not named')}${a.n_citations != null ? chip('info', `${a.n_citations} citations`) : ''}<span class="muted tiny">${esc(fmtDate(a.audit_date))}</span></span>
+          </summary>
+          <div class="body">
+            ${a.answer ? `<div class="ans">${esc(a.answer)}</div>` : '<p class="muted small">No answer text recorded.</p>'}
+            <div class="facts">
+              <span>Brands named <b>${brands.length ? esc(brands.join(', ')) : 'none recorded'}</b></span>
+              ${a.model ? `<span>Model <b>${esc(a.model)}</b></span>` : ''}
+              <span>Web search <b>${a.web_search == null ? 'unknown' : a.web_search ? 'on' : 'off'}</b></span>
+              ${a.prompt ? `<span>Asked <b>${esc(a.prompt)}</b></span>` : ''}
+            </div>
+            ${cs.length ? `<ul class="cites">${cs.map(c => `<li><a href="${esc(c.url)}" class="ext" target="_blank" rel="noopener">${esc(c.domain || c.url)}</a>${c.is_ours ? chip('ok', 'ours') : ''}${c.is_reddit ? chip('info', 'reddit') : ''}${c.position != null ? `<span class="muted tiny">position ${c.position}</span>` : ''}</li>`).join('')}</ul>`
+              : '<p class="muted small" style="margin-top:10px">No citations recorded for this run.</p>'}
+          </div>
+        </details>`; }).join('')
+        : (audits.length ? '<div class="empty"><b>No run matches.</b>Change the engine or query filter.</div>'
+          : '<div class="empty"><b>No audit runs yet.</b><code>treg-record.py</code> records what each engine answers for the canonical queries.</div>');
+    }
+    ['feng', 'fq'].forEach(id => $(id).addEventListener('input', render));
+    render();
+
+    /* Share of voice is a dated measurement read from sov_baseline, never a
+       number typed into this page. Its caveat travels with it. */
+    const max = sov.length ? Math.max(...sov.map(r => r.mentions || 0)) : 0;
+    $('sovmeta').textContent = sov.length ? `${esc(sov[0].source)}, measured ${esc(sov[0].measured_on)}` : '';
+    $('sov').innerHTML = sov.length
+      ? '<thead><tr><th>Brand</th><th class="num">Mentions</th><th class="b"></th></tr></thead><tbody>' +
+        sov.map(r => `<tr><td>${esc(r.brand)}${r.brand === 'geonode.com' ? ' ' + chip('ink', 'us') : ''}${r.caveat ? `<div class="muted tiny">${esc(r.caveat)}</div>` : ''}</td><td class="num">${fmtN(r.mentions)}</td><td class="b"><span class="bar ${r.brand === 'geonode.com' ? 'us' : ''}" style="width:${max ? (r.mentions / max * 100).toFixed(0) : 0}%"></span></td></tr>`).join('') + '</tbody>'
+      : '<tbody><tr><td class="mute">No share-of-voice measurement recorded yet.</td></tr></tbody>';
+  } catch (err) {
+    fail(err, 'the audit');
   }
 })();
 </script></body></html>

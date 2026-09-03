@@ -1,75 +1,113 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Status · Reddit GEO Ops</title><link rel="stylesheet" href="assets/style.css">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Status · Reddit GEO Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
 <style>
-.stg{display:inline-block;border-radius:11px;padding:2px 9px;font-size:11px;border:1px solid var(--line);color:var(--mut);white-space:nowrap}
-.stg.live{border-color:#2f7d5a;color:#8ee0b4}
-.stg.wait{border-color:#7a6a2a;color:#e8d48a}
-.stg.bad{border-color:#7d3030;color:#ffb0b0}
-.arow{border-bottom:1px solid var(--line);padding:11px 0}
-.arow .head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.arow .sr{color:var(--acc);font-size:12px;min-width:120px}
-.arow .title{flex:1;min-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.arow .meta{color:var(--mut);font-size:12px;margin-top:4px}
-.arow a{font-size:12px}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);margin:10px 0 0}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend i{width:8px;height:8px;border-radius:50%;background:var(--line-strong);display:inline-block}
+  .facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13.5px;margin-top:8px}
+  .facts dt{color:var(--muted)}.facts dd{margin:0}
+  .row .why{font-size:14px;color:var(--text)}
+  @media (max-width:720px){.strip{grid-template-columns:repeat(2,1fr)}}
 </style></head>
-<body><script src="assets/gate.js"></script><script src="assets/config.js"></script><script src="assets/app.js"></script><main>
-<h1>Status</h1>
+<body><script src="assets/gate.js"></script>
+<script src="assets/config.js"></script><script src="assets/app.js"></script><main>
+<div class="page-head">
+  <div>
+    <h1>Status</h1>
+    <p class="lede">What actually happened to each thread we drafted for? The stage is derived from what exists, never from a flag someone remembered to set.</p>
+  </div>
+  <div class="tools">
+    <select class="field" id="show" aria-label="Show">
+      <option value="">Show: everything</option><option value="human">needs a human</option><option value="engain">waiting on Engain</option>
+      <option value="live">live on Reddit</option><option value="bad">failed or removed</option>
+    </select>
+  </div>
+</div>
 
-<div id="list"></div>
-<div class="sub" id="foot"></div>
+<div class="strip" id="strip">
+  <div><div class="v" id="s-review">…</div><div class="l">waiting for review</div></div>
+  <div><div class="v" id="s-sent">…</div><div class="l">sent, not published yet</div></div>
+  <div><div class="v" id="s-live">…</div><div class="l">live on Reddit</div></div>
+  <div><div class="v" id="s-bad">…</div><div class="l">failed or removed</div></div>
+</div>
+<div class="legend" aria-hidden="true"><span><i></i>draft</span><span><i></i>approved</span><span><i></i>cleared</span><span><i></i>sent</span><span><i></i>published</span><span><i></i>upvotes</span><span><i></i>done</span></div>
+
+<section>
+  <div class="rows" id="list"><div style="padding:16px"><div class="sk" style="width:70%"></div><div class="sk" style="width:55%"></div><div class="sk" style="width:62%"></div></div></div>
+  <p class="muted small" id="foot" style="margin-top:8px"></p>
+</section>
+
+<section>
+  <details class="dx quiet">
+    <summary>Why "sent" is not "published"</summary>
+    <div class="dx-body prose">
+      <p>Engain schedules. It posts through its own pool of aged Reddit accounts, and the delay between sending and publishing is the anti-detection mechanism, not a fault. There is no publish-now route, so a comment sitting at "sent" for most of a day is early, not stuck. The thing to watch for is a task that ends up cancelled: it charges a credit and never gets a Reddit URL. Removal by a moderator is separate and rarer.</p>
+    </div>
+  </details>
+</section>
 </main>
 <script>
 (async () => {
+  const $ = id => document.getElementById(id);
   try {
-    const rows = await sb('thread_activity',
-      'select=*&stage=neq.no_draft&order=published_at.desc.nullslast,thread_id.asc&limit=500');
+    const rows = await sbAll('thread_activity', 'select=*&stage=neq.no_draft&order=thread_id.asc');
 
-    const $ = id => document.getElementById(id);
+    const GROUP = s => (['draft_pending_review', 'approved_not_cleared', 'cleared_not_sent'].includes(s)) ? 'human'
+      : s === 'waiting_on_engain' ? 'engain' : (s in STAGE_BAD) ? 'bad' : 'live';
+    const ORDER = { human: 0, engain: 1, live: 2, bad: 3 };
+    const when = r => r.published_at || r.submitted_at || '';
 
-    const LABEL = {
-      draft_pending_review:       ['wait', 'draft'],
-      approved_not_cleared:       ['wait', 'approved'],
-      cleared_not_sent:           ['wait', 'cleared'],
-      waiting_on_engain:          ['wait', 'sent'],
-      published_awaiting_upvotes: ['live', 'published'],
-      upvotes_running:            ['live', 'upvotes'],
-      upvotes_delivered:          ['live', 'done'],
-      send_failed:                ['bad',  'failed'],
-      removed:                    ['bad',  'removed']
-    };
+    /* "Live" means live. A task sitting with Engain has not been published and
+       is never counted as if it were on Reddit. That false all-clear shipped once. */
+    const n = s => rows.filter(r => r.stage === s).length;
+    $('s-review').textContent = fmtN(n('draft_pending_review') + n('approved_not_cleared') + n('cleared_not_sent'));
+    $('s-sent').textContent = fmtN(n('waiting_on_engain'));
+    $('s-live').textContent = fmtN(n('published_awaiting_upvotes') + n('upvotes_running') + n('upvotes_delivered'));
+    $('s-bad').textContent = fmtN(n('send_failed') + n('removed'));
 
-    function meta(r) {
-      let info = '';
-      if (r.reddit_url) {
-        info += `<a href="${r.reddit_url}" target="_blank" rel="noopener">comment ↗</a> · `;
-      }
-      if (r.upvotes_delivered || r.upvotes_ordered) {
-        info += `${r.upvotes_delivered || 0}/${r.upvotes_ordered} upvotes`;
-      }
-      return info;
+    function facts(r) {
+      const f = [];
+      if (r.rule_verdict) f.push(['Rule check', `${r.rule_verdict}${r.removal_risk != null ? ', removal risk ' + r.removal_risk + ' of 100' : ''}`]);
+      if (r.upvotes_suggested != null) f.push(['Upvotes proposed', String(r.upvotes_suggested)]);
+      if (r.task_status) f.push(['Engain task', `${r.task_status}${r.task_id ? ', id ' + r.task_id : ''}`]);
+      if (r.published_at) f.push(['Published', `${fmtDate(r.published_at)}, ${ago(r.published_at)}`]);
+      if (r.order_id) f.push(['Upvotes', `${r.upvotes_delivered ?? 0} of ${r.upvotes_ordered} delivered${r.order_status ? ', ' + r.order_status : ''}`]);
+      if (r.credits_used != null) f.push(['Credits used', String(r.credits_used)]);
+      return f.length ? `<dl class="facts">${f.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '';
     }
 
-    $('list').innerHTML = rows.map(r => {
-      const [cls, label] = LABEL[r.stage] || ['', r.stage];
-      return `<div class="arow">
-        <div class="head">
-          <span class="sr">r/${r.subreddit || '?'}</span>
-          <span class="title">${(r.title || r.thread_id).replace(/^r\/[^:]+\s+on\s+Reddit:\s+/, '')}</span>
-          <span class="stg ${cls}">${label}</span>
-        </div>
-        <div class="meta">${meta(r)} <a href="${r.thread_url}" target="_blank" rel="noopener">thread ↗</a></div>
-      </div>`;
-    }).join('') || '<div class="card">No thread has reached the draft stage yet.</div>';
-
-    const sent_not_pub = rows.filter(r => r.stage === 'waiting_on_engain').length;
-    // Plain text, assigned with textContent — an earlier version built a <span>
-    // here and assigned it the same way, which prints the tag on screen.
-    let foot = `${rows.length} thread(s) · ${new Date().toISOString().slice(0,16).replace('T',' ')}Z`;
-    if (sent_not_pub > 0) {
-      foot += ` · ${sent_not_pub} sent, not published yet — no upvotes until they are, which is normal`;
+    function render() {
+      const show = $('show').value;
+      const list = rows.filter(r => !show || GROUP(r.stage) === show)
+        .sort((a, b) => ORDER[GROUP(a.stage)] - ORDER[GROUP(b.stage)] || String(when(b)).localeCompare(String(when(a))) || a.thread_id.localeCompare(b.thread_id));
+      $('list').innerHTML = list.length ? list.map(r => `
+        <details class="row">
+          <summary>
+            <span class="sub">r/${esc(r.subreddit || '?')}</span>
+            <span class="title">${esc(cleanTitle(r.title, r.thread_url) || r.thread_id)}</span>
+            <span class="side">${track(r.stage)}${chip(stageKind(r.stage), stageLabel(r.stage))}</span>
+          </summary>
+          <div class="body">
+            <div class="why">${esc(stageWords(r.stage).charAt(0).toUpperCase() + stageWords(r.stage).slice(1))}.</div>
+            ${facts(r)}
+            <div class="flex" style="margin-top:10px">
+              ${r.reddit_url ? `<a href="${esc(r.reddit_url)}" class="ext" target="_blank" rel="noopener">Our comment</a>` : ''}
+              <a href="${esc(r.thread_url)}" class="ext" target="_blank" rel="noopener">Thread</a>
+              ${GROUP(r.stage) === 'human' ? '<a href="review.html">Go to Review</a>' : ''}
+            </div>
+          </div>
+        </details>`).join('')
+        : (rows.length ? '<div class="empty"><b>Nothing in this group.</b>Change the filter to see the rest.</div>'
+          : '<div class="empty"><b>No thread has reached the draft stage yet.</b>Threads appear here once <code>write-comment.py</code> has drafted for them.</div>');
+      const sent = n('waiting_on_engain');
+      $('foot').textContent = `${list.length} of ${rows.length} thread${rows.length === 1 ? '' : 's'} · updated ${new Date().toISOString().slice(0, 16).replace('T', ' ')}Z` +
+        (sent ? ` · ${sent} sent, not published yet, which is normal` : '');
     }
-    $('foot').textContent = foot;
+    $('show').addEventListener('input', render);
+    render();
   } catch (err) {
-    fail(err, 'status');
+    fail(err, 'the status list');
   }
 })();
 </script></body></html>

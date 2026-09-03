@@ -1,5 +1,8 @@
 {
   "cleanUrls": true,
   "buildCommand": "node build.js",
-  "outputDirectory": "."
+  "outputDirectory": ".",
+  "rewrites": [
+    { "source": "/api/agent/:path*", "destination": "/api/agent" }
+  ]
 }

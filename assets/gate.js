@@ -22,15 +22,16 @@
 
   var css = document.createElement("style");
   css.textContent =
-    '#gate{position:fixed;inset:0;z-index:9999;background:#0f1114;display:flex;' +
-    'align-items:center;justify-content:center;font:14px ui-monospace,SFMono-Regular,Menlo,monospace}' +
+    '#gate{position:fixed;inset:0;z-index:9999;background:#f5f4f0;display:flex;' +
+    'align-items:center;justify-content:center;font:15px/1.5 "Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;color:#2c2e33}' +
     '#gate .box{text-align:center;max-width:320px;padding:0 20px}' +
-    '#gate h1{color:#e8e8e8;font-size:15px;margin:0 0 6px;letter-spacing:.02em}' +
-    '#gate p{color:#b0b5bd;font-size:12px;line-height:1.5;margin:0 0 18px}' +
-    '#gate input{width:150px;text-align:center;letter-spacing:.5em;font:20px ui-monospace,monospace;' +
-    'padding:12px 10px 12px 18px;border-radius:8px;border:1px solid #3a3f47;background:#181a1e;color:#e8e8e8}' +
-    '#gate input:focus{outline:2px solid #8ecbff;outline-offset:2px}' +
-    '#gate .err{color:#ff9d9d;font-size:12px;height:16px;margin-top:10px}';
+    '#gate h1{color:#17181a;font-size:16px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}' +
+    '#gate p{color:#5b5f66;font-size:13.5px;margin:0 0 18px}' +
+    '#gate label{display:block;color:#5b5f66;font-size:13px;margin:0 0 8px}' +
+    '#gate input{width:150px;text-align:center;letter-spacing:.5em;font:22px ui-monospace,SFMono-Regular,Menlo,monospace;' +
+    'padding:12px 10px 12px 18px;border-radius:8px;border:1px solid #b9b5ab;background:#fff;color:#17181a}' +
+    '#gate input:focus{outline:2px solid #1a56c4;outline-offset:2px}' +
+    '#gate .err{color:#b3261e;font-size:13px;height:18px;margin-top:10px}';
   document.head.appendChild(css);
 
   var el = document.createElement("div");
@@ -38,8 +39,8 @@
   el.innerHTML =
     '<div class="box">' +
       '<h1>Reddit GEO Ops</h1>' +
-      '<p>Internal dashboard. Enter the 4-digit code.</p>' +
-      '<label for="gate-pin" class="err" style="display:block;height:auto;margin:0 0 8px;color:#b0b5bd">Passcode</label>' +
+      '<p>Internal dashboard. Enter the four digit code.</p>' +
+      '<label for="gate-pin">Passcode</label>' +
       '<input id="gate-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">' +
       '<div class="err" id="gate-err" role="status" aria-live="polite"></div>' +
     '</div>';
