@@ -3,6 +3,15 @@
   "buildCommand": "node build.js",
   "outputDirectory": ".",
   "rewrites": [
-    { "source": "/api/agent/:path*", "destination": "/api/agent" }
+    {
+      "source": "/api/agent/:path*",
+      "destination": "/api/agent"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/pullback",
+      "schedule": "0 * * * *"
+    }
   ]
 }

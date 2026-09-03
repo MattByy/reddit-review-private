@@ -96,16 +96,18 @@ const HELP = {
     "GET  /api/agent/threads":              "threads worth commenting on. ?source=ranking|engain&subreddit=&status=&limit",
     "GET  /api/agent/threads/:id":          "one thread with everything known about it: ranking, Engain view, drafts, tasks, stage",
     "POST /api/agent/threads":              "register a thread you found yourself {id,url,title,subreddit,score,num_comments}",
-    "GET  /api/agent/drafts":               "drafts. ?status=pending|approved|edited|rejected|posted&kind=comment|reply|post&thread_id=&limit",
+    "GET  /api/agent/drafts":               "drafts. ?status=pending|approved|edited|rejected|posted&kind=comment|reply|post&mode=comment|reply|sharpen&thread_id=&needs_agent=true&limit",
     "GET  /api/agent/drafts/:id":           "one draft with its revisions, rule checks and vendor task",
-    "POST /api/agent/drafts":               "file a draft for human review {kind,thread_id,parent_url,subreddit,title,body,...}",
-    "PATCH /api/agent/drafts/:id":          "revise your own draft while it is still pending",
+    "POST /api/agent/drafts":               "file a draft for human review {kind,mode,thread_id,parent_url,subreddit,title,body,models,sharpen,thread_context,...}",
+    "PATCH /api/agent/drafts/:id":          "revise a pending draft: yours, or one the reviewer sent back (needs_agent). {body,models,sharpen,...} clears redirect_pending",
     "POST /api/agent/drafts/:id/withdraw":  "pull a pending draft {reason}",
     "POST /api/agent/check":                "dry-run the copy rules on a body {body,kind}",
-    "GET  /api/agent/lessons":              "what the reviewer changed and rejected, and why. Read before writing.",
+    "GET  /api/agent/lessons":              "what the reviewer changed, rejected and sent back (redirects), and why. Read before writing.",
+    "GET  /api/agent/our-comments":         "permalinks of comments WE published. A reply's parent must never be one of these.",
     "GET  /api/agent/status":               "where every thread stands. ?stage=draft|approved|cleared|sent|published|upvotes|done|failed|removed",
   },
-  not_here: "approve, clear-to-send, post and upvote. Humans and engain-post.py only.",
+  not_here: "approve, clear-to-send, post, upvote and pull-back. Humans on /review and engain-post.py only.",
+  modes: "comment = top-level answer. reply = answer under ONE real stranger's comment (parent_url, and send thread_context.parent so the reviewer sees it). sharpen = you ran a small model to simulate the sub's reaction and used it as PRIVATE context; put it in `sharpen`, never in the body. Never file both sides of a conversation.",
 };
 
 async function getQueries(sp) {
@@ -160,6 +162,17 @@ async function getThread(id) {
   };
 }
 
+const commentId = u => { const m = String(u || "").match(/\/comments\/[A-Za-z0-9]+\/[^/?#]+\/([A-Za-z0-9]+)/); return m ? m[1].toLowerCase() : null; };
+async function ourComments() {
+  const rows = await sb("GET", "engain_tasks?select=id,thread_id,reddit_url,published_at&reddit_url=not.is.null&order=published_at.desc");
+  return rows.map(r => ({ task: r.id, thread: r.thread_id, url: r.reddit_url, comment_id: commentId(r.reddit_url), published_at: r.published_at }));
+}
+async function isOurs(url) {
+  const cid = commentId(url);
+  if (!cid) return false;
+  return (await ourComments()).some(c => c.comment_id === cid);
+}
+
 async function postThread(body) {
   const id = threadId(body.id || body.thread_id);
   if (!id || !/^[a-z0-9]{5,8}$/i.test(id)) bad(422, "id must be the Reddit post id (the 6-7 characters after /comments/), with or without t3_");
@@ -172,13 +185,16 @@ async function postThread(body) {
   return { thread: saved, note: "archived/locked are unknown until a screen runs (fetch-thread.py). A draft on an archived thread is blocked at post time." };
 }
 
-const DRAFT_COLS = "id,kind,thread_id,parent_url,subreddit,title,strategy,format,body,body_original,status,source,agent_note," +
-                   "upvotes_suggested,upvotes_reason,prompt_version,reject_reason,send_cleared_at,created_at,updated_at,reviewed_at,posted_at";
+const DRAFT_COLS = "id,kind,mode,thread_id,parent_url,subreddit,title,strategy,format,body,body_original,status,source,agent_note," +
+                   "upvotes_suggested,upvotes_reason,prompt_version,reject_reason,send_cleared_at,created_at,updated_at,reviewed_at,posted_at," +
+                   "models,sharpen,redirect_pending,redirected_at,redirect_note,gate_failed_at,gate_failure,pullback_requested_at,parent_confirmed_by";
 
 async function getDrafts(sp) {
   const parts = [`select=${DRAFT_COLS}`, "order=created_at.desc", `limit=${limitOf(sp)}`, `offset=${offsetOf(sp)}`];
-  for (const k of ["status", "kind", "source", "thread_id"]) if (sp.get(k)) parts.push(`${k}=eq.${enc(sp.get(k))}`);
-  return { drafts: await sb("GET", `drafts?${parts.join("&")}`) };
+  for (const k of ["status", "kind", "mode", "source", "thread_id"]) if (sp.get(k)) parts.push(`${k}=eq.${enc(sp.get(k))}`);
+  if (sp.get("needs_agent") === "true") parts.push("redirect_pending=eq.true");
+  return { drafts: await sb("GET", `drafts?${parts.join("&")}`),
+           note: sp.get("needs_agent") === "true" ? "these were sent back by the reviewer (redirect_note says why, mode says how). PATCH a new body to deliver; approval is refused until you do." : undefined };
 }
 
 async function getDraft(id) {
@@ -186,7 +202,7 @@ async function getDraft(id) {
     sb("GET", `drafts?select=${DRAFT_COLS},thread_context&id=eq.${enc(id)}`),
     sb("GET", `draft_revisions?select=at,editor,action,body_before,body_after,note&draft_id=eq.${enc(id)}&order=at.asc`),
     sb("GET", `rule_checks?select=verdict,removal_risk,violated_rules,summary,checked_at&draft_id=eq.${enc(id)}&order=checked_at.desc`),
-    sb("GET", `engain_tasks?select=id,task_type,status,reddit_url,credits_used,submitted_at,published_at,error&draft_id=eq.${enc(id)}`),
+    sb("GET", `engain_tasks?select=id,task_type,status,reddit_url,credits_used,submitted_at,published_at,error,cancel_requested_at,cancelled_at,cancel_result&draft_id=eq.${enc(id)}`),
   ]);
   if (!drafts.length) bad(404, `draft ${id} not found`);
   return { draft: drafts[0], revisions, rule_checks: checks, tasks };
@@ -195,8 +211,13 @@ async function getDraft(id) {
 function shapeDraft(body) {
   const kind = String(body.kind || "comment").toLowerCase();
   if (!["comment", "reply", "post"].includes(kind)) bad(422, "kind must be comment, reply or post");
+  const mode = String(body.mode || (kind === "reply" ? "reply" : "comment")).toLowerCase();
+  if (!["comment", "reply", "sharpen"].includes(mode)) bad(422, "mode must be comment, reply or sharpen");
+  if (kind === "post" && mode !== "comment") bad(422, "a post has no mode");
+  if (kind === "reply" && mode === "comment") bad(422, "a reply's mode is reply (or sharpen)");
+  if (kind === "comment" && mode === "reply") bad(422, "mode reply needs kind reply and a parent_url");
   const d = {
-    kind,
+    kind, mode,
     thread_id: kind === "post" ? null : threadId(body.thread_id),
     parent_url: kind === "reply" ? String(body.parent_url || "").trim() : null,
     subreddit: kind === "post" ? String(body.subreddit || "").replace(/^r\//, "").trim() || null : null,
@@ -211,6 +232,10 @@ function shapeDraft(body) {
 }
 
 function optional(body, out) {
+  for (const k of ["models", "sharpen"]) if (body[k] !== undefined) {
+    if (body[k] !== null && typeof body[k] !== "object") bad(422, `${k} must be an object`);
+    out[k] = body[k];
+  }
   if (body.upvotes_suggested !== undefined) {
     const n = parseInt(body.upvotes_suggested, 10);
     if (!Number.isInteger(n) || n < 0 || n > 7) bad(422, "upvotes_suggested must be 0 to 7. The cap is 3 to 7, dripped; bursts drew removals.");
@@ -231,8 +256,17 @@ async function postDraft(body) {
     if (!t.length) bad(422, `thread ${d.thread_id} is not registered. POST /api/agent/threads first so the reviewer sees what you saw.`);
     if (t[0].archived === true || t[0].locked === true) bad(409, `thread ${d.thread_id} is ${t[0].archived ? "archived" : "locked"}. Nothing can be posted there.`);
   }
+  if (d.kind === "reply" && await isOurs(d.parent_url)) {
+    bad(422, "parent_url is one of OUR OWN published comments. A reply answers a real stranger, never our own account (02-RUNBOOK.md §0 rule 8). GET /api/agent/our-comments lists them.");
+  }
   const verdict = check(d.body, { kind: d.kind });
   if (!verdict.ok) bad(422, "the draft breaks a hard rule. Fix and refile.", { verdict });
+  if (d.kind === "reply" && !(body.thread_context && body.thread_context.parent && body.thread_context.parent.body)) {
+    verdict.warns.push("no thread_context.parent {author, body, score, permalink, created_utc}: the reviewer has to open Reddit to see whose comment this answers. Send it.");
+  }
+  if (d.mode === "sharpen" && !(body.sharpen && typeof body.sharpen === "object")) {
+    verdict.warns.push("mode sharpen with no `sharpen` object: the reviewer cannot see what shaped the text. Send {model, at, simulation}.");
+  }
 
   const row = optional(body, {
     ...d,
@@ -250,20 +284,26 @@ async function patchDraft(id, body) {
   const cur = (await sb("GET", `drafts?select=${DRAFT_COLS}&id=eq.${enc(id)}`))[0];
   if (!cur) bad(404, `draft ${id} not found`);
   if (cur.status !== "pending") bad(409, `draft is '${cur.status}': a human has already acted on it. File a new draft instead of rewriting history.`);
-  if (cur.source !== "agent_api") bad(409, "this draft was not filed through the API. Only the reviewer edits it.");
+  // A draft the reviewer sent back (redirect_pending) is the agent's to
+  // rewrite whoever filed it; otherwise only API-filed drafts are editable.
+  if (cur.source !== "agent_api" && !cur.redirect_pending) bad(409, "this draft was not filed through the API. Only the reviewer edits it.");
 
   const patch = optional(body, {});
   if (body.body !== undefined) {
     const verdict = check(String(body.body), { kind: cur.kind });
     if (!verdict.ok) bad(422, "the revision breaks a hard rule.", { verdict });
     patch.body = String(body.body); patch.body_original = patch.body; patch._verdict = verdict;
+    if (cur.redirect_pending) patch.redirect_pending = false;   // delivered: approval opens again
+  }
+  if (cur.kind === "reply" && cur.redirect_pending && body.body !== undefined && cur.parent_url && await isOurs(cur.parent_url)) {
+    bad(422, "this draft's parent is one of our own comments. Do not deliver a body; withdraw it.");
   }
   if (cur.kind === "post" && body.title !== undefined) {
     const t = String(body.title).trim(); if (!t || t.length > 300) bad(422, "title must be 1 to 300 characters");
     patch.title = t;
   }
   const verdict = patch._verdict; delete patch._verdict;
-  if (!Object.keys(patch).length) bad(400, "nothing to change. Editable while pending: body, title (posts), upvotes_suggested, upvotes_reason, agent_note, thread_context.");
+  if (!Object.keys(patch).length) bad(400, "nothing to change. Editable while pending: body, title (posts), upvotes_suggested, upvotes_reason, agent_note, thread_context, models, sharpen.");
   const [saved] = await sb("PATCH", `drafts?id=eq.${enc(id)}&select=${DRAFT_COLS}`, patch, "return=representation");
   await log("draft_revised", { draft: id, fields: Object.keys(patch) });
   return { draft: saved, verdict: verdict || null };
@@ -282,14 +322,16 @@ async function withdrawDraft(id, body) {
 
 async function getLessons(sp) {
   const lim = limitOf(sp);
-  const [edits, rejections, revisions] = await Promise.all([
+  const [edits, rejections, revisions, redirects, gateFails] = await Promise.all([
     sb("GET", `edit_lessons?select=*&limit=${lim}`),
-    sb("GET", `drafts?select=id,kind,thread_id,subreddit,title,body,reject_reason,reviewed_at,source&status=eq.rejected&order=reviewed_at.desc.nullslast&limit=${lim}`),
+    sb("GET", `drafts?select=id,kind,mode,thread_id,subreddit,title,body,reject_reason,reviewed_at,source&status=eq.rejected&order=reviewed_at.desc.nullslast&limit=${lim}`),
     sb("GET", `draft_revisions?select=draft_id,at,editor,action,note&order=at.desc&limit=${lim}`),
+    sb("GET", `drafts?select=id,kind,mode,thread_id,parent_url,redirect_note,redirected_at,body&redirect_pending=eq.true&order=redirected_at.desc&limit=${lim}`),
+    sb("GET", `drafts?select=id,kind,thread_id,gate_failure,gate_failed_at&gate_failed_at=not.is.null&order=gate_failed_at.desc&limit=${lim}`),
   ]);
   return {
-    edits, rejections, decisions: revisions,
-    how_to_read: "edits: agent_wrote vs human_kept is the only record of the reviewer's judgement. rejections: reject_reason says why a draft died. Do not repeat what got cut.",
+    edits, rejections, decisions: revisions, redirects, gate_refusals: gateFails,
+    how_to_read: "edits: agent_wrote vs human_kept is the only record of the reviewer's judgement. rejections: reject_reason says why a draft died. redirects: the reviewer changed the mode and is waiting for a new body (PATCH it). gate_refusals: bodies the final check_draft.py refused at post time. Do not repeat what got cut.",
   };
 }
 
@@ -327,8 +369,9 @@ module.exports = async function handler(req, res) {
     else if (a === "drafts" && b && c === "withdraw" && m === "POST") out = await withdrawDraft(b, await readBody(req));
     else if (a === "check" && !b && m === "POST") { const body = await readBody(req); out = { verdict: check(String(body.body || ""), { kind: body.kind || "comment" }) }; }
     else if (a === "lessons" && !b && m === "GET")             out = await getLessons(sp);
+    else if (a === "our-comments" && !b && m === "GET")        out = { comments: await ourComments(), note: "never file a reply whose parent_url is one of these. Never two of our accounts in one exchange." };
     else if (a === "status" && !b && m === "GET")              out = await getStatus(sp);
-    else if (["approve", "clear", "send", "post", "publish", "upvote"].includes(a) || c === "approve" || c === "clear")
+    else if (["approve", "clear", "send", "post", "publish", "upvote", "pullback", "cancel", "redirect"].includes(a) || ["approve", "clear", "pullback", "cancel", "redirect"].includes(c))
       bad(403, "not through this door. Approving, clearing to send, posting and upvoting are human and engain-post.py actions. See AGENT-API.md.");
     else bad(404, "no such route. GET /api/agent lists them.");
 

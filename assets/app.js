@@ -25,7 +25,12 @@ const STAGES = [
   ["upvotes_running",            "upvotes",   "live, upvotes in progress"],
   ["upvotes_delivered",          "done",      "live, upvotes delivered"]
 ];
-const STAGE_BAD = { send_failed: "failed", removed: "removed" };
+const STAGE_BAD = { send_failed: "failed", removed: "removed", gate_refused: "gate refused", pulled_back: "pulled back" };
+/* Two holding stages that are neither on the seven-dot track nor failures:
+   a task the reviewer asked to pull back (waiting for Engain's 24h window),
+   and a draft the reviewer sent back to the agent. Drawn at the "sent" and
+   "draft" dots respectively. */
+const STAGE_HOLD = { pullback_requested: ["pull back requested", 3, "pull-back requested, waiting for Engain's 24h cancel window"] };
 
 function nav() {
   const here = location.pathname.split("/").pop() || "index.html";
@@ -46,8 +51,8 @@ function nav() {
 async function navCounts() {
   const rows = await cached("nav_stage", 60, () => sbAll("thread_activity", "select=stage&stage=neq.no_draft"));
   const n = s => rows.filter(r => r.stage === s).length;
-  const review = n("draft_pending_review") + n("approved_not_cleared");
-  const status = n("cleared_not_sent") + n("waiting_on_engain") + n("published_awaiting_upvotes") + n("upvotes_running");
+  const review = n("draft_pending_review") + n("approved_not_cleared") + n("gate_refused");
+  const status = n("cleared_not_sent") + n("waiting_on_engain") + n("pullback_requested") + n("published_awaiting_upvotes") + n("upvotes_running");
   setCount("R", review, review > 0);
   setCount("S", status, false);
 }
@@ -136,23 +141,31 @@ function skeleton(el, n = 4) {
 }
 /* Stage track: seven dots, the current one ringed in saffron. */
 function track(stage) {
-  const i = STAGES.findIndex(s => s[0] === stage);
+  const hold = STAGE_HOLD[stage];
+  const i = hold ? hold[1] : STAGES.findIndex(s => s[0] === stage);
   const bad = stage in STAGE_BAD;
+  const badAt = stage === "gate_refused" ? 2 : 3;
   return `<span class="track" aria-hidden="true">` +
-    STAGES.map((s, k) => `<i class="${bad && k === 3 ? "bad" : k < i ? "done" : k === i ? "now" : ""}"></i>`).join("") + `</span>`;
+    STAGES.map((s, k) => `<i class="${bad && k === badAt ? "bad" : k < i ? "done" : k === i ? "now" : ""}"></i>`).join("") + `</span>`;
 }
 function stageLabel(stage) {
   const s = STAGES.find(x => x[0] === stage);
-  return s ? s[1] : (STAGE_BAD[stage] || stage || "");
+  return s ? s[1] : (STAGE_BAD[stage] || (STAGE_HOLD[stage] || [])[0] || stage || "");
 }
+const STAGE_WORDS_X = {
+  send_failed: "send failed at Engain",
+  removed: "removed after posting",
+  gate_refused: "approved, but the final check_draft.py run refused it. Edit or reject on Review",
+  pulled_back: "pulled back at Engain before it published"
+};
 function stageWords(stage) {
   const s = STAGES.find(x => x[0] === stage);
-  return s ? s[2] : (stage === "send_failed" ? "send failed at Engain" : stage === "removed" ? "removed after posting" : stage || "");
+  return s ? s[2] : (STAGE_WORDS_X[stage] || (STAGE_HOLD[stage] || [])[2] || stage || "");
 }
 function stageKind(stage) {
   if (stage in STAGE_BAD) return "bad";
   if (["published_awaiting_upvotes", "upvotes_running", "upvotes_delivered"].includes(stage)) return "ok";
-  if (stage === "draft_pending_review" || stage === "approved_not_cleared") return "warn";
+  if (stage === "draft_pending_review" || stage === "approved_not_cleared" || stage in STAGE_HOLD) return "warn";
   return "info";
 }
 

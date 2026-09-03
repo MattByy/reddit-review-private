@@ -17,7 +17,7 @@
   .pick select{flex:1;width:100%;min-width:0;text-overflow:ellipsis}
   @media (max-width:900px){.ws{grid-template-columns:1fr}.queue{display:none}.pick{display:flex;width:100%}}
 
-  .work-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .work-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
   .work-head .pos{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
   .work-head .nav{margin-left:auto;display:flex;gap:6px}
 
@@ -31,6 +31,18 @@
   .cm .who{font-size:12.5px;color:var(--muted);margin-bottom:3px}
   .cm .who b{color:var(--ink);font-weight:500}
   .cm .txt{font-size:13.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;max-width:70ch}
+
+  /* Reply surface: THEIR comment on top, OUR reply nested under it, the way
+     Reddit draws it, so the approver judges the exchange and not just our text. */
+  .parent{margin-top:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:14px 16px}
+  .parent .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+  .parent .who{font-size:13px;color:var(--muted);margin-bottom:6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .parent .who b{color:var(--ink);font-weight:600;font-size:14px}
+  .parent .txt{font-size:14.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-width:70ch}
+  .nest{margin-left:14px;padding-left:16px;border-left:3px solid var(--line-strong)}
+  @media (max-width:600px){.nest{margin-left:4px;padding-left:10px}}
+  .confirm{display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:14px;line-height:1.5}
+  .confirm input{margin-top:3px;width:18px;height:18px;flex:none}
 
   /* Editor: the part that matters. Big, calm, the text is the hero. */
   .editor{margin-top:16px}
@@ -49,18 +61,36 @@
   .wc .meter b{position:absolute;top:-1px;width:2px;height:8px;background:var(--ink);border-radius:1px;transition:left .15s var(--ease)}
   .facts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:14px}
   .facts b{color:var(--text);font-weight:500}
+
+  /* Mode picker: how we respond. A change goes back to the agent. */
+  .modebar{margin-top:16px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
+  .modebar .row1{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .modebar .row1 .lbl{font-size:13px;color:var(--muted)}
+  .modebar .purl{margin-top:8px;width:100%}
+  .modebar .why{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}
+  .modebar .st{font-size:13px;color:var(--muted);margin-top:8px}
+  .modebar .st.bad{color:var(--bad)}
+
+  /* Sharpen: the private simulation, shown so the reviewer knows what shaped the text. */
+  .sim h4{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 4px}
+  .sim ul{margin:0;padding-left:18px;font-size:13.5px;line-height:1.5}
+  .sim .rx{border-top:1px solid var(--line);padding:8px 0;font-size:13.5px;line-height:1.5}
+  .sim .rx b{font-weight:500;color:var(--ink)}
+
   .decide{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
   .decide .why{margin-bottom:10px;width:min(520px,100%)}
   .decide .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .decide .st{font-size:13px;color:var(--muted);flex-basis:100%}
+  .decide .st{font-size:13px;color:var(--muted);flex-basis:100%;line-height:1.5}
   .decide .st.bad{color:var(--bad)}
 
-  /* Send tab */
+  /* Sending tab */
   .send .txt{white-space:pre-wrap;font-size:14.5px;line-height:1.6;max-width:70ch;margin-top:10px}
   .send .head{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:13px;color:var(--muted)}
   .send .head a{font-size:14px;font-weight:500}
   .send .acts{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .send .acts .st{font-size:13px;color:var(--muted);flex-basis:100%}
+  .send .acts .st{font-size:13px;color:var(--muted);flex-basis:100%;line-height:1.5}
+  .send .acts .st.bad{color:var(--bad)}
+  .send .win{font-size:13px;color:var(--muted);margin-top:8px}
 
   /* Your edits tab */
   .diff{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}
@@ -73,13 +103,13 @@
 <div class="page-head">
   <div>
     <h1>Review</h1>
-    <p class="lede">Is this comment good enough to publish under Geonode's name? Approving the text is one decision. Clearing it to send is a second one, on the next tab.</p>
+    <p class="lede">Is this comment good enough to publish under Geonode's name? Approving it clears it to send. A watcher runs one final rule check and posts it. You can pull it back on the Sending tab until it publishes.</p>
   </div>
 </div>
 
 <div class="tabs" role="tablist" aria-label="Review stages">
   <button role="tab" id="tab-review" aria-selected="true" aria-controls="panel-review">To review <span class="c" id="n">…</span></button>
-  <button role="tab" id="tab-send" aria-selected="false" aria-controls="panel-send">Ready to send <span class="c" id="nq">…</span></button>
+  <button role="tab" id="tab-send" aria-selected="false" aria-controls="panel-send">Sending <span class="c" id="nq">…</span></button>
   <button role="tab" id="tab-history" aria-selected="false" aria-controls="panel-history">Your edits <span class="c" id="nl">…</span></button>
 </div>
 
@@ -88,7 +118,7 @@
   <div id="policy" class="notice warn" hidden>
     <div class="body"><b>No drafts are visible to this page.</b> Either none have been written yet, or the anon policy on <code>drafts</code> is missing. Apply <code>supabase/migrations/008-review-anon.sql</code>. This page will not show an empty queue as good news.</div>
   </div>
-  <div id="none" class="empty" hidden><b>Nothing to review.</b>When the agent writes a draft it lands here. Run <code>write-comment.py</code> to draft the next thread.</div>
+  <div id="none" class="empty" hidden><b>Nothing to review.</b>When the agent writes a draft it lands here. Run <code>agent-file.py</code> or <code>write-comment.py</code> to draft the next thread.</div>
   <div id="ws" class="ws" hidden>
     <aside class="queue" id="queue" aria-label="Drafts waiting"></aside>
     <div>
@@ -99,7 +129,7 @@
 </div>
 
 <div id="panel-send" role="tabpanel" aria-labelledby="tab-send" hidden>
-  <div class="notice info" style="margin-bottom:16px"><div class="body"><b>This is the last screen before a comment becomes public.</b> Clearing writes a flag. The posting itself is done by <code>engain-post.py</code>, run by a person with the vendor key, which re-checks approval and clearance before it spends anything.</div></div>
+  <div class="notice info" style="margin-bottom:16px"><div class="body"><b>Approved drafts and everything sent that is not live yet.</b> The watcher (<code>engain-post.py watch</code>, run where the vendor key lives) posts cleared drafts after one final <code>check_draft.py</code> run. A task sits with Engain for hours before it publishes. Engain refuses cancels in a task's first 24 hours, so a pull-back is fired the moment that window opens, by the watcher or by the hourly cron, and the outcome is written back here.</div></div>
   <div id="sendlist" class="stack"></div>
 </div>
 
@@ -114,11 +144,13 @@
    between the link and that decision. Drafts are readable and reviewable with
    the anon key (migration 008), the same key every other page ships.
 
-   What still cannot happen from a browser: posting. Approving and "clear to
-   send" only write flags; engain-post.py, run by a human with the vendor key,
-   re-checks both before anything goes public. Every decision goes through
-   review_draft(), which writes the revision and the new status in one
-   transaction, so a decision can never be recorded without its edit history. */
+   Since the 2026-09-03 build brief, approving IS clearing: review_draft
+   ('approve') sets send_cleared_at in the same transaction (migration 010).
+   What still cannot happen from a browser: posting. engain-post.py, run by a
+   human with the vendor key, re-checks the flags and runs check_draft.py one
+   last time before anything goes public. Every decision here goes through an
+   RPC (review_draft, redirect_draft, request_pullback) that writes the
+   revision and the new state in one transaction. */
 (async () => {
   const $ = id => document.getElementById(id);
   const H = () => ({ apikey: window.SB_KEY, Authorization: 'Bearer ' + window.SB_KEY, 'Content-Type': 'application/json' });
@@ -127,6 +159,9 @@
     if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
     return r.status === 204 ? null : r.json();
   }
+  const rpc = (fn, args) => api(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
+  /* Postgres wraps RPC errors in JSON; show the sentence, not the envelope. */
+  const errText = e => { const m = String(e.message || e); try { const j = JSON.parse(m.replace(/^\d+:\s*/, '')); return j.message || m; } catch (x) { return m; } };
 
   /* ── the rules, mirrored in the browser ────────────────────────────────
      02-RUNBOOK.md §0 and check_draft.py are the authority; this is the same
@@ -139,7 +174,8 @@
     ['dpa available', 'no DPA claims'], ['85,000', '"85,000 customers" is not a real figure'],
     ['85000', '"85,000 customers" is not a real figure'], ['/v1/scrape', 'the endpoint is /v1/extract'],
     ['good luck with your', 'no sign-off pleasantries'], ['great question', 'never open with "Great question"'],
-    ['hope this helps', 'no sign-off pleasantries']
+    ['hope this helps', 'no sign-off pleasantries'], ['i work at geonode', 'never reveal affiliation'],
+    ['i work for geonode', 'never reveal affiliation'], ['disclosure:', 'never reveal affiliation']
   ];
   function runChecks(text) {
     const t = text.trim();
@@ -185,9 +221,12 @@
     return `${y} year${y === 1 ? '' : 's'} old`;
   }
   const threadUrl = d => (d.thread_context && d.thread_context.url) || `https://www.reddit.com/comments/${d.thread_id}`;
-  const threadTitle = d => (d.thread_context && d.thread_context.title) || `thread ${d.thread_id}`;
-  const threadSub = d => (d.thread_context && d.thread_context.subreddit) || '';
+  const threadTitle = d => (d.thread_context && d.thread_context.title) || (d.kind === 'post' ? d.title : '') || `thread ${d.thread_id}`;
+  const threadSub = d => (d.thread_context && d.thread_context.subreddit) || d.subreddit || '';
   const verdictKind = v => v === 'pass' ? 'ok' : v === 'warn' ? 'warn' : 'bad';
+  const commentId = u => { const m = String(u || '').match(/\/comments\/[A-Za-z0-9]+\/[^/?#]+\/([A-Za-z0-9]+)/); return m ? m[1].toLowerCase() : null; };
+  const absUrl = u => /^https?:/i.test(u || '') ? u : 'https://www.reddit.com' + (u || '');
+  const fmtWhen = iso => iso ? new Date(iso).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : '';
 
   function threadPanel(d) {
     const tc = d.thread_context;
@@ -205,26 +244,71 @@
     const comments = cms.length ? `<details class="dx quiet" style="margin-top:8px"><summary>Top comments<span class="hint">${cms.length}</span></summary><div class="dx-body">` +
       cms.map(c => `<div class="cm"><div class="who"><b>u/${esc(c.author || 'unknown')}</b>${c.score != null ? ` · ${fmtN(c.score)} points` : ''}</div><div class="txt">${esc((c.body || '').trim())}</div></div>`).join('') +
       `</div></details>` : '';
-    return `<details class="dx thread" open><summary>Thread<span class="hint">${esc(meta.join(' · '))}</span></summary><div class="dx-body">
+    return `<details class="dx thread" ${d.kind === 'reply' ? '' : 'open'}><summary>Thread<span class="hint">${esc(meta.join(' · '))}</span></summary><div class="dx-body">
       <div class="t"><a href="${esc(tc.url || threadUrl(d))}" class="ext" target="_blank" rel="noopener">${esc(tc.title || 'Untitled')}</a></div>
       ${flags}${op}${comments}</div></details>`;
   }
 
+  /* The comment we are answering. Rendered from thread_context.parent, the
+     snapshot the agent took, never a live fetch. If the agent sent none the
+     reviewer gets the permalink and a plain statement that they have to open
+     it, not a blank card that reads as "nothing there". */
+  function parentPanel(d) {
+    const p = d.thread_context && d.thread_context.parent;
+    const ours = commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
+    const warn = ours ? `<div class="notice bad" style="margin-top:10px">${ICON.alert}<div class="body"><b>This parent is one of OUR OWN published comments.</b> Two of our accounts in one exchange is the ring fingerprint. Reject this draft.</div></div>` : '';
+    if (!p || !p.body) return `<div class="parent"><div class="lbl">Replying to</div>
+      <div class="notice warn">${ICON.alert}<div class="body">The agent did not capture the parent comment. <a href="${esc(absUrl(d.parent_url))}" class="ext" target="_blank" rel="noopener">Open the permalink</a> and read it before you confirm anything below.</div></div>${warn}</div>`;
+    return `<div class="parent"><div class="lbl">Replying to</div>
+      <div class="who"><b>u/${esc(p.author || 'unknown')}</b>${p.score != null ? `<span>${fmtN(p.score)} points</span>` : ''}${p.created_utc ? `<span>${esc(ago(new Date(p.created_utc * 1000).toISOString()))}</span>` : ''}<a href="${esc(absUrl(p.permalink || d.parent_url))}" class="ext" target="_blank" rel="noopener">permalink</a></div>
+      <div class="txt">${esc((p.body || '').trim())}</div>${warn}</div>`;
+  }
+
+  function sharpenPanel(d) {
+    const s = d.sharpen && d.sharpen.simulation;
+    if (d.mode !== 'sharpen' && !s) return '';
+    if (!s) return `<div class="notice" style="margin-top:12px">${ICON.info}<div class="body"><b>Mode sharpen, no simulation yet.</b> The agent runs <code>sharpen.py</code>, stores the simulated reactions here, and delivers a rewritten body.</div></div>`;
+    const list = (k, title) => (s[k] && s[k].length) ? `<h4>${esc(title)}</h4><ul>${s[k].map(x => `<li>${esc(typeof x === 'string' ? x : JSON.stringify(x))}</li>`).join('')}</ul>` : '';
+    const rx = (s.reactions || []).map(r => `<div class="rx"><b>${esc(r.voice || 'reader')}</b>: ${esc(r.says || '')}</div>`).join('');
+    return `<details class="dx sim" style="margin-top:12px"><summary>Simulated reactions<span class="hint">private, never posted · ${esc((d.sharpen.model || '').split('/').pop())}</span></summary><div class="dx-body">
+      <p class="muted small">A small model played r/${esc(threadSub(d))} against the draft. This shaped the text below. None of it is ever posted, and no reply to it is ever filed.</p>
+      ${s.tone ? `<h4>Tone</h4><p style="margin:0;font-size:13.5px">${esc(s.tone)}</p>` : ''}
+      ${list('objections', 'They will object to')}${list('falls_flat', 'Falls flat')}${list('lands', 'Lands')}
+      ${s.would_check ? `<h4>They will check</h4><p style="margin:0;font-size:13.5px">${esc(String(s.would_check))}</p>` : ''}
+      ${rx ? `<h4>Replies you would get</h4>${rx}` : ''}</div></details>`;
+  }
+
   function checkPanel(c) {
-    if (!c) return `<div class="notice" style="margin-top:12px">${ICON.info}<div class="body"><b>No rule-check on file.</b> Score it with <code>scripts/score.py</code> before approving. The poster refuses drafts without one.</div></div>`;
+    if (!c) return `<div class="notice" style="margin-top:12px">${ICON.info}<div class="body"><b>No rule-check on file.</b> The watcher scores it before posting. It is evidence for you, not a gate.</div></div>`;
     const viol = (c.violated_rules || []).length ? `<div class="small" style="margin-top:6px;color:var(--bad)">Rules named: ${c.violated_rules.map(esc).join(' · ')}</div>` : '';
     return `<div class="notice" style="margin-top:12px"><div class="body"><div class="flex">${chip(verdictKind(c.verdict), 'rule check ' + c.verdict)}<span class="small">removal risk ${c.removal_risk == null ? 'not recorded' : esc(String(c.removal_risk))} of 100</span><span class="muted tiny right">${esc(ago(c.checked_at))}</span></div>
       <div class="muted small" style="margin-top:6px">${esc(c.summary || '')} Scores drift between runs, so this is evidence for you, not a gate.</div>${viol}</div></div>`;
   }
 
+  const MODE_WHY = {
+    comment: 'A top-level answer to the post. Approving clears it to send.',
+    reply: 'An answer under one specific comment by a real stranger. Paste that comment\'s permalink. The draft goes back to the agent to be rewritten as a reply, and you confirm the parent before approving.',
+    sharpen: 'Not a post. A small model simulates how this sub will react, the agent rewrites the one real comment with that as private context, and it comes back here. The simulation is never posted.'
+  };
+
   /* ── state ─────────────────────────────────────────────────────────── */
-  let drafts = [], checks = {}, current = 0;
+  let drafts = [], checks = {}, current = 0, ourIds = new Set();
+
+  function stateChip(d) {
+    if (d.gate_failed_at) return chip('bad', 'final gate refused');
+    if (d.redirect_pending) return chip('warn', 'with the agent: ' + d.mode);
+    if (d.status === 'edited') return chip('warn', 'edited by you');
+    if (d.kind === 'reply') return chip('info', 'reply');
+    if (d.mode === 'sharpen') return chip('info', 'sharpened');
+    if (d.kind === 'post') return chip('info', 'new post');
+    return '';
+  }
 
   function renderQueueList() {
     const q = $('queue'), p = $('pick');
     q.innerHTML = drafts.map((d, i) => {
       const c = checks[d.id];
-      const v = c ? chip(verdictKind(c.verdict), c.verdict) : chip('', 'unscored');
+      const v = stateChip(d) || (c ? chip(verdictKind(c.verdict), c.verdict) : chip('', 'unscored'));
       return `<button type="button" data-i="${i}" aria-current="${i === current}"><div class="qs"><span>r/${esc(threadSub(d) || '?')}</span>${v}</div><div class="qt">${esc(cleanTitle(threadTitle(d)))}</div></button>`;
     }).join('');
     q.querySelectorAll('button').forEach(b => b.addEventListener('click', () => select(+b.dataset.i)));
@@ -242,34 +326,60 @@
     if (!d) { w.innerHTML = ''; return; }
     const c = checks[d.id];
     const up = d.upvotes_suggested == null ? 'none proposed' : `${d.upvotes_suggested} proposed${d.upvotes_reason ? ', ' + d.upvotes_reason : ''}`;
+    const isReply = d.kind === 'reply';
+    const models = d.models ? Object.entries(d.models).map(([k, v]) => `${k} ${String(v).split('/').pop()}`).join(', ') : '';
+    const gateNote = d.gate_failed_at ? `<div class="notice bad" style="margin-top:12px">${ICON.alert}<div class="body"><b>The final check refused this at post time.</b> ${esc(d.gate_failure || '')} Nothing was sent. Edit the text (it comes back for approval) or reject it.</div></div>` : '';
+    const redirNote = d.redirect_pending ? `<div class="notice warn" style="margin-top:12px">${ICON.alert}<div class="body"><b>With the agent.</b> You changed the mode to <b>${esc(d.mode)}</b>${d.redirect_note ? ' (' + esc(d.redirect_note) + ')' : ''} ${esc(ago(d.redirected_at))}. The body below is the old one. Approve is off until a new body arrives.</div></div>` : '';
+    const editor = `
+      <div class="editor">
+        <label for="body">${isReply ? 'Our reply, as it will be posted under that comment' : d.kind === 'post' ? 'The post body, as it will be submitted' : 'The comment, as it will be posted'}</label>
+        <textarea id="body" class="field" spellcheck="true"></textarea>
+        <div class="wc" data-wc></div>
+        <div class="checks" data-checks aria-live="polite"></div>
+        ${isReply ? `<label class="confirm"><input type="checkbox" data-confirm ${d.parent_confirmed_by ? 'checked' : ''}><span>I opened the parent comment. It is a real stranger, not one of our accounts, and this reply answers what they said.</span></label>` : ''}
+        <div class="facts">
+          <span>Mode <b>${esc(d.mode || 'comment')}</b></span>
+          <span>Angle <b>${esc(d.strategy || 'not set')}</b></span>
+          <span>Upvotes <b>${esc(up)}</b></span>
+          ${models ? `<span>Models <b>${esc(models)}</b></span>` : `<span>Prompt <b>${esc(d.prompt_version || 'unknown')}</b></span>`}
+          <span>Written <b>${esc(ago(d.created_at))}</b></span>
+          ${d.agent_note ? `<span>Agent <b>${esc(d.agent_note)}</b></span>` : ''}
+          <a href="${esc(threadUrl(d))}" class="ext" target="_blank" rel="noopener">Open thread</a>
+        </div>
+      </div>`;
     w.innerHTML = `
       <div class="work-head">
         <span class="pos">Draft ${current + 1} of ${drafts.length}</span>
-        ${d.status === 'edited' ? chip('warn', 'edited by you, not yet approved') : ''}
+        ${stateChip(d)}
         <div class="nav">
           <button class="btn small" data-prev ${current === 0 ? 'disabled' : ''} aria-label="Previous draft">${ICON.left}</button>
           <button class="btn small" data-next ${current >= drafts.length - 1 ? 'disabled' : ''} aria-label="Next draft">${ICON.right}</button>
         </div>
       </div>
+      ${gateNote}${redirNote}
       ${threadPanel(d)}
+      ${isReply ? parentPanel(d) : ''}
+      ${sharpenPanel(d)}
       ${checkPanel(c)}
-      <div class="editor">
-        <label for="body">The comment, as it will be posted</label>
-        <textarea id="body" class="field" spellcheck="true"></textarea>
-        <div class="wc" data-wc></div>
-        <div class="checks" data-checks aria-live="polite"></div>
-        <div class="facts">
-          <span>Angle <b>${esc(d.strategy || 'not set')}</b></span>
-          <span>Upvotes <b>${esc(up)}</b></span>
-          <span>Prompt <b>${esc(d.prompt_version || 'unknown')}</b></span>
-          <span>Written <b>${esc(ago(d.created_at))}</b></span>
-          <a href="${esc(threadUrl(d))}" class="ext" target="_blank" rel="noopener">Open thread</a>
+      ${isReply ? `<div class="nest">${editor}</div>` : editor}
+      ${d.kind === 'post' ? '' : `
+      <div class="modebar">
+        <div class="row1"><span class="lbl">How we respond</span>
+          <select class="field" data-mode aria-label="Mode">
+            <option value="comment" ${d.mode === 'comment' ? 'selected' : ''}>comment: top-level answer</option>
+            <option value="reply" ${d.mode === 'reply' ? 'selected' : ''}>reply: under one stranger's comment</option>
+            <option value="sharpen" ${d.mode === 'sharpen' ? 'selected' : ''}>sharpen: simulate the sub, then one better comment</option>
+          </select>
+          <button class="btn" data-a="redirect">Send back to the agent</button>
         </div>
-      </div>
+        <label class="field purl" data-purl-wrap ${d.mode === 'reply' || isReply ? '' : 'hidden'}><span class="muted small" style="white-space:nowrap">Parent permalink</span><input data-purl placeholder="https://www.reddit.com/r/…/comments/<post>/<slug>/<comment>/" value="${esc(d.parent_url || '')}"></label>
+        <div class="why" data-modewhy>${esc(MODE_WHY[d.mode] || MODE_WHY.comment)}</div>
+        <div class="st" data-modest></div>
+      </div>`}
       <div class="decide">
         <label class="field why"><span class="muted small" style="white-space:nowrap">Reason</span><input data-why placeholder="required to reject, optional otherwise"></label>
         <div class="acts">
-          <button class="btn primary" data-a="approve">Approve as written</button>
+          <button class="btn primary" data-a="approve">Approve and send</button>
           <button class="btn" data-a="edit" disabled>Save my edit</button>
           <button class="btn danger" data-a="reject">Reject</button>
           <span class="st" data-st></span>
@@ -279,6 +389,8 @@
     const ta = w.querySelector('#body'), why = w.querySelector('[data-why]');
     const bApp = w.querySelector('[data-a=approve]'), bEdit = w.querySelector('[data-a=edit]'), bRej = w.querySelector('[data-a=reject]');
     const st = w.querySelector('[data-st]');
+    const confirmBox = w.querySelector('[data-confirm]');
+    const parentOurs = isReply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
     ta.value = d.body || '';
     const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.max(220, ta.scrollHeight + 12) + 'px'; };
     grow();
@@ -287,18 +399,26 @@
 
     /* "Approve" must mean the text on screen. Once the text differs from what
        the agent wrote, approving unchanged would silently discard the edit,
-       so the buttons swap roles. Hard rule failures switch both off. */
+       so the buttons swap roles. Hard rule failures switch both off. A reply
+       also needs the stranger confirmation, and never approves if the parent
+       is one of ours. A draft the agent still owes a body on never approves. */
     function refresh() {
       const dirty = ta.value !== (d.body || '');
       const c = renderChecks(w.querySelector('[data-checks]'), w.querySelector('[data-wc]'), ta.value);
       ta.classList.toggle('dirty', dirty);
-      bApp.disabled = dirty || c.hardFail;
+      const needConfirm = isReply && !(confirmBox && confirmBox.checked);
+      bApp.disabled = dirty || c.hardFail || d.redirect_pending || needConfirm || !!parentOurs;
       bEdit.disabled = !dirty || c.hardFail;
       st.classList.remove('bad');
-      st.textContent = c.hardFail ? 'A hard rule fails above. Fix the text, or reject with a reason.'
-        : dirty ? 'You changed the text. Save your edit, or revert it to approve as written.' : '';
+      st.textContent = parentOurs ? 'The parent is one of our own comments. This cannot be approved. Reject it.'
+        : c.hardFail ? 'A hard rule fails above. Fix the text, or reject with a reason.'
+        : dirty ? 'You changed the text. Save your edit, or revert it to approve as written.'
+        : d.redirect_pending ? 'Waiting for the agent to deliver a new body.'
+        : needConfirm ? 'Tick the confirmation once you have read the parent comment.'
+        : 'Approving clears it to send. The watcher posts it after one final check. You can pull it back on the Sending tab until it publishes.';
     }
     ta.addEventListener('input', () => { grow(); refresh(); });
+    if (confirmBox) confirmBox.addEventListener('change', refresh);
     refresh();
 
     const more = w.querySelector('[data-more]');
@@ -309,90 +429,169 @@
     w.querySelector('[data-prev]').addEventListener('click', () => select(current - 1));
     w.querySelector('[data-next]').addEventListener('click', () => select(current + 1));
 
+    /* Mode picker. Changing it hands the draft back to the agent through
+       redirect_draft(): mode, kind and parent_url change in one transaction,
+       redirect_pending goes true, and Approve stays off until a new body lands. */
+    const modeSel = w.querySelector('[data-mode]');
+    if (modeSel) {
+      const purlWrap = w.querySelector('[data-purl-wrap]'), purl = w.querySelector('[data-purl]');
+      const modeSt = w.querySelector('[data-modest]'), modeWhy = w.querySelector('[data-modewhy]');
+      const bRedir = w.querySelector('[data-a=redirect]');
+      const syncMode = () => {
+        const m = modeSel.value;
+        purlWrap.hidden = m !== 'reply';
+        modeWhy.textContent = MODE_WHY[m];
+        const same = m === d.mode && (m !== 'reply' || purl.value.trim() === (d.parent_url || ''));
+        bRedir.disabled = same;
+        bRedir.title = same ? 'Change the mode, or the parent permalink, to send it back' : '';
+      };
+      modeSel.addEventListener('change', syncMode); purl.addEventListener('input', syncMode); syncMode();
+      bRedir.addEventListener('click', async () => {
+        const m = modeSel.value;
+        if (m === 'reply' && commentId(purl.value) && ourIds.has(commentId(purl.value))) {
+          modeSt.classList.add('bad'); modeSt.textContent = 'That permalink is one of our own comments. A reply goes under a stranger, never under us.'; return;
+        }
+        bRedir.disabled = true; modeSt.classList.remove('bad'); modeSt.textContent = 'Sending back…';
+        try {
+          const row = await rpc('redirect_draft', { p_draft_id: d.id, p_mode: m, p_parent_url: m === 'reply' ? purl.value.trim() : null, p_note: why.value.trim() || null, p_editor: 'reviewer' });
+          Object.assign(d, row);
+          renderQueueList(); renderWork();
+          $('work').querySelector('[data-modest]').textContent = `Sent back as ${m}. The agent delivers a new body; until then Approve is off.`;
+          try { sessionStorage.removeItem('c_nav_stage'); } catch (e) {}
+          await renderSend();
+        } catch (e) { bRedir.disabled = false; modeSt.classList.add('bad'); modeSt.textContent = 'Failed: ' + errText(e); }
+      });
+    }
+
     [bApp, bEdit, bRej].forEach(b => b.addEventListener('click', async () => {
       const action = b.dataset.a;
       if (action === 'reject' && !why.value.trim()) { st.classList.add('bad'); st.textContent = 'A reject needs a reason. It is what the agent learns from.'; why.focus(); return; }
       [bApp, bEdit, bRej].forEach(x => x.disabled = true);
       st.classList.remove('bad'); st.textContent = 'Saving…';
       try {
-        await api('rpc/review_draft', { method: 'POST', body: JSON.stringify({
-          p_draft_id: d.id, p_action: action, p_body: action === 'edit' ? ta.value : null,
-          p_note: why.value.trim() || null, p_editor: 'reviewer' }) });
+        if (action === 'approve' && isReply) {
+          /* The confirmation is recorded on the row BEFORE the approve, and
+             review_draft() refuses a reply without it, so the checkbox is
+             evidence in the database, not a client-side nicety. */
+          await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', body: JSON.stringify({ parent_confirmed_by: 'reviewer', parent_confirmed_at: new Date().toISOString() }) });
+        }
+        await rpc('review_draft', { p_draft_id: d.id, p_action: action, p_body: action === 'edit' ? ta.value : null,
+          p_note: why.value.trim() || null, p_editor: 'reviewer' });
         if (action === 'edit') {
           /* The edited text comes back for a second look, so approving the
              version you wrote is its own decision, not a side effect. */
-          d.body = ta.value; d.status = 'edited';
+          d.body = ta.value; d.status = 'edited'; d.gate_failed_at = null; d.gate_failure = null;
           renderQueueList(); renderWork();
-          $('work').querySelector('[data-st]').textContent = 'Saved. This is now the text. Approve it as written when you are happy with it.';
+          $('work').querySelector('[data-st]').textContent = 'Saved. This is now the text. Approve it when you are happy with it.';
         } else {
           drafts.splice(current, 1);
           if (!drafts.length) showEmpty(); else select(Math.min(current, drafts.length - 1));
+          if (action === 'approve') flash('Approved and cleared. It is on the Sending tab, and you can pull it back there until it publishes.');
         }
         setCounts();
         try { sessionStorage.removeItem('c_nav_stage'); } catch (e) {}
         await Promise.all([renderSend(), renderLessons()]);
       } catch (e) {
-        st.classList.add('bad'); st.textContent = 'Failed: ' + String(e.message || e);
+        st.classList.add('bad'); st.textContent = 'Failed: ' + errText(e);
         bRej.disabled = false; refresh();
       }
     }));
   }
 
+  function flash(text) {
+    const el = document.createElement('div'); el.className = 'notice ok'; el.setAttribute('role', 'status');
+    el.innerHTML = `${ICON.check}<div class="body">${esc(text)}</div>`;
+    $('panel-review').insertBefore(el, $('loading'));
+    setTimeout(() => el.remove(), 9000);
+  }
   function showEmpty() { $('ws').hidden = true; $('none').hidden = false; }
   function setCounts() { $('n').textContent = drafts.length; }
 
-  /* ── ready to send ─────────────────────────────────────────────────── */
+  /* ── sending ───────────────────────────────────────────────────────── */
   async function renderSend() {
-    const rows = await api('drafts?select=id,thread_id,body,status,upvotes_suggested,send_cleared_at,thread_context,created_at&status=eq.approved&order=created_at.asc&limit=50');
-    const sent = await api('engain_tasks?select=thread_id&status=neq.test_artifact');
-    const sentIds = new Set(sent.map(t => t.thread_id));
-    const waiting = rows.filter(r => !sentIds.has(r.thread_id));
+    const rows = await api('drafts?select=id,thread_id,kind,mode,body,status,upvotes_suggested,send_cleared_at,pullback_requested_at,gate_failed_at,gate_failure,redirect_pending,thread_context,created_at,reviewed_at,posted_at,subreddit,title&or=(status.eq.approved,status.eq.posted)&order=reviewed_at.desc.nullslast&limit=100');
+    const tasks = await api('engain_tasks?select=id,draft_id,thread_id,status,reddit_url,submitted_at,published_at,cancel_requested_at,cancel_requested_by,cancelled_at,cancel_result,cancel_attempts,last_cancel_attempt_at&status=neq.test_artifact&order=submitted_at.desc');
+    const byDraft = {};
+    for (const t of tasks) if (!byDraft[t.draft_id]) byDraft[t.draft_id] = t;
+    /* Live comments are done here; they belong to Status. Everything else
+       between "approved" and "published" is a decision still open to you. */
+    const list = rows.filter(r => { const t = byDraft[r.id]; return !(t && t.reddit_url); });
     const rc = {};
-    if (waiting.length) {
-      const list = await api(`rule_checks?select=draft_id,verdict,removal_risk&draft_id=in.(${waiting.map(r => r.id).join(',')})&order=checked_at.desc`);
-      for (const c of list) if (!rc[c.draft_id]) rc[c.draft_id] = c;
+    if (list.length) {
+      const rcs = await api(`rule_checks?select=draft_id,verdict,removal_risk&draft_id=in.(${list.map(r => r.id).join(',')})&order=checked_at.desc`);
+      for (const c of rcs) if (!rc[c.draft_id]) rc[c.draft_id] = c;
     }
-    $('nq').textContent = waiting.length;
+    $('nq').textContent = list.length;
     const box = $('sendlist');
-    if (!waiting.length) { box.innerHTML = '<div class="empty"><b>Nothing approved and unsent.</b>Approve a draft on the first tab and it appears here for the send decision.</div>'; return; }
+    if (!list.length) { box.innerHTML = '<div class="empty"><b>Nothing approved and unpublished.</b>Approve a draft on the first tab and it appears here until Engain publishes it.</div>'; return; }
     box.innerHTML = '';
-    for (const d of waiting) {
-      const cleared = !!d.send_cleared_at;
+    for (const d of list) {
+      const t = byDraft[d.id];
       const c = rc[d.id];
       const el = document.createElement('div'); el.className = 'card send';
+      let state, acts = '', win = '';
+      if (t) {
+        const opens = new Date(new Date(t.submitted_at).getTime() + 24 * 3600 * 1000);
+        const open = Date.now() >= opens.getTime();
+        if (t.cancelled_at || t.status === 'cancelled') state = chip('bad', 'pulled back');
+        else if (t.cancel_requested_at) state = chip('warn', open ? 'pull back requested, window open' : 'pull back requested, waiting for the window');
+        else state = chip('info', `sent to Engain ${ago(t.submitted_at)}`);
+        win = `<div class="win">Task <code>${esc(t.id)}</code> · ${esc(t.status || '')} · cancel window ${open ? 'opened' : 'opens'} ${esc(fmtWhen(opens.toISOString()))}${t.cancel_result ? ` · last attempt ${esc(ago(t.last_cancel_attempt_at))}: ${esc(t.cancel_result)}` : ''}</div>`;
+        if (!(t.cancelled_at || t.status === 'cancelled')) acts = `
+          <button class="btn danger" data-a="pullback" ${t.cancel_requested_at ? 'disabled' : ''}>${t.cancel_requested_at ? 'Pull back requested' : 'Pull back'}</button>
+          <span class="st" data-s>${t.cancel_requested_at ? esc(open ? 'The watcher or the hourly cron fires the cancel on its next run and writes the outcome here.' : 'Engain refuses cancels in the first 24 hours. The cancel fires when the window opens, unless it publishes first.') : 'Cancel is only possible before it publishes. Once Engain hands back a URL, the only fix is removing it on Reddit.'}</span>`;
+      } else if (d.gate_failed_at) {
+        state = chip('bad', 'final gate refused');
+        acts = `<span class="st bad">${esc(d.gate_failure || '')} Nothing was sent. Fix it on the To review tab, or reject it there.</span>`;
+      } else if (d.redirect_pending) {
+        state = chip('warn', 'with the agent: ' + d.mode);
+        acts = `<span class="st">You sent this back. It reappears on To review when the agent delivers.</span>`;
+      } else if (d.pullback_requested_at || !d.send_cleared_at) {
+        state = chip('warn', 'held');
+        acts = `<button class="btn primary" data-a="clear">Clear to send</button><span class="st" data-s>Held. The watcher skips it until you clear it again.</span>`;
+      } else {
+        state = chip('ok', 'cleared, waiting for the watcher');
+        acts = `<button class="btn" data-a="hold">Put on hold</button><span class="st" data-s>Cleared ${esc(ago(d.send_cleared_at))}. The watcher posts it after one final check_draft.py run.</span>`;
+      }
       el.innerHTML = `
         <div class="head">
           <a href="${esc(threadUrl(d))}" class="ext" target="_blank" rel="noopener">${esc(cleanTitle(threadTitle(d)))}</a>
           ${threadSub(d) ? `<span>r/${esc(threadSub(d))}</span>` : ''}
+          ${d.kind !== 'comment' ? chip('info', d.kind) : ''}${d.mode === 'sharpen' ? chip('info', 'sharpened') : ''}
           <span>${d.upvotes_suggested == null ? 'no upvotes proposed' : esc(String(d.upvotes_suggested)) + ' upvotes proposed'}</span>
-          ${c ? chip(verdictKind(c.verdict), 'rule check ' + c.verdict) : chip('bad', 'no rule check, poster will refuse')}
-          <span data-state>${cleared ? chip('ok', 'cleared') : chip('warn', 'on hold')}</span>
+          ${c ? chip(verdictKind(c.verdict), 'rule check ' + c.verdict) : chip('', 'rule check pending')}
+          <span data-state>${state}</span>
         </div>
-        <div class="txt">${esc(d.body || '')}</div>
-        <div class="acts">
-          <button class="btn primary" data-a="clear" ${cleared ? 'disabled' : ''}>${cleared ? 'Cleared to send' : 'Clear to send'}</button>
-          <button class="btn" data-a="hold" ${cleared ? '' : 'disabled'}>Put on hold</button>
-          <span class="st" data-s>${cleared ? 'Cleared. engain-post.py picks it up on its next run.' : 'On hold. The poster skips it until you clear it.'}</span>
-        </div>`;
-      const stat = el.querySelector('[data-s]'), bc = el.querySelector('[data-a=clear]'), bh = el.querySelector('[data-a=hold]'), state = el.querySelector('[data-state]');
-      bc.addEventListener('click', async () => {
-        bc.disabled = true; stat.textContent = 'Marking…';
-        try {
-          await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', body: JSON.stringify({ send_cleared_at: new Date().toISOString() }) });
-          stat.textContent = 'Cleared. engain-post.py picks it up on its next run.'; bc.textContent = 'Cleared to send'; bh.disabled = false;
-          state.innerHTML = chip('ok', 'cleared');
-        } catch (e) { bc.disabled = false; stat.textContent = 'Failed: ' + String(e.message || e); }
+        <div class="txt">${esc(d.body || '')}</div>${win}
+        <div class="acts">${acts}</div>`;
+      const stat = el.querySelector('[data-s]');
+      const bind = (sel, fn) => { const b = el.querySelector(sel); if (b) b.addEventListener('click', () => fn(b)); };
+      bind('[data-a=hold]', async b => {
+        b.disabled = true; stat.textContent = 'Holding…';
+        try { await rpc('request_pullback', { p_draft_id: d.id, p_editor: 'reviewer', p_note: 'held on the Sending tab' }); await renderSend(); }
+        catch (e) { b.disabled = false; stat.classList.add('bad'); stat.textContent = 'Failed: ' + errText(e); }
       });
-      bh.addEventListener('click', async () => {
-        bh.disabled = true; stat.textContent = 'Holding…';
+      bind('[data-a=clear]', async b => {
+        b.disabled = true; stat.textContent = 'Clearing…';
+        try { await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', body: JSON.stringify({ send_cleared_at: new Date().toISOString(), pullback_requested_at: null }) }); await renderSend(); }
+        catch (e) { b.disabled = false; stat.classList.add('bad'); stat.textContent = 'Failed: ' + errText(e); }
+      });
+      bind('[data-a=pullback]', async b => {
+        b.disabled = true; stat.textContent = 'Requesting…';
         try {
-          await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', body: JSON.stringify({ send_cleared_at: null }) });
-          stat.textContent = 'On hold. The poster skips it until you clear it.'; bc.disabled = false; bc.textContent = 'Clear to send';
-          state.innerHTML = chip('warn', 'on hold');
-        } catch (e) { bh.disabled = false; stat.textContent = 'Failed: ' + String(e.message || e); }
+          const r = await rpc('request_pullback', { p_draft_id: d.id, p_editor: 'reviewer', p_note: 'pull back from the Sending tab' });
+          await renderSend();
+          if (r && r.note) flashSend(r.note);
+        } catch (e) { b.disabled = false; stat.classList.add('bad'); stat.textContent = 'Failed: ' + errText(e); }
       });
       box.appendChild(el);
     }
+  }
+  function flashSend(text) {
+    const el = document.createElement('div'); el.className = 'notice ok'; el.setAttribute('role', 'status');
+    el.innerHTML = `${ICON.check}<div class="body">${esc(text)}</div>`;
+    $('panel-send').insertBefore(el, $('sendlist'));
+    setTimeout(() => el.remove(), 12000);
   }
 
   /* ── your edits ────────────────────────────────────────────────────── */
@@ -429,7 +628,12 @@
         $('n').textContent = '?'; $('nq').textContent = '?'; $('nl').textContent = '?';
         return;
       }
-      drafts = await api('drafts?select=id,thread_id,strategy,format,body,body_original,status,upvotes_suggested,upvotes_reason,prompt_version,thread_context,created_at&status=in.(pending,edited)&order=created_at.asc&limit=100');
+      /* Our own published comments, so a reply under one of them is caught
+         on this screen and again in review_draft(). */
+      try { const ours = await api('engain_tasks?select=reddit_url&reddit_url=not.is.null'); ourIds = new Set(ours.map(t => commentId(t.reddit_url)).filter(Boolean)); } catch (e) { ourIds = new Set(); }
+      /* The queue: pending and edited drafts, plus approved ones the final
+         gate refused, because those need a human again. */
+      drafts = await api('drafts?select=id,thread_id,kind,mode,parent_url,subreddit,title,strategy,format,body,body_original,status,source,agent_note,upvotes_suggested,upvotes_reason,prompt_version,thread_context,models,sharpen,redirect_pending,redirected_at,redirect_note,gate_failed_at,gate_failure,parent_confirmed_by,created_at&or=(status.in.(pending,edited),and(status.eq.approved,gate_failed_at.not.is.null))&order=created_at.asc&limit=100');
       if (drafts.length) {
         const rc = await api(`rule_checks?select=draft_id,verdict,removal_risk,violated_rules,summary,checked_at&draft_id=in.(${drafts.map(r => r.id).join(',')})&order=checked_at.desc`);
         for (const c of rc) if (!checks[c.draft_id]) checks[c.draft_id] = c;
