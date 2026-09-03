@@ -233,9 +233,16 @@
      session cannot post: it can only ask a human-run script to consider it. */
   async function renderQueue() {
     const rows = await api('drafts?select=id,thread_id,body,status,upvotes_suggested,send_cleared_at,thread_context&status=eq.approved&order=created_at.asc&limit=50');
-    const sent = await api('engain_tasks?select=thread_id,status,reddit_url&status=neq.test_artifact');
-    const sentIds = new Set(sent.map(t => t.thread_id));
-    const waiting = rows.filter(r => !sentIds.has(r.thread_id));
+    /* Key the "already sent" check on the DRAFT id, never the thread id.
+       A thread carries several drafts over its life (retired, superseded,
+       current) — 1ug1lht has three — so matching on thread_id hides every
+       later draft the moment any earlier one is sent. The identical bug in
+       engain-post.py's clearance lookup was caught because it blocked a
+       cleared draft; with the ordering reversed it would have SENT an
+       uncleared one. Any per-item check keys on the item's own id. */
+    const sent = await api('engain_tasks?select=draft_id,thread_id,status,reddit_url&status=neq.test_artifact');
+    const sentIds = new Set(sent.map(t => t.draft_id));
+    const waiting = rows.filter(r => !sentIds.has(r.id));
 
     $('nq').textContent = waiting.length + ' approved';
     const q = $('queue');
