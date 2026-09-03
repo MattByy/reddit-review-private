@@ -118,8 +118,13 @@ function overCeiling(vc) {
   return null;
 }
 async function recordCheck(draftId, subreddit, vc, note) {
-  await sb("POST", "rule_checks", [{ draft_id: draftId, subreddit, verdict: vc.verdict, removal_risk: vc.removal_risk,
-    violated_rules: vc.violated_rules, summary: `${note}: ${vc.summary}${vc.marketing != null ? ` marketingIntentRisk ${vc.marketing}.` : ""}` }], "return=minimal");
+  // The draft is already stored when this runs; a failure to write the score
+  // must not turn a filed draft into a 502 (it did, once, under a key that
+  // could not insert rule_checks). Log it instead.
+  try {
+    await sb("POST", "rule_checks", [{ draft_id: draftId, subreddit, verdict: vc.verdict, removal_risk: vc.removal_risk,
+      violated_rules: vc.violated_rules, summary: `${note}: ${vc.summary}${vc.marketing != null ? ` marketingIntentRisk ${vc.marketing}.` : ""}` }], "return=minimal");
+  } catch (e) { await log("rule_check_not_recorded", { draft: draftId, error: String(e.message).slice(0, 200), vendor: vc }); }
 }
 
 async function log(action, detail) {
