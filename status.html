@@ -53,24 +53,28 @@
   try {
     const rows = await sbAll('thread_activity', 'select=*&stage=neq.no_draft&order=thread_id.asc');
 
-    const GROUP = s => (['draft_pending_review', 'approved_not_cleared', 'cleared_not_sent'].includes(s)) ? 'human'
-      : s === 'waiting_on_engain' ? 'engain' : (s in STAGE_BAD) ? 'bad' : 'live';
+    const GROUP = s => (['draft_pending_review', 'approved_not_cleared', 'cleared_not_sent', 'gate_refused'].includes(s)) ? 'human'
+      : (s === 'waiting_on_engain' || s === 'pullback_requested') ? 'engain' : (s in STAGE_BAD) ? 'bad' : 'live';
     const ORDER = { human: 0, engain: 1, live: 2, bad: 3 };
     const when = r => r.published_at || r.submitted_at || '';
 
     /* "Live" means live. A task sitting with Engain has not been published and
        is never counted as if it were on Reddit. That false all-clear shipped once. */
     const n = s => rows.filter(r => r.stage === s).length;
-    $('s-review').textContent = fmtN(n('draft_pending_review') + n('approved_not_cleared') + n('cleared_not_sent'));
-    $('s-sent').textContent = fmtN(n('waiting_on_engain'));
+    $('s-review').textContent = fmtN(n('draft_pending_review') + n('approved_not_cleared') + n('cleared_not_sent') + n('gate_refused'));
+    $('s-sent').textContent = fmtN(n('waiting_on_engain') + n('pullback_requested'));
     $('s-live').textContent = fmtN(n('published_awaiting_upvotes') + n('upvotes_running') + n('upvotes_delivered'));
     $('s-bad').textContent = fmtN(n('send_failed') + n('removed'));
 
     function facts(r) {
       const f = [];
-      if (r.rule_verdict) f.push(['Rule check', `${r.rule_verdict}${r.removal_risk != null ? ', removal risk ' + r.removal_risk + ' of 100' : ''}`]);
+      if (r.removal_risk != null) f.push(['Score', (r.rule_verdict !== 'fail' && r.removal_risk <= 40) ? `passes, risk ${r.removal_risk}` : `does not pass, risk ${r.removal_risk} over 40`]);
+      else if (r.rule_verdict) f.push(['Score', 'not scored']);
       if (r.upvotes_suggested != null) f.push(['Upvotes proposed', String(r.upvotes_suggested)]);
+      if (r.mode && r.mode !== 'comment') f.push(['Mode', r.mode]);
+      if (r.gate_failure) f.push(['Not sent', r.gate_failure.replace(/^[^:]*: /, '')]);
       if (r.task_status) f.push(['Engain task', `${r.task_status}${r.task_id ? ', id ' + r.task_id : ''}`]);
+      if (r.cancel_requested_at) f.push(['Pull back', `requested ${ago(r.cancel_requested_at)}${r.cancel_result ? ', ' + r.cancel_result : ', not attempted yet'}`]);
       if (r.published_at) f.push(['Published', `${fmtDate(r.published_at)}, ${ago(r.published_at)}`]);
       if (r.order_id) f.push(['Upvotes', `${r.upvotes_delivered ?? 0} of ${r.upvotes_ordered} delivered${r.order_status ? ', ' + r.order_status : ''}`]);
       if (r.credits_used != null) f.push(['Credits used', String(r.credits_used)]);

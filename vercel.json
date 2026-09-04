@@ -3,6 +3,27 @@
   "buildCommand": "node build.js",
   "outputDirectory": ".",
   "rewrites": [
-    { "source": "/api/agent/:path*", "destination": "/api/agent" }
-  ]
+    {
+      "source": "/api/agent/:path*",
+      "destination": "/api/agent"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/pullback",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/dispatch",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "functions": {
+    "api/dispatch.js": {
+      "maxDuration": 60
+    },
+    "api/cron/pullback.js": {
+      "maxDuration": 60
+    }
+  }
 }
