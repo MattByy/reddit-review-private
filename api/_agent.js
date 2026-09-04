@@ -324,8 +324,13 @@ async function postDraft(body) {
     verdict.warns.push("mode sharpen with no `sharpen` object: the reviewer cannot see what shaped the text. Send {model, at, simulation}.");
   }
 
+  /* Persist the RESOLVED subreddit on every draft, not only on posts. It was
+     null for comments and replies (the thread carried it instead), so every
+     surface reading the draft alone printed "r/?". A row that is judged on its
+     own must carry the facts it is judged by. */
   const row = optional(body, {
     ...d,
+    subreddit: sub,
     body_original: d.body,
     status: "pending",
     source: "agent_api",

@@ -298,7 +298,23 @@
       ${rx ? `<h4>Replies you would get</h4>${rx}` : ''}</div></details>`;
   }
 
-  function checkPanel(c) {
+  /* The refusal and the score are ONE fact, printed once. `gate_failure` is
+     the same sentence the rule-check row carries, prefixed by the vendor and
+     suffixed with the rule names, so rendering both put the identical
+     paragraph on the screen twice. When the gate has fired, this notice is
+     the only place the reason appears; checkPanel drops to the score chip. */
+  function gatePanel(d, c) {
+    if (!d.gate_failed_at) return '';
+    const why = String(d.gate_failure || '').replace(/^[^:]*:\s*/, '').split('|')[0].trim();
+    const rules = (c && (c.violated_rules || []).length) ? c.violated_rules
+      : String(d.gate_failure || '').split('|').slice(1).map(s => s.trim()).filter(Boolean);
+    const risk = c && c.removal_risk != null ? ` Risk ${c.removal_risk} over ${CEILING}.` : '';
+    return `<div class="notice bad" style="margin-top:12px">${ICON.alert}<div class="body"><b>Not sent.</b>${risk} ${esc(why)} Edit it or reject it.` +
+      (rules.length ? `<div class="small" style="margin-top:6px">${rules.map(esc).join(' · ')}</div>` : '') + `</div></div>`;
+  }
+
+  function checkPanel(c, gated) {
+    if (gated) return '';
     if (!c || c.removal_risk == null) return `<div class="notice" style="margin-top:12px"><div class="body"><div class="flex">${scoreChip(c)}<span class="small">scored when you approve</span></div></div></div>`;
     const ok = passes(c);
     const viol = (c.violated_rules || []).length ? `<div class="small" style="margin-top:6px;color:var(--bad)">${c.violated_rules.map(esc).join(' · ')}</div>` : '';
@@ -350,7 +366,7 @@
     const up = d.upvotes_suggested == null ? 'none proposed' : `${d.upvotes_suggested} proposed${d.upvotes_reason ? ', ' + d.upvotes_reason : ''}`;
     const isReply = d.kind === 'reply';
     const models = d.models ? Object.entries(d.models).map(([k, v]) => `${k} ${String(v).split('/').pop()}`).join(', ') : '';
-    const gateNote = d.gate_failed_at ? `<div class="notice bad" style="margin-top:12px">${ICON.alert}<div class="body"><b>Not sent.</b> ${esc((d.gate_failure || '').replace(/^[^:]*: /, ''))} Edit it or reject it.</div></div>` : '';
+    const gateNote = gatePanel(d, c);
     const redirNote = d.redirect_pending ? `<div class="notice warn" style="margin-top:12px">${ICON.alert}<div class="body"><b>With the agent.</b> You changed the mode to <b>${esc(d.mode)}</b>${d.redirect_note ? ' (' + esc(d.redirect_note) + ')' : ''} ${esc(ago(d.redirected_at))}. The body below is the old one. Approve is off until a new body arrives.</div></div>` : '';
     const editor = `
       <div class="editor">
@@ -382,7 +398,7 @@
       ${threadPanel(d)}
       ${isReply ? parentPanel(d) : ''}
       ${sharpenPanel(d)}
-      ${checkPanel(c)}
+      ${checkPanel(c, !!d.gate_failed_at)}
       ${isReply ? `<div class="nest">${editor}</div>` : editor}
       ${d.kind === 'post' ? '' : `
       <div class="modebar">
