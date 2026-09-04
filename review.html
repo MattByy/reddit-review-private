@@ -15,7 +15,9 @@
   .queue .qt{font-size:13.5px;color:var(--ink);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .pick{display:none;margin-bottom:12px}
   .pick select{flex:1;width:100%;min-width:0;text-overflow:ellipsis}
-  @media (max-width:900px){.ws{grid-template-columns:1fr}.queue{display:none}.pick{display:flex;width:100%}}
+  .ws>*{min-width:0}
+  .notice .body{overflow-wrap:anywhere}
+  @media (max-width:900px){.ws{grid-template-columns:minmax(0,1fr)}.queue{display:none}.pick{display:flex;width:100%}}
 
   .work-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
   .work-head .pos{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}

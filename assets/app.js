@@ -44,6 +44,9 @@ function nav() {
       `<nav class="steps" aria-label="Workflow">${steps}</nav>` +
       `<a class="aux" href="history.html" ${is("history.html") ? 'aria-current="page"' : ""}>History</a>` +
     `</div></header>`);
+  /* Inline favicon: one request fewer, and no 404 in every console. */
+  document.head.insertAdjacentHTML("beforeend",
+    '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%2317181a%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%277%27 fill=%27%23ffd815%27/%3E%3C/svg%3E">');
   navCounts().catch(() => {});
 }
 
