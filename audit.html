@@ -9,6 +9,7 @@
   .ans{font-size:14.5px;line-height:1.6;max-width:70ch}
   .facts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted);margin-top:10px}
   .facts b{color:var(--text);font-weight:500}
+  .cites-num{color:var(--muted);font-size:12px}
   @media (max-width:720px){.page-head .tools{width:100%}.page-head .tools .field{flex:1}}
 </style></head>
 <body><script src="assets/gate.js"></script>
@@ -30,6 +31,12 @@
 </section>
 
 <section>
+  <div class="section-head"><h2>Did our comments move anything</h2><span class="count" id="evalcount"></span></div>
+  <p class="lede" id="evalsum" style="margin:0 0 10px"></p>
+  <div class="rows" id="evallist"><div style="padding:16px"><div class="sk" style="width:70%"></div><div class="sk" style="width:55%"></div></div></div>
+</section>
+
+<section>
   <div class="section-head"><h2>Share of voice on Reddit</h2><span class="count" id="sovmeta"></span></div>
   <div class="tablewrap"><table class="sov" id="sov"></table></div>
 </section>
@@ -39,6 +46,7 @@
     <summary>How to read this</summary>
     <div class="dx-body prose">
       <p>Engines cite the thread, not the comment inside it, so which threads we choose matters more than how high our comment sits. Share of voice is a dated measurement from Engain's mentions feed, and its caveat travels with it. Nothing on this page is typed in by hand.</p>
+      <p><b>Did our comments move anything.</b> One row per thread we sent a comment to. <i>cited after us</i> = an engine cites this thread and did not before we commented. <i>cited before and after</i> = it was already cited, so we did not create it. <i>not cited</i> = we asked and no engine cited it. <i>too early</i> (under 14 days live) and <i>unmeasured</i> (no audit has asked its queries) are results, not failures. <i>Measured by</i> matters: a thread found by a search sweep is judged on the queries it actually ranks for, while one found by Engain's feed has none of its own and is judged on the canonical buyer queries — a weaker negative. There is no views or clicks column because Reddit shows those to the author only; any such number would be invented. At this sample size a per-thread before/after is an anecdote, not a rate, and a thread can gain citations for reasons that have nothing to do with us.</p>
     </div>
   </details>
 </section>
@@ -47,11 +55,13 @@
 (async () => {
   const $ = id => document.getElementById(id);
   try {
-    const [audits, cites, queries, sov] = await Promise.all([
+    const [audits, cites, queries, sov, evalSum, evalRows] = await Promise.all([
       sb('audits', 'select=id,audit_date,engine,query_id,we_appear,thread_cited,model,prompt,answer,web_search,n_citations,brands_named&order=audit_date.desc,id.desc&limit=1000'),
       sbAll('audit_citations', 'select=audit_id,url,domain,thread_id,is_reddit,is_ours,position&order=id.asc'),
       sb('queries', 'select=id,q,canonical&limit=1000'),
-      sb('sov_baseline', 'select=brand,mentions,caveat,measured_on,source&order=mentions.desc&limit=100')
+      sb('sov_baseline', 'select=brand,mentions,caveat,measured_on,source&order=mentions.desc&limit=100'),
+      sb('eval_summary', 'select=*'),
+      sbAll('thread_eval', 'select=thread_id,subreddit,title,thread_url,reddit_url,verdict,survived,survival_status,days_live,cites_before,cites_after,engines_before,engines_after,last_cited_on,audits_covering,coverage_basis,basis_queries,n_queries,upvotes_goal,replies_needed,upvotes_ordered,upvotes_delivered,submitted_at,published_at&order=submitted_at.desc')
     ]);
     const qtext = Object.fromEntries(queries.map(q => [q.id, q.q]));
     const byAudit = {};
@@ -93,6 +103,48 @@
     }
     ['feng', 'fq'].forEach(id => $(id).addEventListener('input', render));
     render();
+
+    /* Did our comments move anything: one row per thread in thread_eval.
+       too_early and unmeasured are RESULTS — they get the neutral chip, never
+       the failure one, because "we have not measured this yet" and "it did not
+       work" are different sentences. */
+    const verdictKind = v => (v === 'removed' ? 'bad'
+      : v === 'cited_after_us' ? 'ok'
+      : v === 'cited_before_and_after' ? 'info' : '');
+    const verdictText = v => (v ? v.replace(/_/g, ' ') : 'not measured');
+    /* null is not zero. A never-checked rank price and a price of 0 are
+       opposite claims. */
+    const num = v => (v == null ? 'not measured' : fmtN(v));
+
+    const s = evalSum[0] || {};
+    $('evalsum').textContent = evalRows.length
+      ? `${s.published || 0} of ${s.threads_sent || 0} sent are live · ${s.still_up || 0} still up · `
+        + `${s.removed || 0} removed · cited after us ${s.cited_after_us || 0} · `
+        + `not cited ${s.not_cited || 0} · too early ${s.too_early || 0} · unmeasured ${s.unmeasured || 0}`
+      : '';
+    $('evalcount').textContent = evalRows.length ? `${evalRows.length} thread${evalRows.length !== 1 ? 's' : ''}` : '';
+    $('evallist').innerHTML = evalRows.length
+      ? evalRows.map(e => `
+        <details class="row">
+          <summary>
+            <span class="sub">${esc(e.subreddit || '?')}</span>
+            <span class="title">${esc(e.title || '(untitled)')}</span>
+            <span class="side">${chip(verdictKind(e.verdict), verdictText(e.verdict))}<span class="cites-num">cites ${fmtN(e.cites_before || 0)}→${fmtN(e.cites_after || 0)}</span></span>
+          </summary>
+          <div class="body">
+            <div class="facts">
+              <span>Live <b>${e.days_live == null ? 'not published' : e.days_live + ' day' + (e.days_live !== 1 ? 's' : '')}</b></span>
+              <span>Engines citing it after <b>${num(e.engines_after)}</b></span>
+              <span>Audits asked <b>${num(e.audits_covering)}</b></span>
+              <span>Measured by <b>${e.coverage_basis === 'own' ? e.basis_queries + ' queries it ranks for' : e.coverage_basis === 'canonical' ? 'the canonical buyer queries' : 'not measured'}</b></span>
+              <span>Rank price <b>${e.upvotes_goal == null ? 'not measured' : fmtN(e.upvotes_goal) + ' votes'}${e.replies_needed == null ? '' : ', ' + fmtN(e.replies_needed) + ' replies'}</b></span>
+              <span>Upvotes ordered <b>${num(e.upvotes_ordered)}</b>, delivered <b>${num(e.upvotes_delivered)}</b></span>
+              <span>Vendor status <b>${esc(e.survival_status || 'not reported')}</b></span>
+            </div>
+            ${e.thread_url || e.reddit_url ? `<div style="margin-top:10px"><ul class="cites">${e.thread_url ? `<li><a href="${esc(e.thread_url)}" class="ext" target="_blank" rel="noopener">Thread</a></li>` : ''}${e.reddit_url ? `<li><a href="${esc(e.reddit_url)}" class="ext" target="_blank" rel="noopener">Our comment</a></li>` : ''}</ul></div>` : ''}
+          </div>
+        </details>`).join('')
+      : '<div class="empty"><b>No eval data yet.</b><code>scripts/eval-threads.py</code> records outcomes for every comment we send.</div>';
 
     /* Share of voice is a dated measurement read from sov_baseline, never a
        number typed into this page. Its caveat travels with it. */
