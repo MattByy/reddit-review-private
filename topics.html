@@ -1,0 +1,190 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Topics · Reddit GEO Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+  .tbl th,.tbl td{text-align:left;padding:9px 12px;vertical-align:top;border-bottom:1px solid var(--line)}
+  .tbl th{color:var(--muted);font-weight:500;font-size:12.5px;white-space:nowrap;background:var(--surface);position:sticky;top:0}
+  .tbl tbody tr:last-child td{border-bottom:0}
+  .tbl tbody tr:hover td{background:#faf9f6;color:var(--text)}
+  .tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tbl td.mute{color:var(--muted)}
+  .tbl td.id{font-family:var(--mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+  section{margin-top:28px}
+  .section-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .section-head .count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+  .prose{font-size:14px;line-height:1.6;color:var(--text)}
+  .prose p{margin:0 0 12px 0}
+  .prose a{color:var(--info)}
+  .prose code{background:var(--panel);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:.92em}
+</style></head>
+<body><script src="assets/gate.js"></script>
+<script src="assets/config.js"></script><script src="assets/app.js"></script><main>
+<div class="page-head">
+  <div>
+    <h1>Topics and subreddits</h1>
+    <p class="lede">What we talk about, where those conversations live, and which places have thrown us out.</p>
+  </div>
+</div>
+
+<section>
+  <div class="section-head">
+    <h2>What we talk about</h2>
+    <span class="count" id="topic-count">…</span>
+  </div>
+  <div class="tablewrap">
+    <table class="tbl" id="topics-table">
+      <thead><tr><th>Topic</th><th class="num">Kind</th><th class="num">Threads</th><th class="num">Open</th><th class="num">Cited</th><th class="num">Sent</th><th class="num">Published</th><th class="num">Publish %</th><th>Top subreddits</th></tr></thead>
+      <tbody id="topics-body"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="topics-empty" hidden><b>No topics found.</b></div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Where the conversations are</h2>
+    <span class="count" id="subreddit-count">…</span>
+  </div>
+  <div class="tablewrap">
+    <table class="tbl" id="subreddits-table">
+      <thead><tr><th>Subreddit</th><th class="num">Threads</th><th class="num">Open</th><th class="num">Cited</th><th class="num">Attempts</th><th class="num">Published</th><th class="num">Removed</th><th class="num">Tolerance</th><th>Top topics</th></tr></thead>
+      <tbody id="subreddits-body"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="subreddits-empty" hidden><b>No subreddits found.</b></div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Work these next</h2>
+    <span class="count" id="focus-count">…</span>
+  </div>
+  <div class="rows" id="focus-list"></div>
+  <div class="empty" id="focus-empty" hidden><b>Nothing queued.</b> Every screened, open thread in a subreddit that hasn't banned us has already been acted on. More candidates come from <code>scripts/cited-threads.py --go</code> and a SERP sweep, then <code>treg-record.py screen</code>.</div>
+</section>
+
+<section>
+  <details class="dx quiet">
+    <summary>How to read this</summary>
+    <div class="dx-body prose">
+      <p><b>"Never tried" is not 0%.</b> Publish % and tolerance are blank in the data until we have actually sent a comment there, and they render as "never tried". A subreddit we have never visited must not look like one that rejected us.</p>
+      <p><b>Read the confidence before the percentage.</b> We have 22 attempts in total, so most rows here have a denominator between 1 and 3. 67% off 3 attempts is a direction, not a rate — the word next to the number ("never tried", "one or two attempts", "thin", "usable") is the honest part.</p>
+      <p><b>"Banned" is set by hand.</b> A human sets it after seeing a ban message, a modmail, or a rule that forbids us — it is never inferred from removal counts. Automod removes for link karma, account age and keyword filters, none of which are a ban, and an inferred ban would silently delete a good subreddit from the queue forever.</p>
+      <p><b>Sweep noise is shown, not hidden.</b> The <code>off-topic</code> row is threads our own SERP sweep dragged in from homonym queries — <code>zytee mouthwash</code>, <code>scraping tool home depot</code>, <code>true bypass vs buffered bypass</code>. They stay tracked so the noise rate stays visible; a queue that hides its own noise cannot be tuned.</p>
+      <p><b>Work these next</b> is the <code>focus_queue</code> view: screened, open, not archived or locked, subreddit not banned, not already acted on, ordered by engine citations. A thread an answer engine already quotes is one where a comment can change an answer.</p>
+      <p><b>There is no views or traffic column</b>, here or anywhere in this schema. Reddit shows comment views to the comment's author only, and we do not control those accounts. The measurable outcomes are that the comment survived and that an engine cited the thread.</p>
+      <p>Topics are refreshed by <code>scripts/tag-topics.py --go</code>; the vocabulary itself lives in the <code>topics</code> table, so adding one is an INSERT, not a deploy.</p>
+    </div>
+  </details>
+</section>
+</main>
+<script>
+(async () => {
+  const $ = id => document.getElementById(id);
+  
+  try {
+    const [topics, topicVol, subreddits, focusQueue] = await Promise.all([
+      sb('topic_scoreboard', 'select=*&order=threads.desc'),
+      sb('topic_volume', 'select=*'),
+      sb('subreddit_scoreboard', 'select=*&order=threads_cited.desc,threads.desc&limit=40'),
+      sb('focus_queue', 'select=thread_id,subreddit,title,url,score,num_comments,topics,engine_citations,tolerance,confidence&limit=25')
+    ]);
+
+    /* ── Topics section ──────────────────────────────────────────────────────
+       Column names come from the views themselves (migration 013):
+       topic_scoreboard → threads, threads_cited, comments_sent, published,
+       removed, publish_pct, cited_pct. topic_volume → open_threads,
+       top_subreddits, subreddits. Do not recompute publish_pct here: the view
+       returns NULL when comments_sent = 0, and that NULL is the whole point —
+       "never tried" and "tried and none survived" are opposite facts. A JS
+       expression like `published && sent ? ... : null` collapses a real 0%
+       into "never tried", which is the invariant this page exists to hold. */
+    const volMap = Object.fromEntries(topicVol.map(v => [v.topic_id, v]));
+
+    $('topic-count').textContent = topics.length;
+    if (topics.length) {
+      $('topics-body').innerHTML = topics.map(t => {
+        const v = volMap[t.topic_id] || {};
+        const noise = t.kind === 'noise';
+        const pct = t.publish_pct == null ? 'never tried' : Math.round(t.publish_pct) + '%';
+        return `<tr>
+          <td>${esc(t.label)}${noise ? ' ' + chip('', 'sweep noise') : ''}</td>
+          <td class="mute">${esc(t.kind || '')}</td>
+          <td class="num">${fmtN(t.threads || 0)}</td>
+          <td class="num">${fmtN(v.open_threads || 0)}</td>
+          <td class="num">${fmtN(t.threads_cited || 0)}</td>
+          <td class="num">${fmtN(t.comments_sent || 0)}</td>
+          <td class="num">${fmtN(t.published || 0)}</td>
+          <td class="num">${pct}</td>
+          <td>${(v.top_subreddits || []).slice(0, 4).map(s => chip('', s)).join('')}</td>
+        </tr>`;
+      }).join('');
+      $('topics-empty').hidden = true;
+    } else {
+      $('topics-empty').hidden = false;
+      $('topics-table').hidden = true;
+    }
+
+    /* ── Subreddits section ──────────────────────────────────────────────────
+       subreddit_scoreboard (migration 015) keys the name as `subreddit`, not
+       `name`, and already computes `tolerance` as NULL when attempts = 0.
+       Recomputing it in JS reintroduces the bug the view was written to avoid.
+       `confidence` ships next to it in words because most denominators here are
+       1–3 attempts: a percentage without its confidence reads as a rate. */
+    $('subreddit-count').textContent = subreddits.length;
+    if (subreddits.length) {
+      $('subreddits-body').innerHTML = subreddits.map(s => {
+        const tol = s.tolerance == null ? 'never tried' : Math.round(s.tolerance) + '%';
+        return `<tr>
+          <td><a href="https://reddit.com/r/${encodeURIComponent(s.subreddit)}" target="_blank" rel="noopener">r/${esc(s.subreddit)}</a>${s.banned ? ' ' + chip('bad', 'banned') : ''}${s.banned && s.banned_note ? `<div class="muted tiny">${esc(s.banned_note)}</div>` : ''}</td>
+          <td class="num">${fmtN(s.threads || 0)}</td>
+          <td class="num">${fmtN(s.open_threads || 0)}</td>
+          <td class="num">${fmtN(s.threads_cited || 0)}</td>
+          <td class="num">${fmtN(s.attempts || 0)}</td>
+          <td class="num">${fmtN(s.published || 0)}</td>
+          <td class="num">${fmtN(s.removed || 0)}</td>
+          <td class="num">${tol}<div class="muted tiny">${esc(s.confidence || '')}</div></td>
+          <td>${(s.top_topics || []).map(t => chip('', t)).join('')}</td>
+        </tr>`;
+      }).join('');
+      $('subreddits-empty').hidden = true;
+    } else {
+      $('subreddits-empty').hidden = false;
+      $('subreddits-table').hidden = true;
+    }
+
+    /* ── Focus queue section ───────────────────────────────────────────────── */
+    $('focus-count').textContent = focusQueue.length;
+    if (focusQueue.length) {
+      $('focus-list').innerHTML = focusQueue.map(item => {
+        const topicChips = (item.topics || []).map(t => chip('', t)).join('');
+        const citedNote = item.engine_citations > 0 ? chip('info', `cited ${fmtN(item.engine_citations)}x`) : '';
+        return `<details class="row">
+          <summary>
+            <span class="sub">r/${esc(item.subreddit || '?')}</span>
+            <span class="title">${esc(item.title || '(untitled)')}</span>
+            <span class="side">${citedNote}</span>
+          </summary>
+          <div class="body">
+            <div style="margin-bottom:12px">${topicChips}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;font-size:13px;margin-bottom:12px">
+              <div><span class="muted">Score</span><div style="font-weight:600">${item.score == null ? 'not measured' : fmtN(item.score)}</div></div>
+              <div><span class="muted">Comments</span><div style="font-weight:600">${item.num_comments == null ? 'not measured' : fmtN(item.num_comments)}</div></div>
+              <div><span class="muted">Subreddit tolerance</span><div style="font-weight:600">${item.tolerance == null ? 'never tried' : Math.round(item.tolerance) + '%'}<div class="muted tiny" style="font-weight:400">${esc(item.confidence || '')}</div></div></div>
+            </div>
+            <div class="flex" style="margin-top:10px"><a href="${esc(item.url)}" class="ext" target="_blank" rel="noopener">Open thread</a></div>
+          </div>
+        </details>`;
+      }).join('');
+      $('focus-empty').hidden = true;
+    } else {
+      $('focus-empty').hidden = false;
+      $('focus-list').hidden = true;
+    }
+  } catch (err) {
+    fail(err, 'the topics page');
+  }
+})();
+</script></body></html>
