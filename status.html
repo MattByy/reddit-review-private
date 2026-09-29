@@ -71,7 +71,11 @@
       if (r.removal_risk != null) f.push(['Score', (r.rule_verdict !== 'fail' && r.removal_risk <= 40) ? `passes, risk ${r.removal_risk}` : `does not pass, risk ${r.removal_risk} over 40`]);
       else if (r.rule_verdict) f.push(['Score', 'not scored']);
       if (r.upvotes_suggested != null) f.push(['Upvotes proposed', String(r.upvotes_suggested)]);
-      if (r.mode && r.mode !== 'comment') f.push(['Mode', r.mode]);
+      // Strategy is a fact about every row, not an exception worth noting
+      // only when it is not `comment`. The old `mode !== 'comment'` test meant
+      // a top-level comment showed no strategy at all, which reads as missing
+      // data rather than as the default. It also hid a NULL mode completely.
+      f.push(['Strategy', `${strategyOf(r.mode).label} — ${strategyOf(r.mode).why}`]);
       if (r.gate_failure) f.push(['Not sent', r.gate_failure.replace(/^[^:]*: /, '')]);
       if (r.task_status) f.push(['Engain task', `${r.task_status}${r.task_id ? ', id ' + r.task_id : ''}`]);
       if (r.cancel_requested_at) f.push(['Pull back', `requested ${ago(r.cancel_requested_at)}${r.cancel_result ? ', ' + r.cancel_result : ', not attempted yet'}`]);
@@ -90,7 +94,7 @@
           <summary>
             <span class="sub">r/${esc(r.subreddit || '?')}</span>
             <span class="title">${esc(cleanTitle(r.title, r.thread_url) || r.thread_id)}</span>
-            <span class="side">${track(r.stage)}${chip(stageKind(r.stage), stageLabel(r.stage))}</span>
+            <span class="side">${strategyChip(r.mode)}${track(r.stage)}${chip(stageKind(r.stage), stageLabel(r.stage))}</span>
           </summary>
           <div class="body">
             <div class="why">${esc(stageWords(r.stage).charAt(0).toUpperCase() + stageWords(r.stage).slice(1))}.</div>

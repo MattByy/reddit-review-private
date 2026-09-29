@@ -92,20 +92,56 @@ const isRedditUrl = u => /^https?:\/\/(www\.|old\.)?reddit\.com\//i.test(String(
 
 /* Engain's rule-check, the vendor's own opinion of whether the subreddit
    will remove this. Returns {verdict, removal_risk, marketing, summary,
-   violated_rules} or {unavailable, status}. Never throws. */
+   violated_rules} or {unavailable, status}. Never throws.
+
+   SAMPLED, because the vendor scorer is NONDETERMINISTIC. Identical text
+   scored [22, 28, 48, 28, 28] on five consecutive calls, and write-comment.py
+   has always known this — it confirms a 5-run mean before it hands a draft
+   over. The door used to re-roll ONCE, so a draft genuinely averaging 28 was
+   refused on a 48 or a 52 and the whole run was thrown away. That is not a
+   stricter gate, it is a noisier one: it rejects and accepts the same comment
+   at random.
+
+   The ceiling does NOT move (published comments average risk 22, automod
+   removed ones 66). What changes is that the door measures the same way the
+   writer does. Worst-case is reported alongside the mean so a draft that ever
+   spikes badly is still visible in the record. */
+const VC_SAMPLES = 3;          // vendor rate limit is 5/min; 3 leaves headroom
+async function vendorCheckOnce(body, kind, subreddit, title, pid) {
+  const r = await fetch(`${ENG_URL}/api/v1/rule-check`, { method: "POST",
+    headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "geonode-reddit-agent/1.0 (+api)" },
+    body: JSON.stringify({ projectId: pid, subreddit, taskType: kind, content: body, mediaKind: "text", context: { postTitle: title || "" } }) });
+  const text = await r.text(); let j; try { j = JSON.parse(text); } catch { j = { raw: text.slice(0, 300) }; }
+  if (!r.ok) return { unavailable: true, status: r.status, why: r.status === 429 ? "vendor rule-check rate limit (5 per minute). Retry in 60 seconds." : `vendor ${r.status}: ${JSON.stringify(j).slice(0, 200)}` };
+  return { verdict: j.verdict || "unavailable", removal_risk: j.removalRisk ?? null, marketing: j.marketingIntentRisk ?? null,
+           summary: j.summary || "", violated_rules: j.violatedRules || [], ceiling: RISK_CEILING };
+}
 async function vendorCheck(body, kind, subreddit, title) {
   if (!ENG_KEY) return { unavailable: true, status: 0, why: "ENGAIN_API_KEY not configured" };
   try {
     const me = await fetch(`${ENG_URL}/api/v1/me`, { headers: { "X-API-Key": ENG_KEY, "User-Agent": "geonode-reddit-agent/1.0 (+api)" } }).then(r => r.json());
     const pid = process.env.ENGAIN_PROJECT_ID || ((me.projects || []).find(p => p.name === "geonode.com") || {}).id;
     if (!pid) return { unavailable: true, status: 0, why: "no geonode.com project on the vendor key" };
-    const r = await fetch(`${ENG_URL}/api/v1/rule-check`, { method: "POST",
-      headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "geonode-reddit-agent/1.0 (+api)" },
-      body: JSON.stringify({ projectId: pid, subreddit, taskType: kind, content: body, mediaKind: "text", context: { postTitle: title || "" } }) });
-    const text = await r.text(); let j; try { j = JSON.parse(text); } catch { j = { raw: text.slice(0, 300) }; }
-    if (!r.ok) return { unavailable: true, status: r.status, why: r.status === 429 ? "vendor rule-check rate limit (5 per minute). Retry in 60 seconds." : `vendor ${r.status}: ${JSON.stringify(j).slice(0, 200)}` };
-    return { verdict: j.verdict || "unavailable", removal_risk: j.removalRisk ?? null, marketing: j.marketingIntentRisk ?? null,
-             summary: j.summary || "", violated_rules: j.violatedRules || [], ceiling: RISK_CEILING };
+
+    const runs = [];
+    for (let i = 0; i < VC_SAMPLES; i++) {
+      const one = await vendorCheckOnce(body, kind, subreddit, title, pid);
+      // A rate limit or vendor error mid-sample is not a pass and not a fail.
+      // Return it as unavailable: absence of evidence blocks, as before.
+      if (one.unavailable) return runs.length ? { ...runs[0], sampled: runs.length, note: `only ${runs.length} of ${VC_SAMPLES} samples ran` } : one;
+      runs.push(one);
+      if (i < VC_SAMPLES - 1) await new Promise(r => setTimeout(r, 1200));
+    }
+    const risks = runs.map(r => r.removal_risk).filter(n => typeof n === "number");
+    if (!risks.length) return runs[0];
+    const mean = Math.round(risks.reduce((a, b) => a + b, 0) / risks.length);
+    const worst = Math.max(...risks);
+    // Any single FAIL verdict is still a fail: the vendor naming a violated
+    // rule is a categorical answer, not a noisy score.
+    const failed = runs.find(r => r.verdict === "fail");
+    const lead = failed || runs.reduce((a, b) => (b.removal_risk > a.removal_risk ? b : a), runs[0]);
+    return { ...lead, removal_risk: mean, samples: risks, worst, sampled: risks.length,
+             summary: `${lead.summary} [${risks.length}-run mean ${mean}, worst ${worst}, samples ${risks.join("/")}]` };
   } catch (e) { return { unavailable: true, status: 0, why: String(e.message).slice(0, 200) }; }
 }
 /* The door's verdict on a vendor score. Refuses on `fail`, on a risk over

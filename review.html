@@ -324,31 +324,45 @@
       <div class="small" style="margin-top:6px">${esc((c.summary || '').replace(/^[^:]*: /, ''))}</div>${viol}</div></div>`;
   }
 
-  const MODE_WHY = {
-    comment: 'A top-level answer to the post. Approving clears it to send.',
-    reply: 'An answer under one specific comment by a real stranger. Paste that comment\'s permalink. The draft goes back to the agent to be rewritten as a reply, and you confirm the parent before approving.',
-    sharpen: 'Not a post. A small model simulates how this sub will react, the agent rewrites the one real comment with that as private context, and it comes back here. The simulation is never posted.'
-  };
+  /* MODE_WHY used to live here as a second copy of the strategy vocabulary.
+     It is now STRATEGIES in assets/app.js, read by this page, Status and
+     History, so a new strategy is one row plus one line in drafts_mode_ck
+     rather than three files to remember. */
 
   /* ── state ─────────────────────────────────────────────────────────── */
   let drafts = [], checks = {}, current = 0, ourIds = new Set();
   const CEILING = 40;   // 02-RUNBOOK.md ceiling; the API door enforces the same number (RISK_CEILING)
 
+  /* The state chip and the strategy chip are two different questions, and the
+     old code answered them with one slot: a reply that was also `edited by
+     you` showed only "edited" and the strategy vanished. State is what is
+     happening to the draft; strategy is how we are answering the thread.
+     Both are rendered, always, from STRATEGIES in app.js. */
   function stateChip(d) {
     if (d.gate_failed_at) return chip('bad', 'not sent');
     if (d.redirect_pending) return chip('warn', 'with the agent');
     if (d.status === 'edited') return chip('warn', 'edited by you');
-    if (d.kind === 'reply') return chip('info', 'reply');
-    if (d.mode === 'sharpen') return chip('info', 'sharpened');
     if (d.kind === 'post') return chip('info', 'new post');
     return '';
+  }
+  /* kind is what the vendor posts, mode is how we chose to answer. They agree
+     for every strategy shipping today; when they disagree the row is wrong and
+     the reviewer must see it rather than have one quietly win. */
+  function stratChip(d) {
+    if (d.kind === 'post') return '';
+    const m = d.mode || (d.kind === 'reply' ? 'reply' : 'comment');
+    if (d.kind === 'reply' && m !== 'reply')
+      return chip('warn', `kind=reply but mode=${m}`);
+    return strategyChip(m);
   }
 
   function renderQueueList() {
     const q = $('queue'), p = $('pick');
     q.innerHTML = drafts.map((d, i) => {
       const c = checks[d.id];
-      const v = stateChip(d) || scoreChip(c);
+      // Strategy is always on the queue row. Which threads are replies and
+      // which are top-level is the thing a reviewer scans this list for.
+      const v = stratChip(d) + (stateChip(d) || scoreChip(c));
       return `<button type="button" data-i="${i}" aria-current="${i === current}"><div class="qs"><span>r/${esc(threadSub(d) || '?')}</span>${v}</div><div class="qt">${esc(cleanTitle(threadTitle(d)))}</div></button>`;
     }).join('');
     q.querySelectorAll('button').forEach(b => b.addEventListener('click', () => select(+b.dataset.i)));
@@ -390,7 +404,7 @@
     w.innerHTML = `
       <div class="work-head">
         <span class="pos">Draft ${current + 1} of ${drafts.length}</span>
-        ${stateChip(d)}
+        ${stratChip(d)}${stateChip(d)}
         <div class="nav">
           <button class="btn small" data-prev ${current === 0 ? 'disabled' : ''} aria-label="Previous draft">${ICON.left}</button>
           <button class="btn small" data-next ${current >= drafts.length - 1 ? 'disabled' : ''} aria-label="Next draft">${ICON.right}</button>
@@ -405,15 +419,14 @@
       ${d.kind === 'post' ? '' : `
       <div class="modebar">
         <div class="row1"><span class="lbl">How we respond</span>
-          <select class="field" data-mode aria-label="Mode">
-            <option value="comment" ${d.mode === 'comment' ? 'selected' : ''}>comment: top-level answer</option>
-            <option value="reply" ${d.mode === 'reply' ? 'selected' : ''}>reply: under one stranger's comment</option>
-            <option value="sharpen" ${d.mode === 'sharpen' ? 'selected' : ''}>sharpen: simulate the sub, then one better comment</option>
+          <select class="field" data-mode aria-label="Strategy">
+            ${STRATEGIES.map(([k, label, , why]) =>
+              `<option value="${esc(k)}" ${d.mode === k ? 'selected' : ''}>${esc(label)}: ${esc(why.split('.')[0])}</option>`).join('')}
           </select>
           <button class="btn" data-a="redirect">Send back to the agent</button>
         </div>
-        <label class="field purl" data-purl-wrap ${d.mode === 'reply' || isReply ? '' : 'hidden'}><span class="muted small" style="white-space:nowrap">Parent permalink</span><input data-purl placeholder="https://www.reddit.com/r/…/comments/<post>/<slug>/<comment>/" value="${esc(d.parent_url || '')}"></label>
-        <div class="why" data-modewhy>${esc(MODE_WHY[d.mode] || MODE_WHY.comment)}</div>
+        <label class="field purl" data-purl-wrap ${strategyOf(d.mode).needsParent || isReply ? '' : 'hidden'}><span class="muted small" style="white-space:nowrap">Parent permalink</span><input data-purl placeholder="https://www.reddit.com/r/…/comments/<post>/<slug>/<comment>/" value="${esc(d.parent_url || '')}"></label>
+        <div class="why" data-modewhy>${esc(strategyOf(d.mode).why)}</div>
         <div class="st" data-modest></div>
       </div>`}
       <div class="decide">
@@ -478,22 +491,25 @@
       const modeSt = w.querySelector('[data-modest]'), modeWhy = w.querySelector('[data-modewhy]');
       const bRedir = w.querySelector('[data-a=redirect]');
       const syncMode = () => {
-        const m = modeSel.value;
-        purlWrap.hidden = m !== 'reply';
-        modeWhy.textContent = MODE_WHY[m];
-        const same = m === d.mode && (m !== 'reply' || purl.value.trim() === (d.parent_url || ''));
+        const m = modeSel.value, s = strategyOf(m);
+        // Which strategies need a parent permalink is a property of the
+        // strategy (STRATEGIES in app.js), not a hard-coded === 'reply'.
+        // A fourth strategy that answers a comment gets this for free.
+        purlWrap.hidden = !s.needsParent;
+        modeWhy.textContent = s.why;
+        const same = m === d.mode && (!s.needsParent || purl.value.trim() === (d.parent_url || ''));
         bRedir.disabled = same;
-        bRedir.title = same ? 'Change the mode, or the parent permalink, to send it back' : '';
+        bRedir.title = same ? 'Change the strategy, or the parent permalink, to send it back' : '';
       };
       modeSel.addEventListener('change', syncMode); purl.addEventListener('input', syncMode); syncMode();
       bRedir.addEventListener('click', async () => {
-        const m = modeSel.value;
-        if (m === 'reply' && commentId(purl.value) && ourIds.has(commentId(purl.value))) {
+        const m = modeSel.value, s = strategyOf(m);
+        if (s.needsParent && commentId(purl.value) && ourIds.has(commentId(purl.value))) {
           modeSt.classList.add('bad'); modeSt.textContent = 'That permalink is one of our own comments. A reply goes under a stranger, never under us.'; return;
         }
         bRedir.disabled = true; modeSt.classList.remove('bad'); modeSt.textContent = 'Sending back…';
         try {
-          const row = await rpc('redirect_draft', { p_draft_id: d.id, p_mode: m, p_parent_url: m === 'reply' ? purl.value.trim() : null, p_note: why.value.trim() || null, p_editor: 'reviewer' });
+          const row = await rpc('redirect_draft', { p_draft_id: d.id, p_mode: m, p_parent_url: s.needsParent ? purl.value.trim() : null, p_note: why.value.trim() || null, p_editor: 'reviewer' });
           Object.assign(d, row);
           renderQueueList(); renderWork();
           $('work').querySelector('[data-modest]').textContent = `Sent back as ${m}. The agent delivers a new body; until then Approve is off.`;

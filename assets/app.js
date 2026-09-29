@@ -140,6 +140,57 @@ function ago(iso) {
   return fmtDate(iso);
 }
 function chip(kind, text) { return `<span class="chip ${kind}">${esc(text)}</span>`; }
+
+/* ── Strategies: the ONE registry ───────────────────────────────────────────
+   How we respond to a thread. `drafts.mode` is the column; its vocabulary is
+   closed in the database (drafts_mode_ck, migration 010:43) so a typo fails
+   instead of inventing a state.
+
+   Two strategies ship today. More are expected, and the point of this table
+   is that a third one is a row here plus a line in the check constraint — not
+   a hunt through three pages for the places that hard-coded "reply".
+
+   Every surface reads this: Review shows it on the card and in the picker,
+   Status shows it on every row, History shows it in the log. A reviewer who
+   cannot see WHICH strategy a draft is cannot judge whether the body fits it.
+
+   [key, short label, chip tone, one-line meaning for a human]
+   `needsParent` marks the strategies that answer a specific comment: those
+   carry parent_url and CANNOT be approved without the reviewer's stranger
+   tick (parent_confirmed_by), because two of our accounts in one exchange is
+   the ring pattern (02-RUNBOOK.md:48). */
+const STRATEGIES = [
+  ["comment", "comment", "info",
+   "A top-level answer to the post itself. Chosen when no comment in the thread scored high enough to be worth answering.",
+   { needsParent: false }],
+  ["reply", "reply", "info",
+   "An answer under one specific comment by a real stranger, picked by rank-comments.py. Gets read where a top-level comment in a busy thread would sink.",
+   { needsParent: true }],
+  ["sharpen", "sharpened", "info",
+   "Not a strategy for posting. A small model simulates how this sub will react as PRIVATE context, then one real comment is filed. The simulation is never posted.",
+   { needsParent: false }]
+];
+const STRATEGY = Object.fromEntries(
+  STRATEGIES.map(([k, label, tone, why, opt]) => [k, { key: k, label, tone, why, ...opt }]));
+
+/* An unknown mode is shown as itself, never silently rendered as "comment".
+   A draft whose strategy we cannot name is exactly the one a human must look
+   at, so it must not be able to hide inside the default. */
+function strategyOf(mode) {
+  return STRATEGY[mode] || { key: mode || "comment", label: mode || "comment",
+                             tone: mode ? "warn" : "info",
+                             why: mode ? `Unknown strategy "${mode}". Nothing on this page knows how to render it — check drafts_mode_ck.`
+                                       : STRATEGY.comment.why,
+                             needsParent: false };
+}
+/* The chip every page uses, so the word for a strategy is the same word
+   everywhere. Always rendered, including for `comment` — an unlabelled row
+   reads as "no strategy", not as the default one. */
+function strategyChip(mode) {
+  const s = strategyOf(mode);
+  return chip(s.tone, s.label);
+}
+
 function skeleton(el, n = 4) {
   el.innerHTML = Array.from({ length: n }, (_, i) => `<div class="sk" style="width:${[92, 71, 84, 60, 77][i % 5]}%"></div>`).join("");
 }
