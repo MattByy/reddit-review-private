@@ -106,16 +106,33 @@ const isRedditUrl = u => /^https?:\/\/(www\.|old\.)?reddit\.com\//i.test(String(
    removed ones 66). What changes is that the door measures the same way the
    writer does. Worst-case is reported alongside the mean so a draft that ever
    spikes badly is still visible in the record. */
-const VC_SAMPLES = 3;          // vendor rate limit is 5/min; 3 leaves headroom
 async function vendorCheckOnce(body, kind, subreddit, title, pid) {
   const r = await fetch(`${ENG_URL}/api/v1/rule-check`, { method: "POST",
     headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "geonode-reddit-agent/1.0 (+api)" },
     body: JSON.stringify({ projectId: pid, subreddit, taskType: kind, content: body, mediaKind: "text", context: { postTitle: title || "" } }) });
   const text = await r.text(); let j; try { j = JSON.parse(text); } catch { j = { raw: text.slice(0, 300) }; }
-  if (!r.ok) return { unavailable: true, status: r.status, why: r.status === 429 ? "vendor rule-check rate limit (5 per minute). Retry in 60 seconds." : `vendor ${r.status}: ${JSON.stringify(j).slice(0, 200)}` };
+  if (!r.ok) return { unavailable: true, status: r.status, retryable: r.status === 429,
+    why: r.status === 429 ? "vendor rule-check rate limit (5 per minute). Retry in 60 seconds." : `vendor ${r.status}: ${JSON.stringify(j).slice(0, 200)}` };
   return { verdict: j.verdict || "unavailable", removal_risk: j.removalRisk ?? null, marketing: j.marketingIntentRisk ?? null,
            summary: j.summary || "", violated_rules: j.violatedRules || [], ceiling: RISK_CEILING };
 }
+
+/* A 429 is a QUEUE, not a verdict. The vendor allows 5 rule-checks a minute and
+   write-comment.py spends most of that budget confirming its own draft, so the
+   door's samples routinely arrive to a locked window. Treating that as
+   "unavailable" refused perfectly good drafts: 14 cron runs, 0 filed, 83 rate
+   limit hits, every one of them a draft that had already passed every gate.
+   Waiting is nearly free here — the alternative is discarding work that cost
+   ten model calls to produce. */
+async function vendorCheckRetry(body, kind, subreddit, title, pid) {
+  const waits = [20000, 40000, 60000];
+  for (let i = 0; ; i++) {
+    const one = await vendorCheckOnce(body, kind, subreddit, title, pid);
+    if (!one.retryable || i >= waits.length) return one;
+    await new Promise(r => setTimeout(r, waits[i]));
+  }
+}
+const VC_SAMPLES = Number(process.env.VC_SAMPLES || 2);   // see the budget note below
 async function vendorCheck(body, kind, subreddit, title) {
   if (!ENG_KEY) return { unavailable: true, status: 0, why: "ENGAIN_API_KEY not configured" };
   try {
@@ -123,14 +140,24 @@ async function vendorCheck(body, kind, subreddit, title) {
     const pid = process.env.ENGAIN_PROJECT_ID || ((me.projects || []).find(p => p.name === "geonode.com") || {}).id;
     if (!pid) return { unavailable: true, status: 0, why: "no geonode.com project on the vendor key" };
 
+    // BUDGET: the vendor allows 5 rule-checks per minute for the WHOLE pipeline,
+    // and write-comment.py already spends several confirming its own draft
+    // before it ever reaches this door. Sampling 3 here starved it and filed
+    // nothing for 14 straight runs. Two samples still catch the noise that
+    // mattered (a lone 48 among 28s no longer decides the outcome) while
+    // leaving the writer room, and each one retries through a 429 rather than
+    // throwing the draft away.
     const runs = [];
     for (let i = 0; i < VC_SAMPLES; i++) {
-      const one = await vendorCheckOnce(body, kind, subreddit, title, pid);
-      // A rate limit or vendor error mid-sample is not a pass and not a fail.
-      // Return it as unavailable: absence of evidence blocks, as before.
-      if (one.unavailable) return runs.length ? { ...runs[0], sampled: runs.length, note: `only ${runs.length} of ${VC_SAMPLES} samples ran` } : one;
+      const one = await vendorCheckRetry(body, kind, subreddit, title, pid);
+      // Out of retries: keep any sample we already have rather than discarding
+      // the draft over a vendor window we do not control.
+      if (one.unavailable) {
+        if (!runs.length) return one;
+        break;
+      }
       runs.push(one);
-      if (i < VC_SAMPLES - 1) await new Promise(r => setTimeout(r, 1200));
+      if (i < VC_SAMPLES - 1) await new Promise(r => setTimeout(r, 1500));
     }
     const risks = runs.map(r => r.removal_risk).filter(n => typeof n === "number");
     if (!risks.length) return runs[0];
