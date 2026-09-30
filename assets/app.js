@@ -168,6 +168,9 @@ const STRATEGIES = [
    { needsParent: true }],
   ["sharpen", "sharpened", "info",
    "Not a strategy for posting. A small model simulates how this sub will react as PRIVATE context, then one real comment is filed. The simulation is never posted.",
+   { needsParent: false }],
+  ["scenario", "script", "info",
+   "One turn of a multi-turn script: the same account posts hours apart in sequence. Approved or rejected as a unit—a half-approved script posts a public question that nothing answers.",
    { needsParent: false }]
 ];
 const STRATEGY = Object.fromEntries(

@@ -99,6 +99,28 @@
   .diff>div{font-size:13.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
   .diff .h{font-size:12px;color:var(--muted);margin-bottom:4px;white-space:normal}
   @media (max-width:720px){.diff{grid-template-columns:1fr}}
+
+  /* Scenario runs: multi-turn scripts, approved as a unit */
+  .scenario-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 16px; margin-bottom: 12px }
+  .scenario-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: start; margin-bottom: 12px }
+  .scenario-head .title { flex: 1; font-size: 15px; font-weight: 600; line-height: 1.35 }
+  .scenario-head .badges { display: flex; gap: 6px; flex-wrap: wrap }
+  .scenario-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin-bottom: 12px }
+  .scenario-meta span { display: flex; gap: 4px; align-items: center }
+  .scenario-acts { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line) }
+  .scenario-acts h4 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 10px }
+  .scenario-act { margin-bottom: 14px; padding: 12px; background: var(--panel); border-radius: var(--radius) }
+  .scenario-act .seq { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; font-weight: 500 }
+  .scenario-act .text { font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; margin-top: 8px }
+  .scenario-act .src { font-size: 12px; color: var(--muted); margin-top: 6px; font-family: var(--mono) }
+  .scenario-act .status-badge { display: inline-block; margin-left: 8px; font-size: 11px }
+  .scenario-act .delay { font-size: 12px; color: var(--muted); margin-top: 4px }
+  .scenario-act .humanizer-note { font-size: 12px; color: var(--warn); margin-top: 6px; padding: 6px 8px; background: rgba(138,90,0,.08); border-radius: 4px }
+  .scenario-acts .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px }
+  .scenario-acts .st { font-size: 13px; color: var(--muted); flex-basis: 100%; line-height: 1.5 }
+  .scenario-acts .st.bad { color: var(--bad) }
+  .scenario-ring-warning { border-left: 3px solid var(--bad); padding-left: 12px; margin: 12px 0 }
+
 </style></head>
 <body>
 <script src="assets/config.js"></script><script src="assets/app.js"></script><main>
@@ -128,6 +150,10 @@
       <label class="field pick"><span class="muted small">Draft</span><select id="pick" aria-label="Choose a draft"></select></label>
       <div id="work"></div>
     </div>
+  </div>
+  <div id="scenarios-section" hidden style="margin-top:24px;padding-top:24px;border-top:1px solid var(--line)">
+    <h2 style="font-size:18px;margin-bottom:12px">Multi-turn scenarios</h2>
+    <div id="scenarios-list" class="stack"></div>
   </div>
 </div>
 
@@ -550,7 +576,7 @@
           const res = await dispatch();
           flash(describe(res));
         }
-        await Promise.all([renderSend(), renderLessons()]);
+        await Promise.all([renderSend(), renderLessons(), renderScenarios()]);
       } catch (e) {
         st.classList.add('bad'); st.textContent = 'Failed: ' + errText(e);
         bRej.disabled = false; refresh();
@@ -634,7 +660,7 @@
           await rpc('review_draft', { p_draft_id: d.id, p_action: 'reject', p_body: null, p_note: why.value.trim(), p_editor: 'reviewer' });
           drafts = drafts.filter(x => x.id !== d.id); setCounts(); if (!drafts.length) showEmpty(); else renderQueueList();
           try { sessionStorage.removeItem('c_nav_stage'); } catch (e) {}
-          await Promise.all([renderSend(), renderLessons()]);
+          await Promise.all([renderSend(), renderLessons(), renderScenarios()]);
         } catch (e) { b.disabled = false; stat.classList.add('bad'); stat.textContent = 'Failed: ' + errText(e); }
       });
       bind('[data-a=hold]', async b => {
@@ -688,6 +714,133 @@
       : '<div class="empty"><b>No edits yet.</b>Once you save an edit, the before and after shows here and feeds the next prompt.</div>';
   }
 
+
+  /* ── scenario runs ────────────────────────────────────────────────────── */
+  async function renderScenarios() {
+    const runs = await api('scenario_runs?select=id,scenario_slug,subreddit,thread_url,thread_id,status,started_at&order=started_at.desc&limit=50');
+    if (!runs.length) { $('scenarios-section').hidden = true; return; }
+    
+    // Fetch all scenarios once
+    const scenarios = await api('scenarios?select=slug,name,hypothesis,enabled,same_thread_accounts,ring_reason&limit=200');
+    const scenarioMap = {};
+    for (const s of scenarios) scenarioMap[s.slug] = s;
+    
+    // For each run, fetch its acts
+    const runIds = runs.map(r => r.id).join(',');
+    const allActs = await api(`scenario_acts?select=id,run_id,seq,kind,depends_on,after_min,account_id,draft_id,status,url&run_id=in.(${runIds})&order=seq.asc`);
+    const actsByRun = {};
+    for (const a of allActs) {
+      if (!actsByRun[a.run_id]) actsByRun[a.run_id] = [];
+      actsByRun[a.run_id].push(a);
+    }
+    
+    // Fetch draft details for scenario acts
+    const draftIds = allActs.filter(a => a.draft_id).map(a => a.draft_id).join(',');
+    let draftsById = {};
+    if (draftIds) {
+      const drafts = await api(`drafts?select=id,body,body_original,source,agent_note&id=in.(${draftIds})`);
+      for (const d of drafts) draftsById[d.id] = d;
+    }
+    
+    $('scenarios-section').hidden = false;
+    const box = $('scenarios-list');
+    box.innerHTML = '';
+    
+    for (const run of runs) {
+      const scenario = scenarioMap[run.scenario_slug];
+      if (!scenario) continue;
+      
+      const card = document.createElement('div');
+      card.className = 'card scenario-card';
+      
+      const acts = actsByRun[run.id] || [];
+      
+      // Ring guard check
+      const ringWarning = scenario.same_thread_accounts ?
+        `<div class="notice bad scenario-ring-warning"><b>Same-thread ring guard active.</b> ${esc(scenario.ring_reason || 'Two accounts in one thread is a ban-evasion pattern. This scenario is disabled.')}</div>` : '';
+      
+      const url = run.thread_url || `https://www.reddit.com/comments/${run.thread_id}`;
+      const statusBadge = run.status === 'open' ? chip('warn', 'in progress')
+        : run.status === 'done' ? chip('ok', 'completed')
+        : run.status === 'aborted' ? chip('bad', `aborted: ${run.abort_reason || 'unknown'}`)
+        : chip('info', run.status);
+      
+      const actsHtml = acts.map(a => {
+        const draft = a.draft_id ? draftsById[a.draft_id] : null;
+        const body = draft ? draft.body : '';
+        const bodyOrig = draft ? draft.body_original : '';
+        const source = draft ? draft.source : '';
+        const agentNote = draft ? draft.agent_note : '';
+        
+        // Parse agent_note to extract voice and humanizer info
+        let voice = '';
+        let humanReject = '';
+        if (agentNote) {
+          const voiceMatch = agentNote.match(/voice=([^\s]+)/);
+          if (voiceMatch) voice = voiceMatch[1];
+          if (agentNote.includes('humanizer output rejected')) humanReject = 'humanizer output rejected, original kept';
+        }
+        
+        const delay = a.after_min ? `${a.after_min} minutes after turn ${a.depends_on}` : 'immediate';
+        const mentions = source && source.includes('geonode') ? chip('', 'mentions Geonode') : '';
+        
+        return `
+          <div class="scenario-act">
+            <div class="seq">Turn ${a.seq} · ${a.kind}${mentions ? ' ' + mentions : ''}</div>
+            ${a.depends_on ? `<div class="delay">Posted ${delay}</div>` : ''}
+            ${voice ? `<div class="src">Voice: <b>${esc(voice)}</b>${humanReject ? ' (' + esc(humanReject) + ')' : ''}</div>` : ''}
+            <div class="status-badge">${chip('', a.status || 'pending')}</div>
+            <div class="text">${esc(body || '(no text)')}</div>
+            ${bodyOrig && bodyOrig !== body ? `<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,.03);border-radius:4px"><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Pre-humanizer original:</div><div class="text" style="margin:0;font-size:12px">${esc(bodyOrig)}</div></div>` : ''}
+          </div>
+        `;
+      }).join('');
+      
+      const hypothesis = scenario.hypothesis ? `<p style="font-size:14px;line-height:1.6;margin-bottom:12px;color:var(--text)">${esc(scenario.hypothesis)}</p>` : '';
+      
+      card.innerHTML = `
+        <div class="scenario-head">
+          <div class="title">${esc(scenario.name || 'Untitled scenario')}</div>
+          <div class="badges">${statusBadge}${scenario.enabled ? '' : chip('bad', 'disabled')}</div>
+        </div>
+        ${ringWarning}
+        ${hypothesis}
+        <div class="scenario-meta">
+          <span>r/${esc(run.subreddit || '?')}</span>
+          <a href="${esc(url)}" class="ext" target="_blank" rel="noopener">View thread</a>
+          <span>${esc(ago(run.started_at))}</span>
+          <span>${acts.length} turn${acts.length === 1 ? '' : 's'}</span>
+        </div>
+        ${acts.length ? `<div class="scenario-acts">
+          <h4>Script turns</h4>
+          ${actsHtml}
+          <div class="acts">
+            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}">Approve entire script and send</button>
+            <button class="btn danger" data-a="reject-run" data-run-id="${esc(run.id)}">Reject script</button>
+            <span class="st" data-s></span>
+          </div>
+        </div>` : '<div class="notice" style="margin-top:12px"><div class="body">No acts yet.</div></div>'}
+      `;
+      
+      // Bind approve/reject for runs (placeholder - actual RPC TBD)
+      const stat = card.querySelector('[data-s]');
+      const approveBtn = card.querySelector('[data-a=approve-run]');
+      const rejectBtn = card.querySelector('[data-a=reject-run]');
+      if (approveBtn) {
+        approveBtn.addEventListener('click', async () => {
+          stat.textContent = '(Script approval not yet implemented in RPC)';
+        });
+      }
+      if (rejectBtn) {
+        rejectBtn.addEventListener('click', async () => {
+          stat.textContent = '(Script rejection not yet implemented in RPC)';
+        });
+      }
+      
+      box.appendChild(card);
+    }
+  }
+
   /* ── tabs ──────────────────────────────────────────────────────────── */
   const tabs = [...document.querySelectorAll('[role=tab]')];
   tabs.forEach(t => t.addEventListener('click', () => {
@@ -728,7 +881,7 @@
       if (held.length) $('held').hidden = false, $('held').querySelector('.body').innerHTML = `<b>${held.length} held back:</b> ${held.length === 1 ? 'it does' : 'they do'} not pass (risk over ${CEILING}, or not scored). Not shown. The agent rewrites.`;
       setCounts();
       if (!drafts.length) showEmpty(); else { $('ws').hidden = false; select(0); }
-      await Promise.all([renderSend(), renderLessons()]);
+      await Promise.all([renderSend(), renderLessons(), renderScenarios()]);
     } catch (e) { $('loading').hidden = true; fail(e, 'the review queue'); }
   }
   boot();
