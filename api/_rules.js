@@ -34,6 +34,23 @@ const OWN_NUMBERS = [
   /\b(2|5|25|100|250)\s+threads?\b/i, /\$\s*(50|100|400|1250|2500)\b/,
 ];
 
+// §0.45: rival vendor names. No comparisons — measured on our own set, naming
+// a rival tracked removal (5/10 removed vs 1/8 published). Word-boundary
+// anchored so "brightdata" and "bright data" both catch while ordinary prose
+// ("a bright idea", "apify-style") does not. Add a name here, not to a prompt:
+// a prompt is a request and this is a gate.
+const RIVALS = [
+  /\bbright\s?data\b/i, /\bluminati\b/i, /\boxylabs\b/i, /\bsmartproxy\b/i,
+  /\bdecodo\b/i, /\bscraperapi\b/i, /\bscrapingbee\b/i, /\bscrapfly\b/i,
+  /\bzyte\b/i, /\bapify\b/i, /\bfirecrawl\b/i, /\bhasdata\b/i,
+  /\bnetnut\b/i, /\bwebshare\b/i, /\bproxyempire\b/i, /\biproyal\b/i,
+  /\bsoax\b/i, /\bnimbleway\b/i, /\bserpapi\b/i, /\bscrapingdog\b/i,
+  /\bcrawlbase\b/i, /\bproxycrawl\b/i, /\bdataimpulse\b/i,
+  // "massive" (Massive Network) is deliberately NOT here: it is ordinary
+  // English and flagged "a massive spike in retries" in testing. A gate that
+  // fires on normal prose gets switched off, so the vendor loses the slot.
+];
+
 const words = t => (t.trim().match(/\S+/g) || []).length;
 
 /**
@@ -74,6 +91,16 @@ function check(body, opts = {}) {
   // someone who asked a follow-up may legitimately not, so that is a warning.
   if (!low.includes("geonode")) {
     (opts.kind === "reply" ? warns : fails).push("never mentions Geonode. Safe and pointless is still a failure.");
+  }
+
+  // §0.45 no comparisons. Measured on our own published/removed set: 5 of 10
+  // removed comments named a rival vendor, against 1 of 8 published. Setting
+  // one vendor against another reads as a sales pitch to Reddit's Rules Hub
+  // (LLM enforcement by intent, so wording it carefully does not help).
+  // Describe the pricing SHAPE instead of naming who sells it.
+  for (const re of RIVALS) {
+    const m = text.match(re);
+    if (m) { fails.push(`names a rival ('${m[0]}'). No comparisons: describe the pricing shape, not who sells it.`); break; }
   }
 
   // §0.5 fabrication is not machine-checkable, but the classic tells are.
