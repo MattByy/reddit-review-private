@@ -102,6 +102,7 @@
 
   /* Scenario runs: multi-turn scripts, approved as a unit */
   .scenario-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 16px; margin-bottom: 12px }
+  .scenario-card.rejected { border: 2px solid var(--bad); background: rgba(180,30,30,.06) }
   .scenario-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: start; margin-bottom: 12px }
   .scenario-head .title { flex: 1; font-size: 15px; font-weight: 600; line-height: 1.35 }
   .scenario-head .badges { display: flex; gap: 6px; flex-wrap: wrap }
@@ -717,8 +718,9 @@
 
 
   /* ── scenario runs ────────────────────────────────────────────────────── */
+  const scenarioMessages = new Map();
   async function renderScenarios() {
-    const runs = await api('scenario_runs?select=id,scenario_slug,subreddit,thread_url,thread_id,status,abort_reason,started_at&order=started_at.desc&limit=50');
+    const runs = await api('scenario_runs?select=id,scenario_slug,subreddit,thread_url,thread_id,status,review_status,reviewed_at,reviewed_by,review_note,abort_reason,started_at&order=started_at.desc&limit=50');
     if (!runs.length) { $('scenarios-section').hidden = true; return; }
     
     // Fetch all scenarios once
@@ -752,7 +754,9 @@
       if (!scenario) continue;
       
       const card = document.createElement('div');
-      card.className = 'card scenario-card';
+      const rejected = run.review_status === 'rejected';
+      card.className = 'card scenario-card' + (rejected ? ' rejected' : '');
+      card.dataset.runId = run.id;
       
       const acts = actsByRun[run.id] || [];
       
@@ -761,7 +765,8 @@
         `<div class="notice bad scenario-ring-warning"><b>Same-thread ring guard active.</b> ${esc(scenario.ring_reason || 'Two accounts in one thread is a ban-evasion pattern. This scenario is disabled.')}</div>` : '';
       
       const url = run.thread_url || `https://www.reddit.com/comments/${run.thread_id}`;
-      const statusBadge = run.status === 'open' ? chip('warn', 'in progress')
+      const statusBadge = rejected ? chip('bad', 'REJECTED — script stopped')
+        : run.status === 'open' ? chip(run.review_status === 'approved' ? 'ok' : 'warn', run.review_status === 'approved' ? 'script approved' : 'awaiting human approval')
         : run.status === 'done' ? chip('ok', 'completed')
         : run.status === 'aborted' ? chip('bad', `aborted: ${run.abort_reason || 'unknown'}`)
         : chip('info', run.status);
@@ -821,6 +826,8 @@
           <div class="badges">${statusBadge}${scenario.enabled ? '' : chip('bad', 'disabled')}</div>
         </div>
         ${ringWarning}
+        ${rejected ? `<div class="notice bad"><div class="body"><b>Script stopped. No further acts will be sent.</b><br>${esc(run.review_note || 'Rejected by reviewer')}${acts.some(a => a.task_id) ? '<br>Tasks already accepted by Engain may still publish; rejection does not cancel them.' : ''}</div></div>` : ''}
+        ${run.reviewed_at ? `<div class="scenario-meta">Reviewed by ${esc(run.reviewed_by || 'unknown')} · ${esc(ago(run.reviewed_at))}</div>` : ''}
         ${hypothesis}
         <div class="scenario-meta">
           <span>r/${esc(run.subreddit || '?')}</span>
@@ -832,28 +839,52 @@
           <h4>Script turns</h4>
           ${actsHtml}
           <div class="acts">
-            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}">Approve entire script and send</button>
-            <button class="btn danger" data-a="reject-run" data-run-id="${esc(run.id)}">Reject script</button>
+            <label class="field"><span class="muted small">Reviewer</span><input data-reviewer aria-label="Script reviewer" value="reviewer" ${rejected ? 'disabled' : ''}></label>
+            <label class="field"><span class="muted small">Reason</span><input data-why aria-label="Script review reason" placeholder="required to reject, optional otherwise" ${rejected ? 'disabled' : ''}></label>
+            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}" ${rejected || run.status !== 'open' || !scenario.enabled || scenario.same_thread_accounts ? 'disabled' : ''}>${run.review_status === 'approved' ? 'Reapprove current script' : 'Approve entire script and send'}</button>
+            <button class="btn danger" data-a="reject-run" data-run-id="${esc(run.id)}" ${rejected ? 'disabled' : ''}>Reject script</button>
             <span class="st" data-s></span>
           </div>
         </div>` : '<div class="notice" style="margin-top:12px"><div class="body">No acts yet.</div></div>'}
       `;
       
-      // Bind approve/reject for runs (placeholder - actual RPC TBD)
       const stat = card.querySelector('[data-s]');
       const approveBtn = card.querySelector('[data-a=approve-run]');
       const rejectBtn = card.querySelector('[data-a=reject-run]');
-      if (approveBtn) {
-        approveBtn.addEventListener('click', async () => {
-          stat.textContent = '(Script approval not yet implemented in RPC)';
-        });
+      if (stat) {
+        stat.setAttribute('role', 'status');
+        stat.textContent = scenarioMessages.get(run.id) || (rejected ? 'Rejected permanently.'
+          : run.review_status === 'approved' ? 'Approved. Due acts are considered on the next scheduled pass; all send gates still apply.' : 'Waiting for approval of the entire script.');
+        stat.classList.toggle('bad', rejected);
       }
-      if (rejectBtn) {
-        rejectBtn.addEventListener('click', async () => {
-          stat.textContent = '(Script rejection not yet implemented in RPC)';
-        });
+      async function reviewRun(action) {
+        const note = card.querySelector('[data-why]').value.trim();
+        const editor = card.querySelector('[data-reviewer]').value.trim();
+        if (!editor || (action === 'reject' && !note)) {
+          stat.classList.add('bad');
+          stat.textContent = !editor ? 'Enter the reviewer name.' : 'Give a reason for rejecting the script.';
+          return;
+        }
+        const wasDisabled = approveBtn.disabled;
+        approveBtn.disabled = rejectBtn.disabled = true;
+        stat.classList.remove('bad');
+        stat.textContent = 'Saving review…';
+        try {
+          await rpc('review_scenario_run', { p_run_id: run.id, p_action: action, p_note: note || null, p_editor: editor });
+          scenarioMessages.set(run.id, action === 'approve'
+            ? 'Script approved. Due acts will be considered on the next scheduled pass; all send gates still apply.'
+            : 'Script rejected permanently. No further acts will be sent.');
+          await renderScenarios();
+        } catch (e) {
+          stat.classList.add('bad');
+          stat.textContent = errText(e);
+          approveBtn.disabled = wasDisabled;
+          rejectBtn.disabled = false;
+        }
       }
-      
+      if (approveBtn) approveBtn.addEventListener('click', () => reviewRun('approve'));
+      if (rejectBtn) rejectBtn.addEventListener('click', () => reviewRun('reject'));
+
       box.appendChild(card);
     }
   }

@@ -97,6 +97,7 @@ async function dispatchOne(d, pid, ourIds) {
   const context = await sb("POST", "rpc/scenario_context", {
     p_draft_id: d.draft_id, p_parent_url: cur.parent_url || null
   });
+  if (context.scenario && !context.pace_ok) return { ...head, outcome: "deferred", why: "scenario pace floor (45m global / 24h subreddit / 20 per UTC day)" };
   if (!context.ready) return { ...head, outcome: "skipped", why: "scenario disabled, wrong dependency, or waiting for publication/gap" };
   const isSetup = context.setup === true;
   const low = body.toLowerCase();
@@ -135,6 +136,16 @@ async function dispatchOne(d, pid, ourIds) {
   if (kind === "reply") { endpoint = "/api/v1/tasks/reply"; payload = { projectId: pid, url: cur.parent_url, content: body, labels }; target = cur.parent_url; }
   else if (kind === "post") { endpoint = "/api/v1/tasks/post"; payload = { projectId: pid, subredditUrl: `https://www.reddit.com/r/${d.subreddit}/`, postTitle: d.title, content: body, labels }; target = `r/${d.subreddit}`; }
   else { endpoint = "/api/v1/tasks/comment"; payload = { projectId: pid, url: d.thread_url, content: body, labels }; target = d.thread_url; }
+  if (context.scenario) {
+    // Vendor rule-check may have taken seconds; honor a review made meanwhile.
+    const [fresh] = await sb("GET", `drafts?select=status,send_cleared_at,body,parent_url,kind,redirect_pending,gate_failed_at,pullback_requested_at&id=eq.${enc(d.draft_id)}`);
+    const proof = await sb("POST", "rpc/scenario_context", { p_draft_id: d.draft_id, p_parent_url: cur.parent_url || null });
+    if (!fresh || fresh.status !== "approved" || !fresh.send_cleared_at || fresh.body !== body ||
+        fresh.parent_url !== cur.parent_url || fresh.kind !== kind || fresh.redirect_pending ||
+        fresh.gate_failed_at || fresh.pullback_requested_at || !proof.ready || !proof.pace_ok ||
+        (context.self_reply && !proof.self_reply))
+      return { ...head, outcome: "skipped", why: "scenario approval, text or gates changed before submission" };
+  }
   const { status, json: task } = await engain("POST", endpoint, payload);
   if (status >= 300 || !task.id) {
     await log("engain_submit_failed", { draft: d.draft_id, thread: d.thread_id, status, vendor: task });
