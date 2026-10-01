@@ -87,9 +87,32 @@ async function dispatchOne(d, pid, ourIds) {
   const body = cur.body || "";
 
   // gate 1: the rules, on the exact bytes
+  //
+  // A scenario SETUP act is allowed not to name us: act 1 asks the question that
+  // act 2 answers hours later, and its spec says mentions_geonode: false on
+  // purpose. Without this lookup the gate failed act 1 of every scripted
+  // scenario, which is why the only run ever started has sat open with act 2
+  // pending behind it. The flag comes from the scenario spec in the database,
+  // never from the caller, so a draft cannot ask to skip the mention rule.
+  let isSetup = false;
+  {
+    const [act] = await sb("GET",
+      `scenario_acts?select=seq,run_id&draft_id=eq.${enc(d.draft_id)}`);
+    if (act) {
+      const [run] = await sb("GET",
+        `scenario_runs?select=scenario_slug&id=eq.${enc(act.run_id)}`);
+      if (run) {
+        const [sc] = await sb("GET",
+          `scenarios?select=spec&slug=eq.${enc(run.scenario_slug)}`);
+        const spec = (sc && sc.spec) || {};
+        const mine = ((spec.acts) || []).find(a => Number(a.seq) === Number(act.seq));
+        isSetup = !!(mine && mine.mentions_geonode === false);
+      }
+    }
+  }
   const low = body.toLowerCase();
   const forb = FORBIDDEN.filter(([p]) => low.includes(p)).map(([p, why]) => `'${p}': ${why}`);
-  const v = check(body, { kind });
+  const v = check(body, { kind, setup: isSetup });
   if (!v.ok || forb.length) return flag(d, "final rule check", [...v.fails, ...forb]);
 
   // gate 2: replies answer a confirmed stranger, never us
