@@ -110,6 +110,7 @@
   .scenario-acts { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line) }
   .scenario-acts h4 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 10px }
   .scenario-act { margin-bottom: 14px; padding: 12px; background: var(--panel); border-radius: var(--radius) }
+  .scenario-act.removed { border: 2px solid var(--bad); background: rgba(180,30,30,.06) }
   .scenario-act .seq { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; font-weight: 500 }
   .scenario-act .text { font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; margin-top: 8px }
   .scenario-act .src { font-size: 12px; color: var(--muted); margin-top: 6px; font-family: var(--mono) }
@@ -303,7 +304,7 @@
      it, not a blank card that reads as "nothing there". */
   function parentPanel(d) {
     const p = d.thread_context && d.thread_context.parent;
-    const ours = commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
+    const ours = !d.scenarioContext?.self_reply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
     const warn = ours ? `<div class="notice bad" style="margin-top:10px">${ICON.alert}<div class="body"><b>This parent is one of OUR OWN published comments.</b> Two of our accounts in one exchange is the ring fingerprint. Reject this draft.</div></div>` : '';
     if (!p || !p.body) return `<div class="parent"><div class="lbl">Replying to</div>
       <div class="notice warn">${ICON.alert}<div class="body">The agent did not capture the parent comment. <a href="${esc(absUrl(d.parent_url))}" class="ext" target="_blank" rel="noopener">Open the permalink</a> and read it before you confirm anything below.</div></div>${warn}</div>`;
@@ -469,7 +470,7 @@
     const bApp = w.querySelector('[data-a=approve]'), bEdit = w.querySelector('[data-a=edit]'), bRej = w.querySelector('[data-a=reject]');
     const st = w.querySelector('[data-st]');
     const confirmBox = w.querySelector('[data-confirm]');
-    const parentOurs = isReply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
+    const parentOurs = isReply && !d.scenarioContext?.self_reply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
     ta.value = d.body || '';
     const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.max(220, ta.scrollHeight + 12) + 'px'; };
     grow();
@@ -485,7 +486,7 @@
       const dirty = ta.value !== (d.body || '');
       const c = renderChecks(w.querySelector('[data-checks]'), w.querySelector('[data-wc]'), ta.value);
       ta.classList.toggle('dirty', dirty);
-      const needConfirm = isReply && !(confirmBox && confirmBox.checked);
+      const needConfirm = isReply && !d.scenarioContext?.self_reply && !(confirmBox && confirmBox.checked);
       bApp.disabled = dirty || c.hardFail || d.redirect_pending || needConfirm || !!parentOurs;
       bEdit.disabled = !dirty || c.hardFail;
       st.classList.remove('bad');
@@ -717,17 +718,17 @@
 
   /* ── scenario runs ────────────────────────────────────────────────────── */
   async function renderScenarios() {
-    const runs = await api('scenario_runs?select=id,scenario_slug,subreddit,thread_url,thread_id,status,started_at&order=started_at.desc&limit=50');
+    const runs = await api('scenario_runs?select=id,scenario_slug,subreddit,thread_url,thread_id,status,abort_reason,started_at&order=started_at.desc&limit=50');
     if (!runs.length) { $('scenarios-section').hidden = true; return; }
     
     // Fetch all scenarios once
-    const scenarios = await api('scenarios?select=slug,name,hypothesis,enabled,same_thread_accounts,ring_reason&limit=200');
+    const scenarios = await api('scenarios?select=slug,name,hypothesis,spec,enabled,same_thread_accounts,ring_reason&limit=200');
     const scenarioMap = {};
     for (const s of scenarios) scenarioMap[s.slug] = s;
     
     // For each run, fetch its acts
     const runIds = runs.map(r => r.id).join(',');
-    const allActs = await api(`scenario_acts?select=id,run_id,seq,kind,depends_on,after_min,account_id,draft_id,status,url&run_id=in.(${runIds})&order=seq.asc`);
+    const allActs = await api(`scenario_acts?select=id,run_id,seq,kind,depends_on,after_min,account_id,draft_id,status,url,task_id,due_at,dispatched_at,published_at,engain_status,engain_seen_at&run_id=in.(${runIds})&order=seq.asc`);
     const actsByRun = {};
     for (const a of allActs) {
       if (!actsByRun[a.run_id]) actsByRun[a.run_id] = [];
@@ -781,15 +782,31 @@
           if (agentNote.includes('humanizer output rejected')) humanReject = 'humanizer output rejected, original kept';
         }
         
-        const delay = a.after_min ? `${a.after_min} minutes after turn ${a.depends_on}` : 'immediate';
-        const mentions = source && source.includes('geonode') ? chip('', 'mentions Geonode') : '';
-        
+        const specAct = (scenario.spec?.acts || []).find(x => Number(x.seq) === Number(a.seq));
+        const mentions = specAct?.mentions_geonode === true ? chip('', 'names Geonode')
+          : specAct?.mentions_geonode === false ? chip('', 'no Geonode mention') : chip('warn', 'mention role unknown');
+        const stamp = value => value && Number.isFinite(Date.parse(value))
+          ? `${esc(new Date(value).toLocaleString(undefined, { timeZoneName: 'short' }))} (${esc(ago(value))})` : 'unknown';
+        const parent = acts.find(x => x.seq === a.depends_on);
+        const gapMs = a.published_at && parent?.published_at
+          ? Date.parse(a.published_at) - Date.parse(parent.published_at) : null;
+        const actualGap = gapMs !== null && Number.isFinite(gapMs)
+          ? `${(gapMs / 60000).toLocaleString(undefined, { maximumFractionDigits: 1 })} minutes (${(gapMs / 86400000).toFixed(2)} days)`
+          : 'unknown — both publication timestamps required';
+        const removed = a.status === 'removed' || ['mod_removed', 'automod_removed'].includes(a.engain_status);
+        const planned = specAct?.after_min == null ? 'unknown'
+          : `${Number(specAct.after_min).toLocaleString()} minutes (${(Number(specAct.after_min) / 1440).toFixed(2)} days)`;
+        const commentLink = a.url ? `<a href="${esc(a.url)}" class="ext" target="_blank" rel="noopener">${removed ? 'View removed comment' : 'View comment'}</a>` : '<b>not published</b>';
         return `
-          <div class="scenario-act">
-            <div class="seq">Turn ${a.seq} · ${a.kind}${mentions ? ' ' + mentions : ''}</div>
-            ${a.depends_on ? `<div class="delay">Posted ${delay}</div>` : ''}
+          <div class="scenario-act${removed ? ' removed' : ''}">
+            <div class="seq">Turn ${a.seq} · ${esc(a.kind)} ${mentions}</div>
+            ${removed ? `<div class="notice bad"><div class="body"><b style="text-transform:uppercase">Removed — ${esc(a.engain_status || 'removal reported')}. This comment is not live.</b><br>Removal time: unknown.</div></div>` : ''}
+            ${a.depends_on != null ? `<div class="delay">Planned gap: ${planned} after turn ${a.depends_on}<br>Actual publication gap from turn ${a.depends_on}: ${actualGap}</div>` : ''}
+            <div class="delay">Dispatched at: ${stamp(a.dispatched_at)}<br>Published at: ${stamp(a.published_at)}<br>${commentLink}</div>
+            ${a.status === 'due' || a.status === 'pending' ? `<div class="delay">Scheduled eligibility: ${a.due_at ? stamp(a.due_at) : 'unknown — waiting for parent publication'}</div>` : ''}
+            <div class="delay">Engain: ${esc(a.engain_status || 'unknown')} · Last checked: ${stamp(a.engain_seen_at)}</div>
             ${voice ? `<div class="src">Voice: <b>${esc(voice)}</b>${humanReject ? ' (' + esc(humanReject) + ')' : ''}</div>` : ''}
-            <div class="status-badge">${chip('', a.status || 'pending')}</div>
+            <div class="status-badge">${chip(removed ? 'bad' : a.status === 'published' && a.url ? 'ok' : 'warn', a.status || 'unknown')}</div>
             <div class="text">${esc(body || '(no text)')}</div>
             ${bodyOrig && bodyOrig !== body ? `<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,.03);border-radius:4px"><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Pre-humanizer original:</div><div class="text" style="margin:0;font-size:12px">${esc(bodyOrig)}</div></div>` : ''}
           </div>
@@ -869,6 +886,9 @@
       /* The queue: pending and edited drafts, plus approved ones the final
          gate refused, because those need a human again. */
       drafts = await api('drafts?select=id,thread_id,kind,mode,parent_url,subreddit,title,strategy,format,body,body_original,status,source,agent_note,upvotes_suggested,upvotes_reason,prompt_version,thread_context,models,sharpen,redirect_pending,redirected_at,redirect_note,gate_failed_at,gate_failure,parent_confirmed_by,created_at&or=(status.in.(pending,edited),and(status.eq.approved,gate_failed_at.not.is.null))&order=created_at.asc&limit=100');
+      await Promise.all(drafts.filter(d => d.mode === 'scenario').map(async d => {
+        d.scenarioContext = await api('rpc/scenario_context', { method: 'POST', body: JSON.stringify({ p_draft_id: d.id, p_parent_url: d.parent_url || null }) });
+      }));
       if (drafts.length) {
         const rc = await api(`rule_checks?select=draft_id,verdict,removal_risk,violated_rules,summary,checked_at&draft_id=in.(${drafts.map(r => r.id).join(',')})&order=checked_at.desc`);
         for (const c of rc) if (!checks[c.draft_id]) checks[c.draft_id] = c;

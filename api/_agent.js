@@ -278,9 +278,7 @@ async function ourComments() {
   return rows.map(r => ({ task: r.id, thread: r.thread_id, url: r.reddit_url, comment_id: commentId(r.reddit_url), published_at: r.published_at }));
 }
 async function isOurs(url) {
-  const cid = commentId(url);
-  if (!cid) return false;
-  return (await ourComments()).some(c => c.comment_id === cid);
+  return await sb("POST", "rpc/is_our_url", { p_url: url });
 }
 
 async function postThread(body) {
@@ -368,8 +366,11 @@ async function postDraft(body) {
     if (t[0].archived === true || t[0].locked === true) bad(409, `thread ${d.thread_id} is ${t[0].archived ? "archived" : "locked"}. Nothing can be posted there.`);
     thread = t[0];
   }
+  // POST creates a new draft: it has no DB act association yet, so caller
+  // flags/ids cannot grant the scenario exemption. Existing linked acts use
+  // PATCH below, which proves act -> run -> spec -> exact dependency URL.
   if (d.kind === "reply" && await isOurs(d.parent_url)) {
-    bad(422, "parent_url is one of OUR OWN published comments. A reply answers a real stranger, never our own account (02-RUNBOOK.md §0 rule 8). GET /api/agent/our-comments lists them.");
+    bad(422, "parent_url is one of OUR OWN published comments. A reply answers a real stranger, unless it is an existing DB-linked same-account scenario act (PATCH that draft; 02-RUNBOOK.md §0 rule 8). GET /api/agent/our-comments lists them.");
   }
   const verdict = check(d.body, { kind: d.kind });
   if (!verdict.ok) bad(422, "the draft breaks a hard rule. Fix and refile.", { verdict });
@@ -409,13 +410,18 @@ async function patchDraft(id, body) {
   const cur = (await sb("GET", `drafts?select=${DRAFT_COLS}&id=eq.${enc(id)}`))[0];
   if (!cur) bad(404, `draft ${id} not found`);
   if (cur.status !== "pending") bad(409, `draft is '${cur.status}': a human has already acted on it. File a new draft instead of rewriting history.`);
-  // A draft the reviewer sent back (redirect_pending) is the agent's to
-  // rewrite whoever filed it; otherwise only API-filed drafts are editable.
-  if (cur.source !== "agent_api" && !cur.redirect_pending) bad(409, "this draft was not filed through the API. Only the reviewer edits it.");
-
+  const context = await sb("POST", "rpc/scenario_context", { p_draft_id: id, p_parent_url: cur.parent_url || null });
+  // Existing pending scenario drafts are filed by roleplay.py, not this API.
+  // Permit their revision only with a real DB association; caller flags do
+  // not grant access to the scenario exemption or create a second draft.
+  if (cur.source !== "agent_api" && !cur.redirect_pending && !context.scenario)
+    bad(409, "this draft was not filed through the API. Only the reviewer edits it.");
+  if (context.scenario && !context.allowed) bad(422, "scenario is disabled or uses multiple accounts in one thread");
+  if (cur.kind === "reply" && cur.parent_url && await isOurs(cur.parent_url) && !context.self_reply)
+    bad(422, "parent is ours but is not this act's sanctioned scenario dependency");
   const patch = optional(body, {});
   if (body.body !== undefined) {
-    const verdict = check(String(body.body), { kind: cur.kind });
+    const verdict = check(String(body.body), { kind: cur.kind, setup: context.setup === true });
     if (!verdict.ok) bad(422, "the revision breaks a hard rule.", { verdict });
     const t = cur.thread_id ? await sb("GET", `threads?select=subreddit&id=eq.${enc(cur.thread_id)}`) : [];
     const sub = cur.subreddit || (t[0] && t[0].subreddit) || null;
@@ -427,7 +433,7 @@ async function patchDraft(id, body) {
     patch.body = String(body.body); patch.body_original = patch.body; patch._verdict = verdict;
     if (cur.redirect_pending) patch.redirect_pending = false;   // delivered: approval opens again
   }
-  if (cur.kind === "reply" && cur.redirect_pending && body.body !== undefined && cur.parent_url && await isOurs(cur.parent_url)) {
+  if (cur.kind === "reply" && cur.redirect_pending && body.body !== undefined && cur.parent_url && await isOurs(cur.parent_url) && !context.self_reply) {
     bad(422, "this draft's parent is one of our own comments. Do not deliver a body; withdraw it.");
   }
   if (cur.kind === "post" && body.title !== undefined) {

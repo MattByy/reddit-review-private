@@ -20,7 +20,7 @@
  *      because the human already judged the text and the score drifts 20
  *      points between identical runs (02-RUNBOOK.md §5)
  * Then, and only then, POST /tasks/{comment|reply|post}. The task, the draft
- * flip to `posted`, the eval_log row and the activity_log line follow.
+ * flip to `dispatched`, the eval_log row and the activity_log line follow.
  *
  * Holds ENGAIN_API_KEY and the Supabase service key, server-side only. Never
  * echoes either. Rule-check is 5/min at the vendor, so a run takes at most
@@ -94,32 +94,23 @@ async function dispatchOne(d, pid, ourIds) {
   // scenario, which is why the only run ever started has sat open with act 2
   // pending behind it. The flag comes from the scenario spec in the database,
   // never from the caller, so a draft cannot ask to skip the mention rule.
-  let isSetup = false;
-  {
-    const [act] = await sb("GET",
-      `scenario_acts?select=seq,run_id&draft_id=eq.${enc(d.draft_id)}`);
-    if (act) {
-      const [run] = await sb("GET",
-        `scenario_runs?select=scenario_slug&id=eq.${enc(act.run_id)}`);
-      if (run) {
-        const [sc] = await sb("GET",
-          `scenarios?select=spec&slug=eq.${enc(run.scenario_slug)}`);
-        const spec = (sc && sc.spec) || {};
-        const mine = ((spec.acts) || []).find(a => Number(a.seq) === Number(act.seq));
-        isSetup = !!(mine && mine.mentions_geonode === false);
-      }
-    }
-  }
+  const context = await sb("POST", "rpc/scenario_context", {
+    p_draft_id: d.draft_id, p_parent_url: cur.parent_url || null
+  });
+  if (!context.ready) return { ...head, outcome: "skipped", why: "scenario disabled, wrong dependency, or waiting for publication/gap" };
+  const isSetup = context.setup === true;
   const low = body.toLowerCase();
   const forb = FORBIDDEN.filter(([p]) => low.includes(p)).map(([p, why]) => `'${p}': ${why}`);
   const v = check(body, { kind, setup: isSetup });
   if (!v.ok || forb.length) return flag(d, "final rule check", [...v.fails, ...forb]);
 
-  // gate 2: replies answer a confirmed stranger, never us
+  // gate 2: a DB-proven same-account follow-up is sanctioned.
+  // Multi-account conversations (same_thread_accounts=true) remain refused.
   if (kind === "reply") {
     if (!cur.parent_url) return flag(d, "reply", ["no parent_url"]);
-    if (!cur.parent_confirmed_by) return { ...head, outcome: "skipped", why: "reply parent not confirmed by the reviewer" };
-    if (ourIds.has(commentId(cur.parent_url))) return flag(d, "stranger gate", ["parent is one of our own published comments"]);
+    if (!cur.parent_confirmed_by && !context.self_reply) return { ...head, outcome: "skipped", why: "reply parent not confirmed by the reviewer" };
+    if (!context.self_reply && (ourIds.has(commentId(cur.parent_url)) ||
+        await sb("POST", "rpc/is_our_url", { p_url: cur.parent_url }))) return flag(d, "stranger gate", ["parent is one of our own published comments"]);
   }
   if (kind === "post" && !(d.subreddit && d.title)) return flag(d, "post", ["needs subreddit and title"]);
 
@@ -152,7 +143,13 @@ async function dispatchOne(d, pid, ourIds) {
   await sb("POST", "engain_tasks", [{ id: task.id, draft_id: d.draft_id, thread_id: d.thread_id, project_id: pid, task_type: kind, subreddit: d.subreddit,
     thread_url: d.thread_url || cur.parent_url, content: body, status: task.status, reddit_url: task.redditUrl || null, credits_used: task.creditsUsed ?? null,
     labels, mode: d.mode, models: d.models }], "return=minimal");
-  await sb("PATCH", `drafts?id=eq.${enc(d.draft_id)}`, { status: "posted", posted_at: now() }, "return=minimal");
+  await sb("PATCH", `drafts?id=eq.${enc(d.draft_id)}&status=neq.rejected`, {
+    status: "dispatched", engain_task_id: task.id, engain_status: task.status || null, engain_seen_at: now()
+  }, "return=minimal");
+  await sb("PATCH", `scenario_acts?draft_id=eq.${enc(d.draft_id)}&status=neq.rejected`, {
+    status: "dispatched", task_id: task.id, dispatched_at: now(),
+    engain_status: task.status || null, engain_seen_at: now()
+  }, "return=minimal");
   let nq = null;
   if (d.thread_id) { const t = await sb("GET", `targets?select=n_queries&thread_id=eq.${enc(d.thread_id)}`); nq = t.length ? t[0].n_queries : null; }
   await sb("POST", "eval_log", [{ draft_id: d.draft_id, task_id: task.id, thread_id: d.thread_id, subreddit: d.subreddit, kind, mode: d.mode,
