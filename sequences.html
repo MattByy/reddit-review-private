@@ -33,7 +33,7 @@
 </style></head>
 <body>
 <script src="assets/gate.js"></script>
-<script src="assets/config.js"></script><script src="assets/app.js"></script><main>
+<script src="assets/config.js"></script><script src="assets/app.js"></script><script src="assets/conversation-model.js"></script><main>
 <div class="page-head">
   <div>
     <h1>Sequences</h1>
@@ -67,13 +67,21 @@
           <select class="field" id="acct" aria-label="Account"></select>
           <button class="btn primary" id="start">Start</button>
         </div>
-        <div class="small muted" id="startst" role="status" style="margin-top:6px">Only disclosed accounts can run a sequence. One of our accounts per thread.</div>
+        <div class="small muted" id="startst" role="status" style="margin-top:6px">Only active, disclosed accounts can run a sequence. Each contribution requires human review.</div>
       </div>
     </section>
   </div>
 </div>
 
 <div id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden><div id="runs"></div></div>
+<section class="card" style="margin-top:24px" aria-labelledby="monitor-title">
+  <h2 id="monitor-title">Conversation graph &amp; pattern validation</h2>
+  <p class="small muted">Observed activity across managed accounts. These metrics cannot certify independence.</p>
+  <div class="bar"><input class="field" id="monitor-thread" aria-label="Thread id or Reddit URL" placeholder="Thread id or Reddit URL">
+    <button class="btn" id="monitor-load">Inspect thread</button></div>
+  <p id="monitor-status" role="status"></p>
+  <div id="conversation-graph"></div><div id="pattern-dashboard"></div>
+</section>
 </main>
 <script>
 (async () => {
@@ -88,6 +96,9 @@
 
   // Step vocabulary. Keep in step with api/_engine.js and sequence_steps_valid().
   const TYPES = {
+    conversation_aware: { label: 'Consider conversation', help: 'Read thread history and record an account-specific contribute/skip decision with a reason.' },
+    asymmetric_participation: { label: 'Limit participation', help: 'Use this account’s conversation decision and its published engagement count. Other accounts need their own decisions.' },
+    depth_variation: { label: 'Set response depth', help: 'Set the account’s response length and voice guidance. Disclosure and review still apply.' },
     write:          { label: 'Write', help: 'The agent drafts it from your brief. It is held until a Send step.' },
     approve:        { label: 'Approve on Review', help: 'Waits until a person approves the draft above.' },
     send:           { label: 'Send via Engain', help: 'Releases the draft. Goes out on the next send pass, pace floors apply.' },
@@ -110,6 +121,9 @@
       if (s.reply_to_step != null && (!Number.isInteger(Number(s.reply_to_step)) || Number(s.reply_to_step) < 1 || Number(s.reply_to_step) > i || st[Number(s.reply_to_step) - 1]?.type !== 'wait_live' || s.target_url)) out[i] = 'choose a previous Wait until live step OR a parent permalink';
       if (s.type === 'write' && s.kind === 'post' && !(s.subreddit && s.title)) out[i] = 'a post needs a subreddit and a title';
       if (s.type === 'wait' && !(Number(s.minutes) > 0)) out[i] = 'set how long to wait';
+      if (s.type === 'depth_variation' && !['brief', 'standard', 'detailed'].includes(s.depth)) out[i] = 'choose a response depth';
+      if (s.type === 'asymmetric_participation' && (!Number.isInteger(Number(s.max_engagements ?? 1)) || Number(s.max_engagements ?? 1) < 1 || Number(s.max_engagements ?? 1) > 100)) out[i] = 'set an engagement limit from 1 to 100';
+      if (s.type === 'asymmetric_participation' && !st.slice(0, i).some(p => p.type === 'conversation_aware' && (p.account_id || '') === (s.account_id || ''))) out[i] = 'add a conversation decision for this account first';
       if (s.type === 'agent_task' && !String(s.instruction || '').trim()) out[i] = 'write the instruction';
       seen.add(s.type);
     });
@@ -122,6 +136,9 @@
       ? `<textarea class="field" rows="2" data-k="${k}" data-i="${i}" placeholder="${esc(ph)}">${esc(v || '')}</textarea>`
       : `<input class="field" data-k="${k}" data-i="${i}" placeholder="${esc(ph)}" value="${esc(v ?? '')}">`;
     const accountField = `<select class="field" data-k="account_id" data-i="${i}"><option value="">Run default account</option>${accounts.map(a => `<option value="${esc(a.id)}" ${s.account_id === a.id ? 'selected' : ''} ${a.disclosed && a.active ? '' : 'disabled'}>${esc(a.label || a.id)}</option>`).join('')}</select>`;
+    if (s.type === 'conversation_aware') return accountField;
+    if (s.type === 'asymmetric_participation') return accountField + f('max_engagements', 'Maximum published engagements per account in this thread', s.max_engagements ?? 1);
+    if (s.type === 'depth_variation') return accountField + `<select class="field" data-k="depth" data-i="${i}" aria-label="Response depth">${['brief', 'standard', 'detailed'].map(d => `<option ${s.depth === d ? 'selected' : ''}>${d}</option>`).join('')}</select>` + f('voice', 'Established voice / expertise (optional)', s.voice, 'textarea');
     if (s.type === 'write') return accountField + `<div class="row2"><select class="field" data-k="kind" data-i="${i}">
         ${['comment', 'reply', 'post'].map(k => `<option ${s.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
         <span class="help">${s.kind === 'reply' ? 'answers someone else\'s comment' : s.kind === 'post' ? 'a new post in a subreddit' : 'a top-level comment on the run\'s thread'}</span></div>
@@ -164,7 +181,7 @@
   $('palette').innerHTML = '<span class="small muted" style="width:100%">Add a step:</span>' + Object.entries(TYPES).map(([k, t]) => `<button class="btn small" data-add="${k}">+ ${esc(t.label)}</button>`).join('');
   $('palette').querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
     const t = b.dataset.add;
-    steps.push(t === 'write' ? { type: t, kind: 'comment', brief: '' } : t === 'wait' ? { type: t, minutes: 300 } : { type: t });
+    steps.push(t === 'write' ? { type: t, kind: 'comment', brief: '' } : t === 'wait' ? { type: t, minutes: 300 } : t === 'depth_variation' ? { type: t, depth: 'standard' } : { type: t });
     draw();
   });
 
@@ -207,6 +224,29 @@
     $('start').disabled = false;
   };
 
+  $('monitor-load').onclick = async () => {
+    const raw = $('monitor-thread').value.trim();
+    const id = (raw.match(/\/comments\/([a-z0-9]+)/i)?.[1] || raw).toLowerCase();
+    $('conversation-graph').innerHTML = ''; $('pattern-dashboard').innerHTML = '';
+    if (!/^[a-z0-9]+$/.test(id)) { $('monitor-status').textContent = 'Enter a Reddit thread id or permalink.'; return; }
+    $('monitor-load').disabled = true; $('monitor-status').textContent = 'Loading observed activity…';
+    try {
+      const [tasks, runs, known] = await Promise.all([
+        sbAll('engain_tasks', `select=id,thread_id,user_account_id,task_type,content,status,reddit_url,published_at&or=(thread_id.eq.${id},reddit_url.like.*%2Fcomments%2F${id}%2F*)&order=id.asc`, 100),
+        sbAll('sequence_runs', 'select=id,state&order=id.asc', 100),
+        sbAll('accounts', 'select=id,label,disclosed,disclosure_line&order=id.asc', 100),
+      ]);
+      const graph = window.ConversationModel.buildConversationGraph({ threadId: id, tasks, runs, accounts: known });
+      const report = window.ConversationModel.generateLegitimacyReport(id, graph);
+      $('monitor-status').textContent = `${report.status.replaceAll('_', ' ')} · ${graph.accounts.length} participating accounts / ${known.length} configured · ${graph.events.length} published engagements · ${report.metrics.flagged_checks} flagged checks`;
+      $('conversation-graph').innerHTML = `<h3>Account → thread → engagement → timing</h3>` + (graph.accounts.length ? graph.accounts.map(a => `<div class="stepcard" style="margin-bottom:8px"><b>${esc(a.label)}</b> → ${esc(id)} · ${a.disclosed ? 'disclosed' : 'disclosure not verified'}
+        <div class="small muted">${a.engagements} engagements · ${a.mean_words ?? 'unknown'} mean words · ${esc(a.depths.join(', ') || 'no published depth')}</div>
+        ${graph.events.filter(e => e.account_id === a.id).map(e => `<div class="small">↳ ${esc(e.engagement_type)} · ${esc(e.published_at || 'publication time unknown')} · ${esc(e.depth)} · ${e.words} words</div>`).join('')}</div>`).join('') : '<p>No managed-account activity recorded for this thread.</p>');
+      $('pattern-dashboard').innerHTML = '<h3>Legitimacy metrics</h3>' + Object.entries(report.checks).map(([name, c]) => `<div class="stepcard" style="margin-bottom:8px"><b>${esc(name)}</b>: ${esc(c.status.replaceAll('_', ' '))} · ${c.samples} samples${c.findings.map(f => `<p class="small">${esc(f.message)}</p>`).join('')}</div>`).join('') + `<p class="small">${report.metrics.unknown_timestamps} missing publication timestamps · ${report.metrics.undisclosed_accounts} accounts without verified disclosure</p><p class="small muted">${esc(report.limitation)}</p>`;
+    } catch (e) { $('monitor-status').textContent = `Could not load a complete snapshot: ${e.message}`; }
+    finally { $('monitor-load').disabled = false; }
+  };
+
   // ── runs ──
   const DOT = { done: 'done', active: 'active', failed: 'failed' };
   async function loadRuns() {
@@ -241,7 +281,7 @@
   try { const t = sessionStorage.getItem('seq_tab'); if (tabs.includes(t)) show(t); } catch {}
 
   try {
-    [seqs, accounts] = await Promise.all([sbAll('sequences', 'select=*&order=name.asc'), sbAll('accounts', 'select=id,label,reddit_username,disclosed,active&order=label.asc')]);
+    [seqs, accounts] = await Promise.all([sbAll('sequences', 'select=*&order=name.asc'), sbAll('accounts', 'select=id,label,reddit_username,disclosed,disclosure_line,active&order=label.asc')]);
     $('acct').innerHTML = '<option value="">Account…</option>' + accounts.map(a => `<option value="${esc(a.id)}" ${a.disclosed && a.active ? '' : 'disabled'}>${esc(a.label || a.id)}${a.disclosed && a.active ? '' : ' (not disclosed)'}</option>`).join('');
     open(seqs[0] ? seqs[0].id : null);
     await loadRuns();
