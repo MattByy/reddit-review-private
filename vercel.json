@@ -14,7 +14,7 @@
       "schedule": "0 * * * *"
     },
     {
-      "path": "/api/dispatch",
+      "path": "/api/cron/tick",
       "schedule": "*/15 * * * *"
     }
   ],
@@ -23,6 +23,9 @@
       "maxDuration": 60
     },
     "api/cron/pullback.js": {
+      "maxDuration": 60
+    },
+    "api/cron/tick.js": {
       "maxDuration": 60
     }
   }

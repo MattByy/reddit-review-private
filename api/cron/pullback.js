@@ -56,6 +56,31 @@ async function cancelOne(t, live) {
   const attempt = { cancel_attempts: (t.cancel_attempts || 0) + 1, last_cancel_attempt_at: now.toISOString() };
   const patch = (extra) => sb("PATCH", `engain_tasks?id=eq.${encodeURIComponent(t.id)}`, { ...attempt, ...extra }, "return=minimal");
 
+  // accounts-beta (027: the only send path) cancels directly, with no 24h window.
+  if (t.project_id === "accounts-beta") {
+    if (live && (live.resultUrl || live.redditUrl)) {
+      const m = `already live: ${live.resultUrl || live.redditUrl}`;
+      await patch({ cancel_result: m, status: live.status });
+      await log("pullback_failed_live", { task: t.id, thread: t.thread_id });
+      return { outcome: "live", message: m };
+    }
+    const { status, json } = await engain("POST", `/api/v1/accounts-beta/comments/${encodeURIComponent(t.id)}/cancel`, null);
+    if (status >= 200 && status < 300) {
+      await patch({ cancel_result: "cancelled", cancelled_at: now.toISOString(), status: "cancelled" });
+      await sb("PATCH", `eval_log?task_id=eq.${encodeURIComponent(t.id)}`, { survival_status: "cancelled", survival_checked_at: now.toISOString(), note: "pulled back before publish (cron)" }, "return=minimal");
+      if (t.draft_id) {
+        try { await sb("POST", "rpc/review_draft", { p_draft_id: t.draft_id, p_action: "reject", p_body: null, p_note: `pulled back at Engain (${t.id}) by cron`, p_editor: ACTOR }); }
+        catch (e) { await log("pullback_draft_not_retired", { task: t.id, error: String(e.message).slice(0, 200) }); }
+      }
+      await log("pullback_cancelled", { task: t.id, thread: t.thread_id, draft: t.draft_id, vendor: json });
+      return { outcome: "cancelled", message: "cancelled" };
+    }
+    const m = `vendor ${status}: ${JSON.stringify(json).slice(0, 300)}`;
+    await patch({ cancel_result: m });
+    await log("pullback_refused", { task: t.id, thread: t.thread_id, status, vendor: json });
+    return { outcome: "refused", message: m };
+  }
+
   if (!live) { const m = "task not in the vendor's last 100 tasks"; await patch({ cancel_result: m }); return { outcome: "gone", message: m }; }
   if (live.redditUrl || live.publishedAt) {
     const m = `already live: ${live.redditUrl}`;
@@ -104,7 +129,7 @@ module.exports = async function handler(req, res) {
   if (!SB_URL || !SB_KEY) return out(503, { error: "SUPABASE_URL / SUPABASE_SERVICE_KEY not configured" });
 
   try {
-    const waiting = await sb("GET", "engain_tasks?select=id,draft_id,thread_id,submitted_at,cancel_requested_at,cancel_attempts&cancel_requested_at=not.is.null&cancelled_at=is.null&reddit_url=is.null&order=submitted_at.asc");
+    const waiting = await sb("GET", "engain_tasks?select=id,draft_id,thread_id,project_id,submitted_at,cancel_requested_at,cancel_attempts&cancel_requested_at=not.is.null&cancelled_at=is.null&reddit_url=is.null&order=submitted_at.asc");
     if (!waiting.length) {
       await log("pullback_cron", { waiting: 0, note: "nothing requested" });
       return out(200, { ok: true, waiting: 0, results: [], note: "no pull-back requests waiting: none requested, or all already cancelled or live" });
@@ -116,9 +141,16 @@ module.exports = async function handler(req, res) {
       return out(200, { ok: false, waiting: waiting.length, results,
         note: "ENGAIN_API_KEY is not set on this Vercel project, so the cron can report but not cancel. Run `engain-post.py pullback` where the key lives, or add the key (cancel-only function)." });
     }
-    const pid = await projectId();
-    const { json: listing } = await engain("GET", "/api/v1/tasks", undefined, { projectId: pid, numItems: 100 });
-    const byId = new Map((listing.page || []).map(t => [t._id, t]));
+    const byId = new Map();
+    if (waiting.some(t => t.project_id === "accounts-beta")) {
+      const { json } = await engain("GET", "/api/v1/accounts-beta/comments");
+      for (const c of json.page || []) byId.set(c._id, c);
+    }
+    if (waiting.some(t => t.project_id !== "accounts-beta")) {
+      const pid = await projectId().catch(() => null);
+      if (pid) { const { json: listing } = await engain("GET", "/api/v1/tasks", undefined, { projectId: pid, numItems: 100 });
+                 for (const t of listing.page || []) byId.set(t._id, t); }
+    }
     const results = [];
     for (const t of waiting) results.push({ task: t.id, thread: t.thread_id, ...(await cancelOne(t, byId.get(t.id))) });
     await log("pullback_cron", { waiting: waiting.length, results });

@@ -11,8 +11,9 @@ const STEPS = [
   ["targets.html", 2, "Targets", "T"],
   ["topics.html",  3, "Topics",  "TP"],
   ["review.html",  4, "Review",  "R"],
-  ["status.html",  5, "Status",  "S"],
-  ["audit.html",   6, "Audit",   "A"]
+  ["plan.html",    5, "Plan",    "P"],
+  ["status.html",  6, "Status",  "S"],
+  ["audit.html",   7, "Audit",   "A"]
 ];
 
 /* The funnel a thread walks through, in order. thread_activity.stage is the

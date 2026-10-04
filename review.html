@@ -219,9 +219,10 @@
     ['dpa available', 'no DPA claims'], ['85,000', '"85,000 customers" is not a real figure'],
     ['85000', '"85,000 customers" is not a real figure'], ['/v1/scrape', 'the endpoint is /v1/extract'],
     ['good luck with your', 'no sign-off pleasantries'], ['great question', 'never open with "Great question"'],
-    ['hope this helps', 'no sign-off pleasantries'], ['i work at geonode', 'never reveal affiliation'],
-    ['i work for geonode', 'never reveal affiliation'], ['disclosure:', 'never reveal affiliation']
+    ['hope this helps', 'no sign-off pleasantries']
   ];
+  // 027: every draft says who runs the account. Same pattern as api/_rules.js DISCLOSURE.
+  const DISCLOSURE = /\b(geonode team( here)?|(run|operated|posted) (by|for) geonode|i (work|am) (at|with|for) geonode|disclosure: ?i (work|am) (at|with|for) geonode)\b/i;
   function runChecks(text) {
     const t = text.trim();
     const words = t ? t.split(/\s+/).length : 0;
@@ -237,6 +238,7 @@
         yes: words < 40 ? 'Under 40 words, thin for the subreddit' : words > 120 ? 'Over 120 words, longer than the median reply' : 'Length in the 40 to 120 band',
         no: 'Over 200 words. This fails outright.' },
       { ok: !hit, hard: true, yes: 'No forbidden phrases', no: hit ? `"${hit[0]}": ${hit[1]}` : '' },
+      { ok: DISCLOSURE.test(t), hard: true, yes: 'Says Geonode runs this account', no: 'No disclosure. Add the account\'s line, e.g. "(Geonode team here)".' },
       { ok: !paras.some(p => /geonode/i.test(p) && /\d/.test(p)), hard: false,
         yes: 'No figure next to the Geonode mention', no: 'A figure sits in the same paragraph as Geonode. Our own numbers are never quoted.' },
       { ok: !/https?:\/\/|www\./i.test(t), hard: false, yes: 'No link', no: 'Contains a link. No link unless someone asked.' }
@@ -720,13 +722,15 @@
   /* ── scenario runs ────────────────────────────────────────────────────── */
   const scenarioMessages = new Map();
   async function renderScenarios() {
-    const runs = await api('scenario_runs?select=id,scenario_slug,subreddit,thread_url,thread_id,status,review_status,reviewed_at,reviewed_by,review_note,abort_reason,started_at&order=started_at.desc&limit=50');
+    const runs = await api('scenario_runs?select=id,scenario_slug,subreddit,thread_url,thread_id,status,review_status,reviewed_at,reviewed_by,review_note,abort_reason,started_at,account_id&order=started_at.desc&limit=50');
     if (!runs.length) { $('scenarios-section').hidden = true; return; }
     
     // Fetch all scenarios once
     const scenarios = await api('scenarios?select=slug,name,hypothesis,spec,enabled,same_thread_accounts,ring_reason&limit=200');
     const scenarioMap = {};
     for (const s of scenarios) scenarioMap[s.slug] = s;
+    const accountMap = {};
+    for (const a of await api('accounts?select=id,label,reddit_username,disclosed,active,disclosure_line')) accountMap[a.id] = a;
     
     // For each run, fetch its acts
     const runIds = runs.map(r => r.id).join(',');
@@ -759,6 +763,10 @@
       card.dataset.runId = run.id;
       
       const acts = actsByRun[run.id] || [];
+      const acct = run.account_id ? accountMap[run.account_id] : null;
+      const acctOk = !!(acct && acct.disclosed && acct.active);
+      const acctChip = !acct ? chip('bad', 'no account') : chip(acctOk ? 'ok' : 'bad',
+        `${acct.label || acct.reddit_username || 'account'} · ${acctOk ? 'disclosed' : 'not disclosed'}`);
       
       // Ring guard check
       const ringWarning = scenario.same_thread_accounts ?
@@ -823,7 +831,7 @@
       card.innerHTML = `
         <div class="scenario-head">
           <div class="title">${esc(scenario.name || 'Untitled scenario')}</div>
-          <div class="badges">${statusBadge}${scenario.enabled ? '' : chip('bad', 'disabled')}</div>
+          <div class="badges">${statusBadge}${acctChip}${scenario.enabled ? '' : chip('bad', 'disabled')}</div>
         </div>
         ${ringWarning}
         ${rejected ? `<div class="notice bad"><div class="body"><b>Script stopped. No further acts will be sent.</b><br>${esc(run.review_note || 'Rejected by reviewer')}${acts.some(a => a.task_id) ? '<br>Tasks already accepted by Engain may still publish; rejection does not cancel them.' : ''}</div></div>` : ''}
@@ -841,7 +849,7 @@
           <div class="acts">
             <label class="field"><span class="muted small">Reviewer</span><input data-reviewer aria-label="Script reviewer" value="reviewer" ${rejected ? 'disabled' : ''}></label>
             <label class="field"><span class="muted small">Reason</span><input data-why aria-label="Script review reason" placeholder="required to reject, optional otherwise" ${rejected ? 'disabled' : ''}></label>
-            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}" ${rejected || run.status !== 'open' || !scenario.enabled || scenario.same_thread_accounts ? 'disabled' : ''}>${run.review_status === 'approved' ? 'Reapprove current script' : 'Approve entire script and send'}</button>
+            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}" ${rejected || run.status !== 'open' || !scenario.enabled || scenario.same_thread_accounts || !acctOk ? 'disabled' : ''}>${run.review_status === 'approved' ? 'Reapprove current script' : 'Approve entire script and send'}</button>
             <button class="btn danger" data-a="reject-run" data-run-id="${esc(run.id)}" ${rejected ? 'disabled' : ''}>Reject script</button>
             <span class="st" data-s></span>
           </div>
@@ -854,6 +862,7 @@
       if (stat) {
         stat.setAttribute('role', 'status');
         stat.textContent = scenarioMessages.get(run.id) || (rejected ? 'Rejected permanently.'
+          : !acctOk ? 'This run\'s account is not marked disclosed. Mark it on Plan once its profile says Geonode runs it.'
           : run.review_status === 'approved' ? 'Approved. Due acts are considered on the next scheduled pass; all send gates still apply.' : 'Waiting for approval of the entire script.');
         stat.classList.toggle('bad', rejected);
       }
