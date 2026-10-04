@@ -82,6 +82,11 @@ Checks: `node checkrules.js`, `node --test tests/multi-account.test.js`,
 `node checkpages.js`. SQL integration checks: `psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/multi-account.sql`
 against an isolated database with schema migrations through 030 installed.
 
+Demonstrations: [DEMO_SEQUENCES.md](DEMO_SEQUENCES.md) documents four scenarios,
+the `node scripts/run_demos.js` runner, and saved execution evidence. The current
+live attempt is blocked by missing configuration and DNS; fixture reports are
+explicitly separated from live results.
+
 ## Env (set in Vercel, never committed)
 
 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ENGAIN_API_KEY`, `AGENT_API_KEY`, `CRON_SECRET`, `ENGAIN_PROJECT_ID` (required when the vendor key has multiple projects). The browser only
