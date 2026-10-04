@@ -128,10 +128,17 @@
   .batch-bar .controls { display: flex; gap: 8px; align-items: center; margin-left: auto }
   .batch-bar .count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums }
   .batch-grid { display: grid; gap: 8px; margin-bottom: 16px }
-  .batch-row { display: grid; grid-template-columns: 40px 1fr 80px 60px auto; gap: 12px; align-items: center; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius) }
+  .batch-row { display: grid; grid-template-columns: 40px 1fr 80px 60px auto; gap: 12px; align-items: start; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius) }
   .batch-row input[type=checkbox] { width: 18px; height: 18px; margin: 0 }
   .batch-row .title { font-size: 13.5px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
   .batch-row .sub { font-size: 12px; color: var(--muted) }
+  /* You cannot approve what you have not read: the body is the point of the
+     row, not a detail. Four lines inline, the rest one click away. */
+  .batch-row .btext { font-size: 13px; line-height: 1.5; color: var(--ink); margin-top: 6px; white-space: pre-wrap;
+                      display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden }
+  .batch-row.open .btext { -webkit-line-clamp: unset; display: block }
+  .batch-row .more { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 4px 0; cursor: pointer; text-decoration: underline }
+  .batch-row .wc { font-size: 11.5px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums }
   .batch-row .badge-slot { display: flex; gap: 4px; flex-wrap: wrap }
   .batch-row.error { background: rgba(180, 30, 30, .06) }
   .batch-row.error .title { color: var(--bad) }
@@ -971,20 +978,42 @@
     grid.innerHTML = drafts.map((d, i) => {
       const c = checks[d.id];
       const isSelected = batchSelected.has(d.id);
-      const canApprove = !(d.gate_failed_at || d.redirect_pending || 
+      /* Mirrors review_draft()'s own refusals (030) plus the account and
+         disclosure the send gate needs, so a row is only selectable if
+         approving it would actually succeed. */
+      const needsAccount = !d.account_id;
+      const canApprove = !(d.gate_failed_at || d.redirect_pending || needsAccount ||
         (d.kind === 'reply' && !d.scenarioContext?.self_reply && !d.parent_confirmed_by));
       const chipVal = stateChip(d) || scoreChip(c);
-      return `<div class="batch-row${!canApprove ? ' error' : ''}">
+      const body = d.body || '';
+      const words = body.trim() ? body.trim().split(/\s+/).length : 0;
+      const why = needsAccount ? 'no account set, open it in single review'
+        : d.redirect_pending ? 'sent back to the agent'
+        : d.gate_failed_at ? 'gate refused'
+        : (d.kind === 'reply' && !d.scenarioContext?.self_reply && !d.parent_confirmed_by) ? 'confirm the parent first'
+        : '';
+      return `<div class="batch-row${!canApprove ? ' error' : ''}" data-row="${esc(d.id)}">
         <input type="checkbox" data-draft-id="${esc(d.id)}" ${isSelected ? 'checked' : ''} ${!canApprove ? 'disabled' : ''}>
         <div>
           <div class="title">${esc(cleanTitle(threadTitle(d)))}</div>
-          <div class="sub">r/${esc(threadSub(d) || '?')}</div>
+          <div class="sub">r/${esc(threadSub(d) || '?')}${why ? ' · ' + esc(why) : ''}</div>
+          <div class="btext">${esc(body)}</div>
+          <div class="wc">${words} words</div>
+          <button class="more" data-more="${esc(d.id)}">Show full text</button>
         </div>
         <div>${esc(d.kind === 'post' ? 'post' : d.kind === 'reply' ? 'reply' : 'comment')}</div>
         <div>${stratChip(d)}</div>
         <div class="badge-slot">${chipVal}</div>
       </div>`;
     }).join('');
+    
+    grid.querySelectorAll('button[data-more]').forEach(b => {
+      b.addEventListener('click', () => {
+        const row = grid.querySelector(`[data-row="${b.dataset.more}"]`);
+        const open = row.classList.toggle('open');
+        b.textContent = open ? 'Collapse' : 'Show full text';
+      });
+    });
     
     grid.querySelectorAll('input[type=checkbox]').forEach(cb => {
       cb.addEventListener('change', () => {
@@ -1028,6 +1057,15 @@
   $('batch-approve-btn')?.addEventListener('click', async () => {
     if (batchSelected.size === 0) return;
     const draftIds = Array.from(batchSelected);
+    /* Approving clears the batch to send and a watcher posts it. There is no
+       un-post, so the count gets said out loud once before that happens. */
+    const subs = [...new Set(draftIds.map(id => {
+      const d = drafts.find(x => x.id === id);
+      return d ? (threadSub(d) || '?') : '?';
+    }))];
+    if (!confirm(`Approve and send ${draftIds.length} draft${draftIds.length === 1 ? '' : 's'} `
+      + `across ${subs.length} subreddit${subs.length === 1 ? '' : 's'} (${subs.map(s => 'r/' + s).join(', ')}).\n\n`
+      + `This clears them to post on Reddit. It cannot be undone.`)) return;
     const status = $('batch-status');
     status.hidden = false;
     status.classList.remove('bad', 'ok', 'warn');
