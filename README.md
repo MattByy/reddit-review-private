@@ -32,6 +32,21 @@ human decides whether a drafted comment is sent.
 
 ## Multi-account sequences
 
+Use up to **5 accounts per thread** as an operational limit (not yet enforced by
+SQL). See [SEQUENCES_GUIDE.md](SEQUENCES_GUIDE.md) for practical run creation,
+staged conversations, profiles, timing, monitoring and endpoint examples, and the
+[agent skill](skills/reddit-agent/SKILL.md) for the hourly workflow.
+
+The engine includes `coordinated_post`, `independent_reply`, `cross_account_check`,
+`personality_write` and `probabilistic_wait` handlers, but current SQL validation
+rejects these types. The random-wait handler also needs completion logic. Use the
+supported `write`/`wait` workflow below until those gaps are fixed. Legitimacy
+assessment is a local module, not an HTTP endpoint or automatic send gate.
+
+Actual run routes are `POST /api/agent/sequences/:id/runs` and
+`GET /api/agent/sequence-runs?status=open`. The requested `/api/sequences/runs`
+and `/api/legitimacy/report` paths are not implemented.
+
 The run's `account_id` is the default. A `write`, `answer_replies`, or `agent_task`
 step may override it with its own `account_id`. All participating accounts must be
 active and disclosed. Each draft uses the selected account's configured disclosure.

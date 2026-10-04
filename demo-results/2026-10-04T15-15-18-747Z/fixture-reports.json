@@ -1,0 +1,888 @@
+{
+  "scenarios": [
+    {
+      "source": "synthetic fixture; never sent to database or Reddit",
+      "account_count": 1,
+      "participation_data": {
+        "thread_id": "demofixture",
+        "accounts": [
+          {
+            "id": "demo-a",
+            "label": "demo-a",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 32
+          }
+        ],
+        "events": [
+          {
+            "id": "fixture-0",
+            "account_id": "demo-a",
+            "thread_id": "demofixture",
+            "engagement_type": "comment",
+            "published_at": "2026-01-01T00:00:00.000Z",
+            "body": "Measure the baseline before changing configuration. Record request latency throughput failures queue capacity memory processor utilization network overhead retry limits connection reuse cache behavior and database query duration during a repeatable benchmark.",
+            "words": 32,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment0/",
+            "run_id": "fixture-shared-run"
+          }
+        ],
+        "decisions": [],
+        "edges": [
+          {
+            "id": "fixture-0",
+            "account_id": "demo-a",
+            "thread_id": "demofixture",
+            "engagement_type": "comment",
+            "published_at": "2026-01-01T00:00:00.000Z",
+            "words": 32,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment0/",
+            "run_id": "fixture-shared-run"
+          }
+        ],
+        "known_account_count": 1
+      },
+      "timing": {
+        "samples": 1,
+        "unknown_timestamps": 0,
+        "intervals_minutes": [],
+        "mean_minutes": null,
+        "coefficient_of_variation": null,
+        "limitation": "Descriptive intervals only. Variable timing does not establish independent participation."
+      },
+      "report": {
+        "thread_id": "demofixture",
+        "status": "unverified",
+        "checks": {
+          "coordination": {
+            "status": "insufficient_data",
+            "findings": [],
+            "samples": 1
+          },
+          "voice": {
+            "status": "insufficient_data",
+            "findings": [],
+            "samples": 0
+          },
+          "autonomy": {
+            "status": "insufficient_data",
+            "findings": [],
+            "samples": 0
+          },
+          "discovery": {
+            "status": "insufficient_data",
+            "findings": [],
+            "samples": 0,
+            "stages": [],
+            "source": "assigned_sequence"
+          }
+        },
+        "metrics": {
+          "accounts": 1,
+          "engagements": 1,
+          "decisions": 0,
+          "flagged_checks": 0,
+          "unknown_timestamps": 0,
+          "undisclosed_accounts": 0,
+          "depth_by_account": [
+            {
+              "account_id": "demo-a",
+              "mean_words": 32,
+              "depths": [
+                "brief"
+              ]
+            }
+          ]
+        },
+        "limitation": "Patterns are heuristics, not proof of independence or legitimacy. Shared control must remain disclosed."
+      }
+    },
+    {
+      "source": "synthetic fixture; never sent to database or Reddit",
+      "account_count": 2,
+      "participation_data": {
+        "thread_id": "demofixture",
+        "accounts": [
+          {
+            "id": "demo-a",
+            "label": "demo-a",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 32
+          },
+          {
+            "id": "demo-b",
+            "label": "demo-b",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 33
+          }
+        ],
+        "events": [
+          {
+            "id": "fixture-0",
+            "account_id": "demo-a",
+            "thread_id": "demofixture",
+            "engagement_type": "comment",
+            "published_at": "2026-01-01T00:00:00.000Z",
+            "body": "Measure the baseline before changing configuration. Record request latency throughput failures queue capacity memory processor utilization network overhead retry limits connection reuse cache behavior and database query duration during a repeatable benchmark.",
+            "words": 32,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment0/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-1",
+            "account_id": "demo-b",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:03:00.000Z",
+            "body": "Which observations would disprove this explanation? Please describe sampling choices confidence intervals control groups missing values selection bias replication procedures study limitations alternative hypotheses measurement uncertainty and the original question motivating the experiment.",
+            "words": 33,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment1/",
+            "run_id": "fixture-shared-run"
+          }
+        ],
+        "decisions": [],
+        "edges": [
+          {
+            "id": "fixture-0",
+            "account_id": "demo-a",
+            "thread_id": "demofixture",
+            "engagement_type": "comment",
+            "published_at": "2026-01-01T00:00:00.000Z",
+            "words": 32,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment0/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-1",
+            "account_id": "demo-b",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:03:00.000Z",
+            "words": 33,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment1/",
+            "run_id": "fixture-shared-run"
+          }
+        ],
+        "known_account_count": 2
+      },
+      "timing": {
+        "samples": 2,
+        "unknown_timestamps": 0,
+        "intervals_minutes": [
+          3
+        ],
+        "mean_minutes": 3,
+        "coefficient_of_variation": null,
+        "limitation": "Descriptive intervals only. Variable timing does not establish independent participation."
+      },
+      "report": {
+        "thread_id": "demofixture",
+        "status": "review_required",
+        "checks": {
+          "coordination": {
+            "status": "flagged",
+            "findings": [
+              {
+                "event_ids": [
+                  "fixture-0",
+                  "fixture-1"
+                ],
+                "message": "Different accounts published within 15 minutes"
+              }
+            ],
+            "samples": 2
+          },
+          "voice": {
+            "status": "no_signal",
+            "findings": [],
+            "samples": 1
+          },
+          "autonomy": {
+            "status": "flagged",
+            "findings": [
+              {
+                "run_id": "fixture-shared-run",
+                "account_ids": [
+                  "demo-a",
+                  "demo-b"
+                ],
+                "message": "Multiple accounts share an orchestration run; decisions are not independent"
+              }
+            ],
+            "samples": 0
+          },
+          "discovery": {
+            "status": "insufficient_data",
+            "findings": [],
+            "samples": 0,
+            "stages": [],
+            "source": "assigned_sequence"
+          }
+        },
+        "metrics": {
+          "accounts": 2,
+          "engagements": 2,
+          "decisions": 0,
+          "flagged_checks": 2,
+          "unknown_timestamps": 0,
+          "undisclosed_accounts": 0,
+          "depth_by_account": [
+            {
+              "account_id": "demo-a",
+              "mean_words": 32,
+              "depths": [
+                "brief"
+              ]
+            },
+            {
+              "account_id": "demo-b",
+              "mean_words": 33,
+              "depths": [
+                "brief"
+              ]
+            }
+          ]
+        },
+        "limitation": "Patterns are heuristics, not proof of independence or legitimacy. Shared control must remain disclosed."
+      }
+    },
+    {
+      "source": "synthetic fixture; never sent to database or Reddit",
+      "account_count": 3,
+      "participation_data": {
+        "thread_id": "demofixture",
+        "accounts": [
+          {
+            "id": "demo-a",
+            "label": "demo-a",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 32
+          },
+          {
+            "id": "demo-b",
+            "label": "demo-b",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 33
+          },
+          {
+            "id": "demo-c",
+            "label": "demo-c",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 34
+          }
+        ],
+        "events": [
+          {
+            "id": "fixture-0",
+            "account_id": "demo-a",
+            "thread_id": "demofixture",
+            "engagement_type": "comment",
+            "published_at": "2026-01-01T00:00:00.000Z",
+            "body": "Measure the baseline before changing configuration. Record request latency throughput failures queue capacity memory processor utilization network overhead retry limits connection reuse cache behavior and database query duration during a repeatable benchmark.",
+            "words": 32,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment0/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-1",
+            "account_id": "demo-b",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:03:00.000Z",
+            "body": "Which observations would disprove this explanation? Please describe sampling choices confidence intervals control groups missing values selection bias replication procedures study limitations alternative hypotheses measurement uncertainty and the original question motivating the experiment.",
+            "words": 33,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment1/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-2",
+            "account_id": "demo-c",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:20:00.000Z",
+            "body": "Implementation starts with a bounded worker pool. Configure explicit deadlines graceful shutdown structured logs durable checkpoints schema validation versioned migrations recovery procedures deployment rollback dependency pinning integration coverage and operational ownership for each component.",
+            "words": 34,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment2/",
+            "run_id": "fixture-shared-run"
+          }
+        ],
+        "decisions": [],
+        "edges": [
+          {
+            "id": "fixture-0",
+            "account_id": "demo-a",
+            "thread_id": "demofixture",
+            "engagement_type": "comment",
+            "published_at": "2026-01-01T00:00:00.000Z",
+            "words": 32,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment0/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-1",
+            "account_id": "demo-b",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:03:00.000Z",
+            "words": 33,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment1/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-2",
+            "account_id": "demo-c",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:20:00.000Z",
+            "words": 34,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment2/",
+            "run_id": "fixture-shared-run"
+          }
+        ],
+        "known_account_count": 3
+      },
+      "timing": {
+        "samples": 3,
+        "unknown_timestamps": 0,
+        "intervals_minutes": [
+          3,
+          17
+        ],
+        "mean_minutes": 10,
+        "coefficient_of_variation": 0.7,
+        "limitation": "Descriptive intervals only. Variable timing does not establish independent participation."
+      },
+      "report": {
+        "thread_id": "demofixture",
+        "status": "review_required",
+        "checks": {
+          "coordination": {
+            "status": "flagged",
+            "findings": [
+              {
+                "event_ids": [
+                  "fixture-0",
+                  "fixture-1"
+                ],
+                "message": "Different accounts published within 15 minutes"
+              }
+            ],
+            "samples": 3
+          },
+          "voice": {
+            "status": "no_signal",
+            "findings": [],
+            "samples": 3
+          },
+          "autonomy": {
+            "status": "flagged",
+            "findings": [
+              {
+                "run_id": "fixture-shared-run",
+                "account_ids": [
+                  "demo-a",
+                  "demo-b",
+                  "demo-c"
+                ],
+                "message": "Multiple accounts share an orchestration run; decisions are not independent"
+              }
+            ],
+            "samples": 0
+          },
+          "discovery": {
+            "status": "insufficient_data",
+            "findings": [],
+            "samples": 0,
+            "stages": [],
+            "source": "assigned_sequence"
+          }
+        },
+        "metrics": {
+          "accounts": 3,
+          "engagements": 3,
+          "decisions": 0,
+          "flagged_checks": 2,
+          "unknown_timestamps": 0,
+          "undisclosed_accounts": 0,
+          "depth_by_account": [
+            {
+              "account_id": "demo-a",
+              "mean_words": 32,
+              "depths": [
+                "brief"
+              ]
+            },
+            {
+              "account_id": "demo-b",
+              "mean_words": 33,
+              "depths": [
+                "brief"
+              ]
+            },
+            {
+              "account_id": "demo-c",
+              "mean_words": 34,
+              "depths": [
+                "brief"
+              ]
+            }
+          ]
+        },
+        "limitation": "Patterns are heuristics, not proof of independence or legitimacy. Shared control must remain disclosed."
+      }
+    },
+    {
+      "source": "synthetic fixture; never sent to database or Reddit",
+      "account_count": 5,
+      "participation_data": {
+        "thread_id": "demofixture",
+        "accounts": [
+          {
+            "id": "demo-a",
+            "label": "demo-a",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 32
+          },
+          {
+            "id": "demo-b",
+            "label": "demo-b",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 33
+          },
+          {
+            "id": "demo-c",
+            "label": "demo-c",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 34
+          },
+          {
+            "id": "demo-d",
+            "label": "demo-d",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 35
+          },
+          {
+            "id": "demo-e",
+            "label": "demo-e",
+            "disclosure_line": "(Operator-controlled demonstration)",
+            "disclosed": true,
+            "engagements": 1,
+            "depths": [
+              "brief"
+            ],
+            "mean_words": 36
+          }
+        ],
+        "events": [
+          {
+            "id": "fixture-0",
+            "account_id": "demo-a",
+            "thread_id": "demofixture",
+            "engagement_type": "comment",
+            "published_at": "2026-01-01T00:00:00.000Z",
+            "body": "Measure the baseline before changing configuration. Record request latency throughput failures queue capacity memory processor utilization network overhead retry limits connection reuse cache behavior and database query duration during a repeatable benchmark.",
+            "words": 32,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment0/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-1",
+            "account_id": "demo-b",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:03:00.000Z",
+            "body": "Which observations would disprove this explanation? Please describe sampling choices confidence intervals control groups missing values selection bias replication procedures study limitations alternative hypotheses measurement uncertainty and the original question motivating the experiment.",
+            "words": 33,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment1/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-2",
+            "account_id": "demo-c",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:20:00.000Z",
+            "body": "Implementation starts with a bounded worker pool. Configure explicit deadlines graceful shutdown structured logs durable checkpoints schema validation versioned migrations recovery procedures deployment rollback dependency pinning integration coverage and operational ownership for each component.",
+            "words": 34,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment2/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-3",
+            "account_id": "demo-d",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:24:00.000Z",
+            "body": "Readers need understandable navigation keyboard shortcuts visible focus readable typography sufficient contrast descriptive headings helpful labels accessible forms translated instructions predictable interactions screen reader announcements reduced motion options and useful error messages throughout the interface.",
+            "words": 35,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment3/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-4",
+            "account_id": "demo-e",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T01:15:00.000Z",
+            "body": "The discussion leaves several decisions unresolved. Document responsible owners agreed milestones budget constraints maintenance obligations evaluation criteria evidence sources competing proposals review dates escalation paths stakeholder feedback acceptance conditions and remaining questions before choosing an approach.",
+            "words": 36,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment4/",
+            "run_id": "fixture-shared-run"
+          }
+        ],
+        "decisions": [],
+        "edges": [
+          {
+            "id": "fixture-0",
+            "account_id": "demo-a",
+            "thread_id": "demofixture",
+            "engagement_type": "comment",
+            "published_at": "2026-01-01T00:00:00.000Z",
+            "words": 32,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment0/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-1",
+            "account_id": "demo-b",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:03:00.000Z",
+            "words": 33,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment1/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-2",
+            "account_id": "demo-c",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:20:00.000Z",
+            "words": 34,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment2/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-3",
+            "account_id": "demo-d",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T00:24:00.000Z",
+            "words": 35,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment3/",
+            "run_id": "fixture-shared-run"
+          },
+          {
+            "id": "fixture-4",
+            "account_id": "demo-e",
+            "thread_id": "demofixture",
+            "engagement_type": "reply",
+            "published_at": "2026-01-01T01:15:00.000Z",
+            "words": 36,
+            "depth": "brief",
+            "url": "https://www.reddit.com/r/testing/comments/demofixture/fixture/comment4/",
+            "run_id": "fixture-shared-run"
+          }
+        ],
+        "known_account_count": 5
+      },
+      "timing": {
+        "samples": 5,
+        "unknown_timestamps": 0,
+        "intervals_minutes": [
+          3,
+          17,
+          4,
+          51
+        ],
+        "mean_minutes": 18.75,
+        "coefficient_of_variation": 1.0358034991681042,
+        "limitation": "Descriptive intervals only. Variable timing does not establish independent participation."
+      },
+      "report": {
+        "thread_id": "demofixture",
+        "status": "review_required",
+        "checks": {
+          "coordination": {
+            "status": "flagged",
+            "findings": [
+              {
+                "event_ids": [
+                  "fixture-0",
+                  "fixture-1"
+                ],
+                "message": "Different accounts published within 15 minutes"
+              },
+              {
+                "event_ids": [
+                  "fixture-2",
+                  "fixture-3"
+                ],
+                "message": "Different accounts published within 15 minutes"
+              }
+            ],
+            "samples": 5
+          },
+          "voice": {
+            "status": "no_signal",
+            "findings": [],
+            "samples": 10
+          },
+          "autonomy": {
+            "status": "flagged",
+            "findings": [
+              {
+                "run_id": "fixture-shared-run",
+                "account_ids": [
+                  "demo-a",
+                  "demo-b",
+                  "demo-c",
+                  "demo-d",
+                  "demo-e"
+                ],
+                "message": "Multiple accounts share an orchestration run; decisions are not independent"
+              }
+            ],
+            "samples": 0
+          },
+          "discovery": {
+            "status": "insufficient_data",
+            "findings": [],
+            "samples": 0,
+            "stages": [],
+            "source": "assigned_sequence"
+          }
+        },
+        "metrics": {
+          "accounts": 5,
+          "engagements": 5,
+          "decisions": 0,
+          "flagged_checks": 2,
+          "unknown_timestamps": 0,
+          "undisclosed_accounts": 0,
+          "depth_by_account": [
+            {
+              "account_id": "demo-a",
+              "mean_words": 32,
+              "depths": [
+                "brief"
+              ]
+            },
+            {
+              "account_id": "demo-b",
+              "mean_words": 33,
+              "depths": [
+                "brief"
+              ]
+            },
+            {
+              "account_id": "demo-c",
+              "mean_words": 34,
+              "depths": [
+                "brief"
+              ]
+            },
+            {
+              "account_id": "demo-d",
+              "mean_words": 35,
+              "depths": [
+                "brief"
+              ]
+            },
+            {
+              "account_id": "demo-e",
+              "mean_words": 36,
+              "depths": [
+                "brief"
+              ]
+            }
+          ]
+        },
+        "limitation": "Patterns are heuristics, not proof of independence or legitimacy. Shared control must remain disclosed."
+      }
+    }
+  ],
+  "duplicate_voice_control": {
+    "source": "synthetic duplicate-text control",
+    "report": {
+      "thread_id": "demofixture",
+      "status": "review_required",
+      "checks": {
+        "coordination": {
+          "status": "flagged",
+          "findings": [
+            {
+              "event_ids": [
+                "fixture-0",
+                "fixture-1"
+              ],
+              "message": "Different accounts published within 15 minutes"
+            },
+            {
+              "event_ids": [
+                "fixture-2",
+                "fixture-3"
+              ],
+              "message": "Different accounts published within 15 minutes"
+            }
+          ],
+          "samples": 5
+        },
+        "voice": {
+          "status": "flagged",
+          "findings": [
+            {
+              "event_ids": [
+                "fixture-0",
+                "fixture-1"
+              ],
+              "similarity": 1,
+              "message": "High vocabulary overlap after removing configured disclosures"
+            }
+          ],
+          "samples": 10
+        },
+        "autonomy": {
+          "status": "flagged",
+          "findings": [
+            {
+              "run_id": "fixture-shared-run",
+              "account_ids": [
+                "demo-a",
+                "demo-b",
+                "demo-c",
+                "demo-d",
+                "demo-e"
+              ],
+              "message": "Multiple accounts share an orchestration run; decisions are not independent"
+            }
+          ],
+          "samples": 0
+        },
+        "discovery": {
+          "status": "insufficient_data",
+          "findings": [],
+          "samples": 0,
+          "stages": [],
+          "source": "assigned_sequence"
+        }
+      },
+      "metrics": {
+        "accounts": 5,
+        "engagements": 5,
+        "decisions": 0,
+        "flagged_checks": 3,
+        "unknown_timestamps": 0,
+        "undisclosed_accounts": 0,
+        "depth_by_account": [
+          {
+            "account_id": "demo-a",
+            "mean_words": 32,
+            "depths": [
+              "brief"
+            ]
+          },
+          {
+            "account_id": "demo-b",
+            "mean_words": 33,
+            "depths": [
+              "brief"
+            ]
+          },
+          {
+            "account_id": "demo-c",
+            "mean_words": 34,
+            "depths": [
+              "brief"
+            ]
+          },
+          {
+            "account_id": "demo-d",
+            "mean_words": 35,
+            "depths": [
+              "brief"
+            ]
+          },
+          {
+            "account_id": "demo-e",
+            "mean_words": 36,
+            "depths": [
+              "brief"
+            ]
+          }
+        ]
+      },
+      "limitation": "Patterns are heuristics, not proof of independence or legitimacy. Shared control must remain disclosed."
+    }
+  }
+}

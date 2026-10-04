@@ -119,12 +119,56 @@ curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: appl
 ```
 `d_own_post_then_answers` takes `subreddit` and `title` instead of `thread_id`.
 
-## Sequences
-People build sequences on `/sequences` as ordered steps: write → approve → send →
-wait until live → wait 5h → check replies → answer replies. Agent tasks can go anywhere in the order.
-`GET /sequences` lists them, and `POST /sequences/:id/runs {thread_url, account_id}`
-starts one. The tick moves each run forward every 15 minutes. Your part of a run is
-the `write`, `draft_followup` and `agent_task` jobs it hands you.
+## Multi-account sequences
+
+Read [SEQUENCES_GUIDE.md](../../SEQUENCES_GUIDE.md) before creating or starting
+multi-account workflows. It contains the complete staged-conversation example,
+account profile schema and voice injection, timing configuration, job filing,
+monitoring, and API contracts.
+
+- Use up to **5 distinct accounts per thread**, counting other runs too. This is
+  an operational limit; current SQL does not enforce the cap.
+- The run's `account_id` is the default. Each step may select another account.
+  Use application account IDs from `GET /accounts`, with `can_post: true`.
+- Create definitions on `/sequences`. List with `GET /sequences`; start with
+  `POST /sequences/:id/runs {thread_url, account_id, note?, agent?}`. Inspect
+  `GET /sequence-runs?status=open`. These paths are relative to `/api/agent`.
+- For A → B: `write` as A → approve → send → wait_live → wait → `write` as B,
+  `kind: "reply", reply_to_step: 4` → approve → send → wait_live. References are
+  1-based and resolve published URLs. Every participant discloses shared control.
+- The tick advances every 15 minutes. Handle `write`, `draft_followup` and
+  `agent_task` jobs using the hourly procedure above. Ordinary sequence write
+  drafts are held until Send; followup drafts are not held by sequence steps.
+
+### New handlers and current limits
+
+All five names below exist in the engine but are **rejected by the checked-in
+SQL step validators**. Do not submit them as supported sequences or bypass the
+validator. Exact configuration examples and supported alternatives are in the guide.
+
+| Step | Handler behavior / caveat |
+|---|---|
+| `coordinated_post` | Queues a `write` job for the run thread; use ordinary `write` today |
+| `independent_reply` | Queues a `draft_followup` for a literal `target_url`; no `reply_to_step`, no sequence hold. Shared ownership must remain disclosed |
+| `cross_account_check` | Counts external replies under the latest published URL; not a full thread/account aggregate or legitimacy assessment |
+| `personality_write` | Injects nickname, tone and vocabulary from `data/accounts/<account_id>/profile.json` into a write brief; invalid files silently fall back |
+| `probabilistic_wait` | Samples `minutes ± variance`; currently resamples forever without completing. Use a sampled ordinary `wait` instead |
+
+Profiles describe voice, not separate ownership. See the
+[profile reference](../../data/accounts/profile_SCHEMA.md); disclosure comes from
+the account database. Never invent customer experiences or independent discovery.
+
+### Legitimacy monitoring and endpoint availability
+
+`api/_legitimacy.js` provides a local `generateLegitimacyReport` function covering
+timing, profile voice, content length and entry intervals. It needs caller-supplied
+participation records. Its score is heuristic; missing data can pass, and it does
+not prove independence or gate sends. The guide shows input/output and local use.
+
+`POST /api/sequences/runs`, `GET /api/sequences/runs`, and
+`GET /api/legitimacy/report` are **not implemented aliases**. Use the actual agent
+sequence routes above and the local assessment function. Do not invent endpoint
+responses or claim the unfinished handlers are deployed.
 
 ## What happens after you file
 - A person approves the run on `/review`.

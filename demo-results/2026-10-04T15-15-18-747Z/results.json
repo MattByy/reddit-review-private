@@ -1,0 +1,12 @@
+{
+  "started_at": "2026-10-04T15:15:18.748Z",
+  "mode": "live",
+  "status": "blocked",
+  "scenarios": [],
+  "blockers": [
+    "Missing configuration: SUPABASE_URL, SUPABASE_SERVICE_KEY, DEMO_ACCOUNT_IDS, DEMO_THREAD_URL, DEMO_SUBREDDIT",
+    "Public deployment probe failed: ENOTFOUND"
+  ],
+  "endpoint_calls": 1,
+  "finished_at": "2026-10-04T15:15:18.793Z"
+}
