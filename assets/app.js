@@ -158,7 +158,7 @@ function chip(kind, text) { return `<span class="chip ${kind}">${esc(text)}</spa
 
    [key, short label, chip tone, one-line meaning for a human]
    `needsParent` marks the strategies that answer a specific comment: those
-   carry parent_url and CANNOT be approved without the reviewer's stranger
+   carry parent_url and CANNOT be approved without the reviewer's parent
    tick (parent_confirmed_by), because two of our accounts in one exchange is
    the ring pattern (02-RUNBOOK.md:48). */
 const STRATEGIES = [
@@ -166,7 +166,7 @@ const STRATEGIES = [
    "A top-level answer to the post itself. Chosen when no comment in the thread scored high enough to be worth answering.",
    { needsParent: false }],
   ["reply", "reply", "info",
-   "An answer under one specific comment by a real stranger, picked by rank-comments.py. Gets read where a top-level comment in a busy thread would sink.",
+   "An answer under one specific comment by the intended participant. Gets read where a top-level comment in a busy thread would sink.",
    { needsParent: true }],
   ["sharpen", "sharpened", "info",
    "Not a strategy for posting. A small model simulates how this sub will react as PRIVATE context, then one real comment is filed. The simulation is never posted.",

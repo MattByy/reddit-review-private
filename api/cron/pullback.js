@@ -36,7 +36,7 @@ async function log(action, detail) {
 }
 async function engain(method, path, body, params) {
   const url = ENG_URL + path + (params ? "?" + new URLSearchParams(params) : "");
-  const r = await fetch(url, { method, headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "geonode-reddit-agent/1.0 (+cron)" },
+  const r = await fetch(url, { method, headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "multi-account-reddit-agent/1.0 (+cron)" },
                                body: body === undefined ? undefined : JSON.stringify(body) });
   let json = null; const text = await r.text();
   try { json = JSON.parse(text); } catch { json = { raw: text.slice(0, 300) }; }
@@ -46,8 +46,8 @@ async function engain(method, path, body, params) {
 async function projectId() {
   if (process.env.ENGAIN_PROJECT_ID) return process.env.ENGAIN_PROJECT_ID;
   const { json } = await engain("GET", "/api/v1/me");
-  const p = (json.projects || []).find(x => x.name === "geonode.com");
-  if (!p) throw new Error("no geonode.com project on this key");
+  const p = json.projects?.length === 1 ? json.projects[0] : null;
+  if (!p) throw new Error("set ENGAIN_PROJECT_ID when the vendor key does not have exactly one project");
   return p.id;
 }
 

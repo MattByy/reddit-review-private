@@ -1,11 +1,11 @@
 ---
 name: reddit-agent
-description: Hourly loop for Geonode's disclosed Reddit accounts. Use when running as the Reddit agent on a schedule, or when asked to answer replies, start a playbook run, or file a Reddit draft through the reddit-review agent API.
+description: Hourly loop for multi-account disclosed Reddit accounts. Use when running as the Reddit agent on a schedule, or when asked to answer replies, start a playbook run, or file a Reddit draft through the reddit-review agent API.
 ---
 
 # Reddit agent: the hourly loop
 
-You write drafts for Geonode's **disclosed** Reddit accounts. A person approves
+You write drafts for multi-account **disclosed** Reddit accounts. A person approves
 every send on `/review`; the server sends what they approve. You never approve,
 send, upvote or cancel. Those routes return 403.
 
@@ -16,18 +16,17 @@ Auth: `Authorization: Bearer $AGENT_API_KEY` on every call.
 ## Hard rules (the API refuses drafts that break them)
 
 1. **Disclose, every time.** Each body contains the account's `disclosure_line`
-   verbatim (default `(Geonode team here)`). Put it at the end or the start, not
+   verbatim (the examples use `(Operated by Example Team)`). Put it at the end or the start, not
    buried mid-sentence.
 2. **Only accounts with `can_post: true`.** Those are disclosed and active.
-3. **One account per thread.** Never use a second account in a thread where one
-   of ours has posted, and never reply to our own comments.
-4. **Answer real people.** A follow-up exists only because a stranger replied.
-   Never write both sides of a conversation, never ask a question you plan to
-   answer later.
+3. **Multiple accounts per thread.** Use the account assigned to each job. Sequence
+   steps can override the run's default account with `account_id`.
+4. **Staged conversations.** A reply can target another managed account. Keep each
+   participant's operator disclosure and submit every draft for review.
 5. **No upvotes, no rival names, none of our own figures.** The copy rules in
    `POST /check` are the same ones the door and the sender run.
-6. **Be useful first.** Answer the actual question. Geonode comes up because it is
-   relevant, once. If it isn't relevant, skip the thread.
+6. **Be useful first.** Answer the actual question. Mention an organization only
+   when relevant.
 
 ## Each hour, in order
 
@@ -42,7 +41,7 @@ Edits, rejections and send-backs, with reasons. Do not repeat a rejected angle.
 curl -s -H "Authorization: Bearer $AGENT_API_KEY" "$BASE/drafts?needs_agent=true"
 # rewrite per redirect_note, then:
 curl -s -X PATCH -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: application/json" \
-  "$BASE/drafts/$DRAFT_ID" -d '{"body":"... (Geonode team here)"}'
+  "$BASE/drafts/$DRAFT_ID" -d '{"body":"... (Operated by Example Team)"}'
 ```
 
 ### 3. Claim and do your jobs
@@ -55,7 +54,7 @@ There are three kinds of job:
   the job id:
   ```sh
   curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: application/json" "$BASE/drafts" \
-    -d '{"job_id":"<job.id>","kind":"<payload.kind>","body":"... (Geonode team here)"}'
+    -d '{"job_id":"<job.id>","kind":"<payload.kind>","body":"... (Operated by Example Team)"}'
   ```
   The job supplies the account, the thread, the parent URL and the post's subreddit and title. Filing
   completes the job. The draft is held until the sequence reaches its Send step. If
@@ -72,7 +71,7 @@ For each job, decide:
   ```sh
   curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: application/json" "$BASE/drafts" -d '{
     "kind":"reply","mode":"reply","thread_id":"<thread.id>","parent_url":"<target_url>",
-    "account_id":"<account.id>","body":"<answer> (Geonode team here)",
+    "account_id":"<account.id>","body":"<answer> (Operated by Example Team)",
     "thread_context":{"parent":{"author":"<payload.author>","body":"<payload.body>","permalink":"<target_url>"}}}'
   curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: application/json" \
     "$BASE/jobs/$JOB_ID/complete" -d '{"status":"done","draft_id":"<new draft id>","agent":"reddit-agent"}'
@@ -92,7 +91,7 @@ hour by hour, on `/plan`.
   no earlier than that time.
   ```sh
   curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: application/json" "$BASE/drafts" \
-    -d '{"kind":"comment","thread_id":"<id>","account_id":"<id>","delay_minutes":300,"body":"... (Geonode team here)"}'
+    -d '{"kind":"comment","thread_id":"<id>","account_id":"<id>","delay_minutes":300,"body":"... (Operated by Example Team)"}'
   ```
 - **A task for your future self:** this comes back from `/jobs/due` once its time arrives.
   ```sh
@@ -101,8 +100,7 @@ hour by hour, on `/plan`.
   ```
 - **See the queue:** `GET /queue?hours=48` returns the queue grouped by hour.
 
-A queued reply must still answer a real person. A reply under one of our own comments
-is refused, whichever account sends it.
+A queued reply must target the intended parent, confirmed by the reviewer.
 
 ### 5. Start at most one new run
 ```sh
@@ -110,14 +108,13 @@ curl -s -H "Authorization: Bearer $AGENT_API_KEY" "$BASE/accounts"     # pick a 
 curl -s -H "Authorization: Bearer $AGENT_API_KEY" "$BASE/playbooks"    # pick a playbook
 curl -s -H "Authorization: Bearer $AGENT_API_KEY" "$BASE/threads?source=ranking&limit=20"
 ```
-Pick a thread where Geonode is a genuinely good answer and none of our accounts has
-posted. Dry-run the body, then start the run:
+Pick a thread where the account can contribute usefully. Dry-run the body, then start the run:
 ```sh
 curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: application/json" "$BASE/check" \
-  -d '{"body":"... (Geonode team here)","kind":"comment","subreddit":"webscraping"}'
+  -d '{"body":"... (Operated by Example Team)","kind":"comment","subreddit":"webscraping"}'
 curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: application/json" "$BASE/runs" -d '{
   "playbook":"d_answer_then_followup","account_id":"<id>","thread_id":"<id>",
-  "acts":[{"seq":1,"body":"... (Geonode team here)"}],
+  "acts":[{"seq":1,"body":"... (Operated by Example Team)"}],
   "thread_context":{"title":"<thread title>"}}'
 ```
 `d_own_post_then_answers` takes `subreddit` and `title` instead of `thread_id`.
@@ -145,5 +142,8 @@ the `write`, `draft_followup` and `agent_task` jobs it hands you.
 
 ## Errors
 - `422` means a rule was broken. The response says which one; fix it and refile.
-- `409` means the thread is locked or archived, or another account of ours is already there. Pick another thread.
+- `409` means the thread is locked or archived, or a draft/job has already been acted on.
 - `503` means a dependency is down. Try again next hour.
+
+A reply write step can use `reply_to_step: 4` to answer the URL produced by step 4
+(a previous `wait_live` step). Use either this field or `target_url`, never both.

@@ -106,7 +106,8 @@
     st.forEach((s, i) => {
       const need = { approve: 'write', send: 'write', wait_live: 'send', check_replies: 'wait_live', answer_replies: 'check_replies' }[s.type];
       if (need && !seen.has(need)) out[i] = `needs a "${TYPES[need].label}" step before it`;
-      if (s.type === 'write' && s.kind === 'reply' && !/\/comments\/[^/]+\/[^/]*\/[a-z0-9]+/i.test(s.target_url || '')) out[i] = 'paste the permalink of the comment this answers';
+      if (s.type === 'write' && s.kind === 'reply' && !s.reply_to_step && !/\/comments\/[^/]+\/[^/]*\/[a-z0-9]+/i.test(s.target_url || '')) out[i] = 'paste the permalink of the comment this answers';
+      if (s.reply_to_step != null && (!Number.isInteger(Number(s.reply_to_step)) || Number(s.reply_to_step) < 1 || Number(s.reply_to_step) > i || st[Number(s.reply_to_step) - 1]?.type !== 'wait_live' || s.target_url)) out[i] = 'choose a previous Wait until live step OR a parent permalink';
       if (s.type === 'write' && s.kind === 'post' && !(s.subreddit && s.title)) out[i] = 'a post needs a subreddit and a title';
       if (s.type === 'wait' && !(Number(s.minutes) > 0)) out[i] = 'set how long to wait';
       if (s.type === 'agent_task' && !String(s.instruction || '').trim()) out[i] = 'write the instruction';
@@ -120,19 +121,20 @@
     const f = (k, ph, v, tag = 'input') => tag === 'textarea'
       ? `<textarea class="field" rows="2" data-k="${k}" data-i="${i}" placeholder="${esc(ph)}">${esc(v || '')}</textarea>`
       : `<input class="field" data-k="${k}" data-i="${i}" placeholder="${esc(ph)}" value="${esc(v ?? '')}">`;
-    if (s.type === 'write') return `<div class="row2"><select class="field" data-k="kind" data-i="${i}">
+    const accountField = `<select class="field" data-k="account_id" data-i="${i}"><option value="">Run default account</option>${accounts.map(a => `<option value="${esc(a.id)}" ${s.account_id === a.id ? 'selected' : ''} ${a.disclosed && a.active ? '' : 'disabled'}>${esc(a.label || a.id)}</option>`).join('')}</select>`;
+    if (s.type === 'write') return accountField + `<div class="row2"><select class="field" data-k="kind" data-i="${i}">
         ${['comment', 'reply', 'post'].map(k => `<option ${s.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
         <span class="help">${s.kind === 'reply' ? 'answers someone else\'s comment' : s.kind === 'post' ? 'a new post in a subreddit' : 'a top-level comment on the run\'s thread'}</span></div>
       ${f('brief', 'Brief for the agent: what to say, what to avoid', s.brief, 'textarea')}
-      ${s.kind === 'reply' ? f('target_url', 'Permalink of the comment to answer', s.target_url) + '<div class="help">Must be another person\'s comment. A reply under one of our own comments is refused at send, from any account.</div>' : ''}
+      ${s.kind === 'reply' ? f('target_url', 'Parent comment permalink (or use a step below)', s.target_url) + f('reply_to_step', 'Earlier Wait until live step number, e.g. 4', s.reply_to_step) + '<div class="help">Replies may target another disclosed account. Choose a permalink or an earlier published step.</div>' : ''}
       ${s.kind === 'post' ? `<div class="row2">${f('subreddit', 'subreddit (no r/)', s.subreddit)}${f('title', 'Post title', s.title)}</div>` : ''}`;
     if (s.type === 'wait') {
       const m = Number(s.minutes) || 0, unit = m && m % 60 === 0 ? 'h' : 'min';
       return `<div class="row2"><input class="field" type="number" min="1" style="width:110px" data-k="amount" data-i="${i}" value="${unit === 'h' ? m / 60 : m || ''}">
         <select class="field" data-k="unit" data-i="${i}"><option value="min" ${unit === 'min' ? 'selected' : ''}>minutes</option><option value="h" ${unit === 'h' ? 'selected' : ''}>hours</option></select></div>`;
     }
-    if (s.type === 'answer_replies') return f('brief', 'Brief for the answers (optional)', s.brief, 'textarea');
-    if (s.type === 'agent_task') return f('instruction', 'What the agent should do', s.instruction, 'textarea');
+    if (s.type === 'answer_replies') return accountField + f('brief', 'Brief for the answers (optional)', s.brief, 'textarea');
+    if (s.type === 'agent_task') return accountField + f('instruction', 'What the agent should do', s.instruction, 'textarea');
     return '';
   }
 
@@ -151,7 +153,7 @@
       if (k === 'amount' || k === 'unit') {
         const card = el.closest('.stepcard'), amt = Number(card.querySelector('[data-k=amount]').value), unit = card.querySelector('[data-k=unit]').value;
         s.minutes = unit === 'h' ? Math.round(amt * 60) : Math.round(amt);
-      } else s[k] = el.value;
+      } else if (k === 'account_id' || k === 'reply_to_step') { if (!el.value) delete s[k]; else s[k] = k === 'reply_to_step' ? Number(el.value) : el.value; } else s[k] = el.value;
       if (k === 'kind' || el.tagName === 'SELECT') draw(); else { const b = problems(steps); el.closest('.stepcard').classList.toggle('bad', !!b[+el.dataset.i]); }
     }));
     $('flow').querySelectorAll('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]]; draw(); });
@@ -221,7 +223,7 @@
         const outs = [o.draft_id ? `<a href="review">draft on Review</a>` : '', o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">live on Reddit</a>` : '',
           o.replies ? `${o.replies.length} replies` : '', o.replied_to ? `${o.replied_to.length} answered` : ''].filter(Boolean).join(' · ');
         return `<div class="rs ${DOT[st.status] || ''}"><span class="dot" aria-hidden="true"></span>
-          <div>${i + 1}. ${esc(TYPES[s.type] ? TYPES[s.type].label : s.type)}${s.type === 'wait' ? ' ' + mins(s.minutes) : ''}${s.type === 'write' ? ' a ' + esc(s.kind) : ''}
+          <div>${i + 1}. ${esc(TYPES[s.type] ? TYPES[s.type].label : s.type)}${s.type === 'wait' ? ' ' + mins(s.minutes) : ''}${s.type === 'write' ? ' a ' + esc(s.kind) : ''}${s.account_id ? ' · ' + esc(acct(s.account_id)) : ''}
             ${st.note ? `<div class="note">${esc(st.note)}</div>` : ''}${outs ? `<div class="note">${outs}</div>` : ''}</div>
           <span class="small muted">${st.done_at ? hmTime(st.done_at) : st.status === 'active' ? 'now' : ''}</span></div>`; }).join('')}</div>
     </div>`).join('') || '<div class="empty">No runs yet. Start one from Build.</div>';

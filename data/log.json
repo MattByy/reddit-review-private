@@ -4,12 +4,12 @@
   "baseline": {
     "date": "2026-09-01",
     "share_of_voice": {
-      "geonode.com": 119, "firecrawl.dev": 373, "brightdata.com": 337,
+      "primary-brand": 119, "firecrawl.dev": 373, "brightdata.com": 337,
       "serpapi.com": 204, "oxylabs.io": 193, "apify.com": 142,
       "iproyal.com": 141, "zyte.com": 77, "decodo.com": 71,
       "scraperapi.com": 65, "soax.com": 15
     },
-    "caveat": "geonode count includes the July Engain-manufactured comments; treat as inflated."
+    "caveat": "primary-brand count includes the July Engain-manufactured comments; treat as inflated."
   },
   "entries": []
 }

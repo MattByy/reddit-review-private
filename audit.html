@@ -152,7 +152,7 @@
     $('sovmeta').textContent = sov.length ? `${esc(sov[0].source)}, measured ${esc(sov[0].measured_on)}` : '';
     $('sov').innerHTML = sov.length
       ? '<thead><tr><th>Brand</th><th class="num">Mentions</th><th class="b"></th></tr></thead><tbody>' +
-        sov.map(r => `<tr><td>${esc(r.brand)}${r.brand === 'geonode.com' ? ' ' + chip('ink', 'us') : ''}${r.caveat ? `<div class="muted tiny">${esc(r.caveat)}</div>` : ''}</td><td class="num">${fmtN(r.mentions)}</td><td class="b"><span class="bar ${r.brand === 'geonode.com' ? 'us' : ''}" style="width:${max ? (r.mentions / max * 100).toFixed(0) : 0}%"></span></td></tr>`).join('') + '</tbody>'
+        sov.map(r => `<tr><td>${esc(r.brand)}${r.brand === 'primary-brand' ? ' ' + chip('ink', 'us') : ''}${r.caveat ? `<div class="muted tiny">${esc(r.caveat)}</div>` : ''}</td><td class="num">${fmtN(r.mentions)}</td><td class="b"><span class="bar ${r.brand === 'primary-brand' ? 'us' : ''}" style="width:${max ? (r.mentions / max * 100).toFixed(0) : 0}%"></span></td></tr>`).join('') + '</tbody>'
       : '<tbody><tr><td class="mute">No share-of-voice measurement recorded yet.</td></tr></tbody>';
   } catch (err) {
     fail(err, 'the audit');

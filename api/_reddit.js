@@ -1,6 +1,6 @@
 /* _reddit.js — read-only Reddit helpers shared by the tick and the sequence
  * engine. Nothing here writes to Reddit. */
-const UA = "geonode-reddit-agent/1.0 (+https://geonode.com; disclosed brand account tooling)";
+const UA = "multi-account-reddit-agent/1.0 (+multi-account operations)";
 
 // Share links (/r/x/s/ID) redirect to the real permalink.
 async function permalink(url) {

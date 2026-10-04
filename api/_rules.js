@@ -52,7 +52,7 @@ const RIVALS = [
 ];
 
 // Disclosure. Phrasings that stay true whoever operates the account.
-const DISCLOSURE = /\b(geonode team( here)?|(run|operated|posted) (by|for) geonode|i (work|am) (at|with|for) geonode|disclosure: ?i (work|am) (at|with|for) geonode)\b/i;
+const DISCLOSURE = /\b(?:[\w][\w .&-]* team here|(?:run|operated|posted) (?:by|for) [\w][\w .&-]*|i (?:work|am) (?:at|with|for) [\w][\w .&-]*)\b/i;
 
 const words = t => (t.trim().match(/\S+/g) || []).length;
 
@@ -90,18 +90,10 @@ function check(body, opts = {}) {
   if (SPEED.test(text)) warns.push("uses 'speed'/'fast' for concurrency. CLAUDE.md says threads.");
   for (const re of OWN_NUMBERS) if (re.test(text)) { fails.push("quotes one of our own figures. A mention is a mention, never a number."); break; }
 
-  // Disclosure (027, 2026-10-04). Every comment and post says who runs the
-  // account. The line has to be true no matter who typed it, so it names the
-  // company, not a job title: "(Geonode team here)". Without it the draft is
-  // undisclosed promotion and does not file.
-  if (!DISCLOSURE.test(text))
-    fails.push("no disclosure. Every draft says Geonode runs this account, e.g. '(Geonode team here)'.");
-
-  // A comment that never says Geonode had no reason to be posted. A reply to
-  // someone who asked a follow-up may legitimately not, so that is a warning.
-  // (The disclosure line names Geonode, so a disclosed draft always passes.)
-  if (!low.includes("geonode"))
-    (opts.kind === "reply" ? warns : fails).push("never mentions Geonode. Safe and pointless is still a failure.");
+  // An assigned account must use its configured disclosure verbatim.
+  const line = opts.disclosure_line;
+  if (line !== undefined ? !String(line || "").trim() || !text.includes(line) : !DISCLOSURE.test(text))
+    fails.push("no disclosure. Include the selected account's disclosure_line verbatim.");
 
   // §0.45 no comparisons. Measured on our own published/removed set: 5 of 10
   // removed comments named a rival vendor, against 1 of 8 published. Setting

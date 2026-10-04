@@ -1,0 +1,68 @@
+{
+  "project": "reddit-review",
+  "stage": "active",
+  "summary": "Split out of geonode-strategy on 2026-10-02 with all 39 commits of history and reconnected to the existing Vercel project, so the live approval URL never changed and never went down. Deploys verified end to end from the new repo.",
+  "next": [
+    "Transfer the repo to the Geonode account; JP must create or accept it"
+  ],
+  "blockers": [],
+  "owner": "geonode",
+  "history": [
+    {
+      "ts": "2026-10-03T23:03:33Z",
+      "actor": "geonode",
+      "did": "17:43 re-checked /review, /audit, /status and /history after the move - all 200 - and confirmed the review page never went down at any step"
+    },
+    {
+      "ts": "2026-10-03T23:03:33Z",
+      "actor": "geonode",
+      "did": "17:42 proved the pipeline is real by pushing a commit from the new repo and watching production deploy in 6 seconds"
+    },
+    {
+      "ts": "2026-10-03T23:03:33Z",
+      "actor": "geonode",
+      "did": "17:40 connected the existing Vercel project to the new repo so the live URL and its crons survived the move"
+    },
+    {
+      "ts": "2026-10-03T23:03:33Z",
+      "actor": "geonode",
+      "did": "17:38 split 04-reddit/site out of geonode-strategy with git subtree split, preserving all 39 commits of history, then created the private repo MattByy/reddit-review and pushed it after a secret scan of both the tree and the history"
+    },
+    {
+      "ts": "2026-10-03T23:03:33Z",
+      "actor": "geonode",
+      "did": "17:34 scoped the extraction before moving anything, because the approval site was already live and a bad move would break it"
+    },
+    {
+      "ts": "2026-10-02T15:43:40Z",
+      "actor": "nodas",
+      "did": "Extracted 04-reddit/site via git subtree split into MattByy/reddit-review (private), connected the live Vercel project to it, verified a push deploys and /review still serves."
+    }
+  ],
+  "what": "Human approval UI for Geonode Reddit comment drafts - the only place a comment becomes public",
+  "url": "https://site-phi-two-38.vercel.app/review",
+  "stack": [
+    "static HTML + Vercel functions, Supabase"
+  ],
+  "env": [
+    {
+      "name": "SUPABASE_URL",
+      "required": false
+    },
+    {
+      "name": "SUPABASE_SERVICE_KEY",
+      "required": false
+    },
+    {
+      "name": "ENGAIN_API_KEY",
+      "required": false
+    }
+  ],
+  "updated": "2026-10-03T23:03:33Z",
+  "commands": [
+    {
+      "label": "deploy",
+      "cmd": "git push - production deploy fires from the connected Vercel project"
+    }
+  ]
+}

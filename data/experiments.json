@@ -7,7 +7,7 @@
       "owner": "Swello",
       "hypothesis": "Commenting the unlimited/flat-price angle on popular scraper posts lifts our mention share",
       "where": "top-ranking evergreen scraper threads (from targets.json)",
-      "metric": "mentions of geonode.com in Engain feed, 2-week delta",
+      "metric": "mentions of primary-brand in Engain feed, 2-week delta",
       "status": "queued",
       "started": null,
       "verdict": null

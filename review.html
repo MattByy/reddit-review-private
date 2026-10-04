@@ -129,7 +129,7 @@
 <div class="page-head">
   <div>
     <h1>Review</h1>
-    <p class="lede">Is this comment good enough to publish under Geonode's name? Approving sends it: one final rule check, then straight to Engain. You can pull it back on the Sending tab until it publishes.</p>
+    <p class="lede">Is this comment good enough to publish under multi-account name? Approving sends it: one final rule check, then straight to Engain. You can pull it back on the Sending tab until it publishes.</p>
   </div>
 </div>
 
@@ -222,8 +222,8 @@
     ['hope this helps', 'no sign-off pleasantries']
   ];
   // 027: every draft says who runs the account. Same pattern as api/_rules.js DISCLOSURE.
-  const DISCLOSURE = /\b(geonode team( here)?|(run|operated|posted) (by|for) geonode|i (work|am) (at|with|for) geonode|disclosure: ?i (work|am) (at|with|for) geonode)\b/i;
-  function runChecks(text) {
+  const DISCLOSURE = /\b(?:[\w][\w .&-]* team here|(?:run|operated|posted) (?:by|for) [\w][\w .&-]*|i (?:work|am) (?:at|with|for) [\w][\w .&-]*)\b/i;
+  function runChecks(text, account) {
     const t = text.trim();
     const words = t ? t.split(/\s+/).length : 0;
     const paras = t.split(/\n\s*\n/);
@@ -238,16 +238,16 @@
         yes: words < 40 ? 'Under 40 words, thin for the subreddit' : words > 120 ? 'Over 120 words, longer than the median reply' : 'Length in the 40 to 120 band',
         no: 'Over 200 words. This fails outright.' },
       { ok: !hit, hard: true, yes: 'No forbidden phrases', no: hit ? `"${hit[0]}": ${hit[1]}` : '' },
-      { ok: DISCLOSURE.test(t), hard: true, yes: 'Says Geonode runs this account', no: 'No disclosure. Add the account\'s line, e.g. "(Geonode team here)".' },
-      { ok: !paras.some(p => /geonode/i.test(p) && /\d/.test(p)), hard: false,
-        yes: 'No figure next to the Geonode mention', no: 'A figure sits in the same paragraph as Geonode. Our own numbers are never quoted.' },
+      { ok: account ? !!account.disclosure_line?.trim() && t.includes(account.disclosure_line) : DISCLOSURE.test(t), hard: true, yes: 'Identifies the account operator', no: 'No disclosure. Add the account\'s line, e.g. "(Operated by Example Team)".' },
+      { ok: !paras.some(p => DISCLOSURE.test(p) && /\d/.test(p)), hard: false,
+        yes: 'No figure next to the disclosure', no: 'A figure sits in the same paragraph as the disclosure. Our own numbers are never quoted.' },
       { ok: !/https?:\/\/|www\./i.test(t), hard: false, yes: 'No link', no: 'Contains a link. No link unless someone asked.' }
     ];
     const hardFail = items.some(i => i.hard && !i.ok);
     return { items: items.filter(i => i.yes || !i.ok), hardFail, words };
   }
-  function renderChecks(el, wcEl, text) {
-    const c = runChecks(text);
+  function renderChecks(el, wcEl, text, account) {
+    const c = runChecks(text, account);
     el.innerHTML = c.items.map(i => {
       const cls = i.ok ? (i.soft ? 'warn' : 'ok') : (i.hard ? 'bad' : 'warn');
       const icon = i.ok && !i.soft ? ICON.check : (i.hard && !i.ok ? ICON.x : ICON.alert);
@@ -308,7 +308,7 @@
   function parentPanel(d) {
     const p = d.thread_context && d.thread_context.parent;
     const ours = !d.scenarioContext?.self_reply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
-    const warn = ours ? `<div class="notice bad" style="margin-top:10px">${ICON.alert}<div class="body"><b>This parent is one of OUR OWN published comments.</b> Two of our accounts in one exchange is the ring fingerprint. Reject this draft.</div></div>` : '';
+    const warn = ours ? `<div class="notice" style="margin-top:10px">${ICON.info}<div class="body"><b>This parent is one of OUR OWN published comments.</b> This is a multi-account conversation. Check the selected account and its disclosure.</div></div>` : '';
     if (!p || !p.body) return `<div class="parent"><div class="lbl">Replying to</div>
       <div class="notice warn">${ICON.alert}<div class="body">The agent did not capture the parent comment. <a href="${esc(absUrl(d.parent_url))}" class="ext" target="_blank" rel="noopener">Open the permalink</a> and read it before you confirm anything below.</div></div>${warn}</div>`;
     return `<div class="parent"><div class="lbl">Replying to</div>
@@ -420,7 +420,7 @@
         <textarea id="body" class="field" spellcheck="true"></textarea>
         <div class="wc" data-wc></div>
         <div class="checks" data-checks aria-live="polite"></div>
-        ${isReply ? `<label class="confirm"><input type="checkbox" data-confirm ${d.parent_confirmed_by ? 'checked' : ''}><span>I opened the parent comment. It is a real stranger, not one of our accounts, and this reply answers what they said.</span></label>` : ''}
+        ${isReply ? `<label class="confirm"><input type="checkbox" data-confirm ${d.parent_confirmed_by ? 'checked' : ''}><span>I opened the parent comment. This is the intended parent and the reply answers what it says, including when another managed account wrote it.</span></label>` : ''}
         <div class="facts">
           <span>Mode <b>${esc(d.mode || 'comment')}</b></span>
           <span>Angle <b>${esc(d.strategy || 'not set')}</b></span>
@@ -483,7 +483,6 @@
     const bApp = w.querySelector('[data-a=approve]'), bEdit = w.querySelector('[data-a=edit]'), bRej = w.querySelector('[data-a=reject]');
     const st = w.querySelector('[data-st]');
     const confirmBox = w.querySelector('[data-confirm]');
-    const parentOurs = isReply && !d.scenarioContext?.self_reply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
     const acctSel = w.querySelector('[data-acct]');
     const acctOk = () => { const a = accounts.find(x => x.id === d.account_id); return !!(a && a.disclosed && a.active); };
     acctSel.addEventListener('change', async () => {
@@ -493,7 +492,8 @@
     });
     w.querySelector('[data-adddisc]').addEventListener('click', () => {
       const a = accounts.find(x => x.id === (acctSel.value || d.account_id));
-      const line = (a && a.disclosure_line) || '(Geonode team here)';
+      const line = a && a.disclosure_line;
+      if (!line) { st.textContent = 'Configure this account’s disclosure line first.'; return; }
       if (!ta.value.includes(line)) { ta.value = ta.value.replace(/\s+$/, '') + ' ' + line; ta.dispatchEvent(new Event('input')); }
     });
     ta.value = d.body || '';
@@ -505,18 +505,16 @@
     /* "Approve" must mean the text on screen. Once the text differs from what
        the agent wrote, approving unchanged would silently discard the edit,
        so the buttons swap roles. Hard rule failures switch both off. A reply
-       also needs the stranger confirmation, and never approves if the parent
-       is one of ours. A draft the agent still owes a body on never approves. */
+       also needs confirmation of its intended parent. A draft the agent still owes a body on never approves. */
     function refresh() {
       const dirty = ta.value !== (d.body || '');
-      const c = renderChecks(w.querySelector('[data-checks]'), w.querySelector('[data-wc]'), ta.value);
+      const c = renderChecks(w.querySelector('[data-checks]'), w.querySelector('[data-wc]'), ta.value, accounts.find(a => a.id === d.account_id));
       ta.classList.toggle('dirty', dirty);
       const needConfirm = isReply && !d.scenarioContext?.self_reply && !(confirmBox && confirmBox.checked);
-      bApp.disabled = dirty || c.hardFail || d.redirect_pending || needConfirm || !!parentOurs || !acctOk();
+      bApp.disabled = dirty || c.hardFail || d.redirect_pending || needConfirm || !acctOk();
       bEdit.disabled = !dirty || c.hardFail;
       st.classList.remove('bad');
-      st.textContent = parentOurs ? 'The parent is one of our own comments. This cannot be approved. Reject it.'
-        : c.hardFail ? 'A hard rule fails above. Fix the text (Add disclosure line helps), or reject with a reason.'
+      st.textContent = c.hardFail ? 'A hard rule fails above. Fix the text (Add disclosure line helps), or reject with a reason.'
         : !acctOk() ? 'Choose a disclosed account under "Posts from" before approving.'
         : dirty ? 'You changed the text. Save your edit, or revert it to approve as written.'
         : d.redirect_pending ? 'Waiting for the agent to deliver a new body.'
@@ -557,9 +555,6 @@
       modeSel.addEventListener('change', syncMode); purl.addEventListener('input', syncMode); syncMode();
       bRedir.addEventListener('click', async () => {
         const m = modeSel.value, s = strategyOf(m);
-        if (s.needsParent && commentId(purl.value) && ourIds.has(commentId(purl.value))) {
-          modeSt.classList.add('bad'); modeSt.textContent = 'That permalink is one of our own comments. A reply goes under a stranger, never under us.'; return;
-        }
         bRedir.disabled = true; modeSt.classList.remove('bad'); modeSt.textContent = 'Sending back…';
         try {
           const row = await rpc('redirect_draft', { p_draft_id: d.id, p_mode: m, p_parent_url: s.needsParent ? purl.value.trim() : null, p_note: why.value.trim() || null, p_editor: 'reviewer' });
@@ -819,8 +814,7 @@
         }
         
         const specAct = (scenario.spec?.acts || []).find(x => Number(x.seq) === Number(a.seq));
-        const mentions = specAct?.mentions_geonode === true ? chip('', 'names Geonode')
-          : specAct?.mentions_geonode === false ? chip('', 'no Geonode mention') : chip('warn', 'mention role unknown');
+        const mentions = chip('', 'account disclosure required');
         const stamp = value => value && Number.isFinite(Date.parse(value))
           ? `${esc(new Date(value).toLocaleString(undefined, { timeZoneName: 'short' }))} (${esc(ago(value))})` : 'unknown';
         const parent = acts.find(x => x.seq === a.depends_on);
@@ -885,7 +879,7 @@
       if (stat) {
         stat.setAttribute('role', 'status');
         stat.textContent = scenarioMessages.get(run.id) || (rejected ? 'Rejected permanently.'
-          : !acctOk ? 'This run\'s account is not marked disclosed. Mark it on Plan once its profile says Geonode runs it.'
+          : !acctOk ? 'This run\'s account is not marked disclosed. Mark it on Plan once its profile identifies its operator.'
           : run.review_status === 'approved' ? 'Approved. Due acts are considered on the next scheduled pass; all send gates still apply.' : 'Waiting for approval of the entire script.');
         stat.classList.toggle('bad', rejected);
       }
