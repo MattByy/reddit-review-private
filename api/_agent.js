@@ -226,6 +226,9 @@ const HELP = {
     "POST /api/agent/runs":                 "start a playbook on a thread {playbook, account_id, thread_id | subreddit+title, acts:[{seq, body}], thread_context}. A human approves the whole run on /review.",
     "GET  /api/agent/plan":                 "the planner: jobs and acts, due and blocked, next 48h",
     "GET  /api/agent/queue":                "everything queued, grouped by hour. ?hours=48",
+    "GET  /api/agent/sequences":            "the sequences people built on /sequences (ordered steps: write, approve, send, wait_live, wait, check_replies, answer_replies, agent_task)",
+    "POST /api/agent/sequences/:id/runs":   "start a sequence {thread_url, account_id, note?}. Its write steps come back to you as jobs.",
+    "GET  /api/agent/sequence-runs":        "runs and where each one is. ?status=open",
     "POST /api/agent/jobs":                 "queue a task for later {title, due_at | delay_minutes, thread_id?, target_url?, account_id?, payload?}. It comes back from /jobs/due when due.",
     "(drafts) send_after | delay_minutes":  "on POST /api/agent/drafts: queue the send. A human still approves it; the server sends it no earlier than that time.",
   },
@@ -373,6 +376,26 @@ function optional(body, out) {
 }
 
 async function postDraft(body) {
+  // A draft written for a job takes the job's account, and a sequence write is
+  // HELD until its run reaches the Send step (029).
+  let forJob = null;
+  if (body.job_id) {
+    const [j] = await sb("GET", `jobs?select=*&id=eq.${enc(body.job_id)}`);
+    if (!j) bad(404, `job ${body.job_id} not found`);
+    if (!["write", "draft_followup"].includes(j.kind)) bad(422, "only write and draft_followup jobs take a draft");
+    if (!["claimed", "planned"].includes(j.status)) bad(409, `job is already ${j.status}`);
+    if (j.kind === "write" && j.payload && j.payload.kind && String(body.kind || "comment") !== j.payload.kind)
+      bad(422, `this step asks for a ${j.payload.kind}`);
+    forJob = j;
+    if (j.account_id) body.account_id = j.account_id;
+    if (j.thread_id && !body.thread_id) body.thread_id = j.thread_id;
+    if (j.kind === "draft_followup" && !body.parent_url) body.parent_url = j.target_url;
+    if (j.kind === "write" && j.payload && j.payload.kind === "reply" && !body.parent_url) body.parent_url = j.target_url;
+    if (j.kind === "write" && j.payload && j.payload.kind === "post") {
+      if (!body.subreddit) body.subreddit = j.payload.subreddit;
+      if (!body.title && j.payload.title) body.title = j.payload.title;
+    }
+  }
   const d = shapeDraft(body);
   if (body.account_id) await disclosedAccount(body.account_id);
   let thread = null;
@@ -410,6 +433,7 @@ async function postDraft(body) {
      own must carry the facts it is judged by. */
   const row = optional(body, {
     ...d,
+    sequence_hold: !!(forJob && forJob.kind === "write" && forJob.sequence_run_id),
     subreddit: sub,
     body_original: d.body,
     status: "pending",
@@ -418,7 +442,8 @@ async function postDraft(body) {
   });
   const [saved] = await sb("POST", `drafts?select=${DRAFT_COLS}`, [row], "return=representation");
   await recordCheck(saved.id, sub, vc, "filed through the door");
-  await log("draft_filed", { draft: saved.id, kind: d.kind, thread: d.thread_id, subreddit: sub, words: verdict.words, removal_risk: vc.removal_risk, verdict: vc.verdict });
+  await log("draft_filed", { draft: saved.id, kind: d.kind, thread: d.thread_id, subreddit: sub, words: verdict.words, removal_risk: vc.removal_risk, verdict: vc.verdict, job: forJob && forJob.id });
+  if (forJob) await sb("POST", "rpc/complete_job", { p_id: forJob.id, p_agent: String(body.agent || "agent-api"), p_status: "done", p_result: { draft_id: saved.id }, p_draft_id: saved.id });
   return { draft: saved, verdict, next: "A human reads it on /review. Poll GET /api/agent/drafts/" + saved.id + " or read /api/agent/lessons later." };
 }
 
@@ -613,14 +638,17 @@ async function postRun(body) {
 
 async function getJobsDue(sp) {
   const agent = String(sp.get("agent") || "agent-api").slice(0, 60);
-  const kinds = (sp.get("kinds") || "draft_followup,agent_task").split(",").filter(k => ["draft_followup", "agent_task"].includes(k));
-  const jobs = await sb("POST", "rpc/claim_jobs", { p_agent: agent, p_kinds: kinds.length ? kinds : ["draft_followup", "agent_task"], p_limit: Math.min(Number(sp.get("limit")) || 5, 20) });
+  const ALL = ["write", "draft_followup", "agent_task"];
+  const kinds = (sp.get("kinds") || ALL.join(",")).split(",").filter(k => ALL.includes(k));
+  const jobs = await sb("POST", "rpc/claim_jobs", { p_agent: agent, p_kinds: kinds.length ? kinds : ALL, p_limit: Math.min(Number(sp.get("limit")) || 5, 20) });
   const out = [];
   for (const j of jobs) {
     const [acct] = j.account_id ? await sb("GET", `accounts?select=id,label,disclosure_line,disclosed&id=eq.${enc(j.account_id)}`) : [];
     const [thread] = j.thread_id ? await sb("GET", `threads?select=id,url,title,subreddit&id=eq.${enc(j.thread_id)}`) : [];
     out.push({ ...j, account: acct || null, thread: thread || null,
-      todo: j.kind === "agent_task" ? `Your own queued task: ${j.title}. Do it, then POST /api/agent/jobs/${j.id}/complete.` : "Answer this stranger's reply. POST /api/agent/drafts {kind:'reply', mode:'reply', thread_id, parent_url: target_url, account_id, body (with the disclosure_line), thread_context:{parent:{author, body, permalink}}}, then POST /api/agent/jobs/" + j.id + "/complete {status:'done', draft_id}. If the reply needs no answer (thanks, a joke, hostile), complete with status 'skipped' and say why." });
+      todo: j.kind === "agent_task" ? `Queued task: ${j.title}. Do it, then POST /api/agent/jobs/${j.id}/complete.`
+        : j.kind === "write" ? `Sequence step: write a ${j.payload && j.payload.kind} (${(j.payload && j.payload.brief) || "no brief"}). POST /api/agent/drafts {job_id:"${j.id}", kind, body (with the disclosure_line)${j.payload && j.payload.kind === "post" ? ", subreddit, title" : ""}}. Filing completes the job. If it cannot be done, complete it with status 'skipped' and a reason.`
+        : "Answer this stranger's reply. POST /api/agent/drafts {kind:'reply', mode:'reply', thread_id, parent_url: target_url, account_id, body (with the disclosure_line), thread_context:{parent:{author, body, permalink}}}, then POST /api/agent/jobs/" + j.id + "/complete {status:'done', draft_id}. If the reply needs no answer (thanks, a joke, hostile), complete with status 'skipped' and say why." });
   }
   return { jobs: out, claimed: out.length, note: out.length ? "claimed for 30 minutes. Complete each one." : "nothing due. Check again next hour." };
 }
@@ -678,6 +706,13 @@ module.exports = async function handler(req, res) {
     else if (a === "jobs" && b === "due" && m === "GET")       out = await getJobsDue(sp);
     else if (a === "jobs" && !b && m === "POST")               out = await postJob(await readBody(req));
     else if (a === "queue" && !b && m === "GET")               out = await getQueue(sp);
+    else if (a === "sequences" && !b && m === "GET")           out = { sequences: await sb("GET", "sequences?select=id,name,description,steps,enabled&enabled=eq.true&order=name.asc") };
+    else if (a === "sequences" && b && c === "runs" && m === "POST") {
+      const body = await readBody(req);
+      out = { run: await sb("POST", "rpc/start_sequence_run", { p_sequence_id: b, p_thread_url: body.thread_url || null, p_account_id: body.account_id, p_note: body.note || null, p_editor: String(body.agent || "agent-api") }),
+              next: "The tick advances it every 15 minutes. Write steps come back to you from GET /api/agent/jobs/due." };
+    }
+    else if (a === "sequence-runs" && !b && m === "GET")       out = { runs: await sb("GET", `sequence_runs?select=*&order=created_at.desc&limit=${limitOf(sp)}${sp.get("status") ? "&status=eq." + enc(sp.get("status")) : ""}`) };
     else if (a === "jobs" && b && c === "complete" && m === "POST") out = await completeJob(b, await readBody(req));
     else if (a === "playbooks" && !b && m === "GET")           out = await getPlaybooks();
     else if (a === "accounts" && !b && m === "GET")            out = await getAccounts();

@@ -9,16 +9,19 @@
  *   3. check_replies: for each due check, read our comment on Reddit. Every
  *      reply from someone who is not us becomes a `draft_followup` job for the
  *      agent. Nothing is written to Reddit here.
- *   4. send: runQueue(), the same sender as /api/dispatch.
+ *   4. sequences: advance every open sequence run (_engine.js, migration 029).
+ *   5. send: runQueue(), the same sender as /api/dispatch.
  * Every outcome is in the JSON it returns and in activity_log (actor cron/tick).
  */
 const { runQueue, sb, engain, logger } = require("../_send.js");
+const { permalink } = require("../_reddit.js");
+const { runEngine } = require("../_engine.js");
 
 const ACTOR = "cron/tick";
 const log = logger(ACTOR);
 const enc = encodeURIComponent;
 const now = () => new Date().toISOString();
-const UA = "geonode-reddit-agent/1.0 (+https://geonode.com; disclosed brand account tooling)";
+const { UA } = require("../_reddit.js");
 
 async function syncAccounts() {
   const { status, json } = await engain("GET", "/api/v1/accounts-beta/accounts");
@@ -28,16 +31,6 @@ async function syncAccounts() {
     usable: a.usable ?? null, synced_at: now() }));
   if (rows.length) await sb("POST", "accounts?on_conflict=id", rows, "resolution=merge-duplicates,return=minimal");
   return { ok: true, synced: rows.length };
-}
-
-// Reddit share links (/r/x/s/ID) redirect to the real permalink.
-async function permalink(url) {
-  if (!url || !/\/s\//.test(url)) return url;
-  try {
-    const r = await fetch(url, { redirect: "manual", headers: { "User-Agent": UA } });
-    const loc = r.headers.get("location");
-    return loc ? loc.split("?")[0] : url;
-  } catch { return url; }
 }
 
 function vendorState(c) {
@@ -125,7 +118,7 @@ module.exports = async function handler(req, res) {
   const secret = process.env.CRON_SECRET || "";
   if (!secret || String(req.headers.authorization || "") !== `Bearer ${secret}`) return out(401, { error: "cron secret missing or wrong" });
   const report = {};
-  for (const [name, fn] of [["accounts", syncAccounts], ["poll", poll], ["check_replies", checkReplies],
+  for (const [name, fn] of [["accounts", syncAccounts], ["poll", poll], ["check_replies", checkReplies], ["sequences", runEngine],
                             ["send", async () => (await runQueue(ACTOR)).body]]) {
     try { report[name] = await fn(); }
     catch (e) { report[name] = { error: String(e.message).slice(0, 300) }; }

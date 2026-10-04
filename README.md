@@ -14,6 +14,9 @@ history. The scripts that generate drafts and talk to the vendor still live in
 - `/review` — the approval screen. **Ungated on purpose** (approving from a
   phone should not need a code); `build.js` strips the gate tag from it.
   Every other page carries the 4-digit gate.
+- `/sequences` — build workflows step by step (write, approve, send, wait until
+  live, wait, check replies, answer replies, agent task) and start them on a
+  thread with a disclosed account. `api/_engine.js` advances runs on each tick.
 - `/plan` — the planner: what is due in the next 48h and why anything is
   blocked, every run, the disclosed playbooks, and the accounts (where a human
   marks an account disclosed).
@@ -32,7 +35,7 @@ history. The scripts that generate drafts and talk to the vendor still live in
   are `skills/reddit-agent/SKILL.md`.
 
 Schema: `geonode-strategy/04-reddit/supabase/migrations/027-disclosed-planner.sql`
-(accounts, jobs, claim_jobs, plan_timeline, the `d_*` playbooks).
+(accounts, jobs, claim_jobs, plan_timeline, the `d_*` playbooks), 028 (queue), 029 (sequences).
 
 Checks: `node checkrules.js` (disclosure rule), `node checkpages.js`.
 

@@ -360,7 +360,7 @@
      rather than three files to remember. */
 
   /* ── state ─────────────────────────────────────────────────────────── */
-  let drafts = [], checks = {}, current = 0, ourIds = new Set();
+  let drafts = [], checks = {}, current = 0, ourIds = new Set(), accounts = [];
   const CEILING = 40;   // 02-RUNBOOK.md ceiling; the API door enforces the same number (RISK_CEILING)
 
   /* The state chip and the strategy chip are two different questions, and the
@@ -430,6 +430,16 @@
           ${d.agent_note ? `<span>Agent <b>${esc(d.agent_note)}</b></span>` : ''}
           <a href="${esc(threadUrl(d))}" class="ext" target="_blank" rel="noopener">Open thread</a>
         </div>
+        <div class="facts" style="align-items:center">
+          <label style="display:flex;gap:6px;align-items:center"><span class="muted small">Posts from</span>
+            <select class="field" data-acct aria-label="Account this posts from">
+              <option value="">choose an account…</option>
+              ${accounts.map(a => `<option value="${esc(a.id)}" ${d.account_id === a.id ? 'selected' : ''} ${a.disclosed && a.active ? '' : 'disabled'}>${esc(a.label || a.id)}${a.reddit_username ? ' · u/' + esc(a.reddit_username) : ''}${a.disclosed && a.active ? '' : ' (not disclosed)'}</option>`).join('')}
+            </select></label>
+          <button class="btn small" data-adddisc type="button">Add disclosure line</button>
+          ${accounts.some(a => a.disclosed && a.active) ? '' : '<span class="small muted">No account is marked disclosed yet. Do that on <a href="plan">Plan</a> → Accounts.</span>'}
+        </div>
+        ${d.sequence_hold ? '<div class="notice" style="margin-top:10px"><div class="body">Part of a sequence. Approving clears it; it goes out when the sequence reaches its Send step.</div></div>' : ''}
       </div>`;
     w.innerHTML = `
       <div class="work-head">
@@ -474,6 +484,18 @@
     const st = w.querySelector('[data-st]');
     const confirmBox = w.querySelector('[data-confirm]');
     const parentOurs = isReply && !d.scenarioContext?.self_reply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
+    const acctSel = w.querySelector('[data-acct]');
+    const acctOk = () => { const a = accounts.find(x => x.id === d.account_id); return !!(a && a.disclosed && a.active); };
+    acctSel.addEventListener('change', async () => {
+      const prev = d.account_id; d.account_id = acctSel.value || null; refresh();
+      try { await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', headers: { ...H(), Prefer: 'return=minimal' }, body: JSON.stringify({ account_id: d.account_id }) }); }
+      catch (e) { d.account_id = prev; acctSel.value = prev || ''; st.classList.add('bad'); st.textContent = errText(e); refresh(); }
+    });
+    w.querySelector('[data-adddisc]').addEventListener('click', () => {
+      const a = accounts.find(x => x.id === (acctSel.value || d.account_id));
+      const line = (a && a.disclosure_line) || '(Geonode team here)';
+      if (!ta.value.includes(line)) { ta.value = ta.value.replace(/\s+$/, '') + ' ' + line; ta.dispatchEvent(new Event('input')); }
+    });
     ta.value = d.body || '';
     const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.max(220, ta.scrollHeight + 12) + 'px'; };
     grow();
@@ -490,11 +512,12 @@
       const c = renderChecks(w.querySelector('[data-checks]'), w.querySelector('[data-wc]'), ta.value);
       ta.classList.toggle('dirty', dirty);
       const needConfirm = isReply && !d.scenarioContext?.self_reply && !(confirmBox && confirmBox.checked);
-      bApp.disabled = dirty || c.hardFail || d.redirect_pending || needConfirm || !!parentOurs;
+      bApp.disabled = dirty || c.hardFail || d.redirect_pending || needConfirm || !!parentOurs || !acctOk();
       bEdit.disabled = !dirty || c.hardFail;
       st.classList.remove('bad');
       st.textContent = parentOurs ? 'The parent is one of our own comments. This cannot be approved. Reject it.'
-        : c.hardFail ? 'A hard rule fails above. Fix the text, or reject with a reason.'
+        : c.hardFail ? 'A hard rule fails above. Fix the text (Add disclosure line helps), or reject with a reason.'
+        : !acctOk() ? 'Choose a disclosed account under "Posts from" before approving.'
         : dirty ? 'You changed the text. Save your edit, or revert it to approve as written.'
         : d.redirect_pending ? 'Waiting for the agent to deliver a new body.'
         : needConfirm ? 'Tick the confirmation once you have read the parent comment.'
@@ -923,9 +946,10 @@
       /* Our own published comments, so a reply under one of them is caught
          on this screen and again in review_draft(). */
       try { const ours = await api('engain_tasks?select=reddit_url&reddit_url=not.is.null'); ourIds = new Set(ours.map(t => commentId(t.reddit_url)).filter(Boolean)); } catch (e) { ourIds = new Set(); }
+      try { accounts = await api('accounts?select=id,label,reddit_username,disclosed,active,disclosure_line&order=label.asc'); } catch (e) { accounts = []; }
       /* The queue: pending and edited drafts, plus approved ones the final
          gate refused, because those need a human again. */
-      drafts = await api('drafts?select=id,thread_id,kind,mode,parent_url,subreddit,title,strategy,format,body,body_original,status,source,agent_note,upvotes_suggested,upvotes_reason,prompt_version,thread_context,models,sharpen,redirect_pending,redirected_at,redirect_note,gate_failed_at,gate_failure,parent_confirmed_by,created_at&or=(status.in.(pending,edited),and(status.eq.approved,gate_failed_at.not.is.null))&order=created_at.asc&limit=100');
+      drafts = await api('drafts?select=id,thread_id,kind,mode,parent_url,subreddit,title,strategy,format,body,body_original,status,source,agent_note,upvotes_suggested,upvotes_reason,prompt_version,thread_context,models,sharpen,redirect_pending,redirected_at,redirect_note,gate_failed_at,gate_failure,parent_confirmed_by,created_at,account_id,sequence_hold&or=(status.in.(pending,edited),and(status.eq.approved,gate_failed_at.not.is.null))&order=created_at.asc&limit=100');
       await Promise.all(drafts.filter(d => d.mode === 'scenario').map(async d => {
         d.scenarioContext = await api('rpc/scenario_context', { method: 'POST', body: JSON.stringify({ p_draft_id: d.id, p_parent_url: d.parent_url || null }) });
       }));

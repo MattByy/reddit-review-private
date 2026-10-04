@@ -49,7 +49,20 @@ curl -s -X PATCH -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: app
 ```sh
 curl -s -H "Authorization: Bearer $AGENT_API_KEY" "$BASE/jobs/due?agent=reddit-agent&limit=5"
 ```
-Today every job is `draft_followup`: a stranger replied to one of our comments.
+There are three kinds of job:
+- **`write`** comes from a sequence step that people built on `/sequences`. Write the
+  `payload.kind` (comment, reply or post) from `payload.brief`, then file it with
+  the job id:
+  ```sh
+  curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: application/json" "$BASE/drafts" \
+    -d '{"job_id":"<job.id>","kind":"<payload.kind>","body":"... (Geonode team here)"}'
+  ```
+  The job supplies the account, the thread, the parent URL and the post's subreddit and title. Filing
+  completes the job. The draft is held until the sequence reaches its Send step. If
+  you can't write it, complete the job as `skipped` with a reason.
+- **`agent_task`** is a free instruction from a sequence or from your own queue. Do it, then complete it.
+- **`draft_followup`** means a stranger replied to one of our comments. Details are below. You can also file
+  these with `job_id`, which completes the job for you.
 Each job includes `target_url` (their comment), `payload.author`, `payload.body`,
 `payload.our_body`, `account` (with `disclosure_line`) and `thread`. Claims last 30
 minutes.
@@ -108,6 +121,13 @@ curl -s -X POST -H "Authorization: Bearer $AGENT_API_KEY" -H "Content-Type: appl
   "thread_context":{"title":"<thread title>"}}'
 ```
 `d_own_post_then_answers` takes `subreddit` and `title` instead of `thread_id`.
+
+## Sequences
+People build sequences on `/sequences` as ordered steps: write → approve → send →
+wait until live → wait 5h → check replies → answer replies. Agent tasks can go anywhere in the order.
+`GET /sequences` lists them, and `POST /sequences/:id/runs {thread_url, account_id}`
+starts one. The tick moves each run forward every 15 minutes. Your part of a run is
+the `write`, `draft_followup` and `agent_task` jobs it hands you.
 
 ## What happens after you file
 - A person approves the run on `/review`.

@@ -87,12 +87,13 @@ async function dispatchOne(d, pid, log) {
   };
 
   // gate 0: re-read the row itself
-  const [cur] = await sb("GET", `drafts?select=status,send_cleared_at,redirect_pending,gate_failed_at,pullback_requested_at,body,parent_url,parent_confirmed_by,kind,account_id,send_after&id=eq.${enc(d.draft_id)}`);
+  const [cur] = await sb("GET", `drafts?select=status,send_cleared_at,redirect_pending,gate_failed_at,pullback_requested_at,body,parent_url,parent_confirmed_by,kind,account_id,send_after,sequence_hold&id=eq.${enc(d.draft_id)}`);
   if (!cur || cur.status !== "approved" || !cur.send_cleared_at || cur.redirect_pending || cur.gate_failed_at || cur.pullback_requested_at)
     return { ...head, outcome: "skipped", why: "state changed since the queue was read" };
   // 028: a queued draft waits for its slot, however early it was approved.
   if (cur.send_after && new Date(cur.send_after) > new Date())
     return { ...head, outcome: "queued", why: `queued until ${cur.send_after}` };
+  if (cur.sequence_hold) return { ...head, outcome: "queued", why: "held until its sequence reaches the Send step" };
   const body = cur.body || "";
   const context = await sb("POST", "rpc/scenario_context", { p_draft_id: d.draft_id, p_parent_url: cur.parent_url || null });
   if (context.scenario && !context.pace_ok) return { ...head, outcome: "deferred", why: "pace floor (45m global / 24h subreddit / 20 per UTC day)" };
@@ -178,7 +179,11 @@ async function runQueue(actor) {
   if (!SB_URL || !SB_KEY) return { status: 503, body: { error: "SUPABASE_URL / SUPABASE_SERVICE_KEY not configured" } };
   if (!ENG_KEY) return { status: 503, body: { error: "ENGAIN_API_KEY not configured on this project: nothing can be sent" } };
   // Drafts queued for later (send_after in the future) are left for their slot.
-  const queued = new Set((await sb("GET", `drafts?select=id&send_after=gt.${enc(now())}&status=eq.approved`)).map(r => r.id));
+  // and drafts a sequence is holding until its Send step (029).
+  const queued = new Set([
+    ...(await sb("GET", `drafts?select=id&send_after=gt.${enc(now())}&status=eq.approved`)),
+    ...(await sb("GET", "drafts?select=id&sequence_hold=eq.true&status=eq.approved")),
+  ].map(r => r.id));
   const waiting = (await sb("GET", "posting_queue?select=*&send_cleared_at=not.is.null&order=send_cleared_at.asc")).filter(d => !queued.has(d.draft_id));
   if (!waiting.length) return { status: 200, body: { ok: true, cleared: 0, results: [], note: "nothing approved and cleared that is not already sent, refused, held or with the agent" } };
   const queue = waiting.slice(0, MAX_PER_RUN);
