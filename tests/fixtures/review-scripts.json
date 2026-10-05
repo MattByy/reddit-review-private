@@ -1,0 +1,158 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-0000000003e9",
+    "scenario_slug": "review-fixture-product_announcement",
+    "narrative_type": "product_announcement",
+    "name": "Product announcement",
+    "segments": [
+      {
+        "id": "00000000-0000-0000-0000-000000000835",
+        "draft_id": "00000000-0000-0000-0000-000000000c1d",
+        "run_id": "00000000-0000-0000-0000-0000000003e9",
+        "seq": 1,
+        "kind": "comment",
+        "depends_on": null,
+        "after_min": 0,
+        "body": "TEST FIXTURE. We are introducing a fictional request inspector for this demonstration. It groups request outcomes so a developer can see which failures deserve investigation. This is sample copy, not a statement about a released Geonode feature. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000836",
+        "draft_id": "00000000-0000-0000-0000-000000000c1e",
+        "run_id": "00000000-0000-0000-0000-0000000003e9",
+        "seq": 2,
+        "kind": "reply",
+        "depends_on": 1,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. Start with a small sample of requests you are authorized to collect. Record the response status and elapsed time. In this fictional workflow, the inspector groups similar failures without storing response bodies or credentials. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000837",
+        "draft_id": "00000000-0000-0000-0000-000000000c1f",
+        "run_id": "00000000-0000-0000-0000-0000000003e9",
+        "seq": 3,
+        "kind": "reply",
+        "depends_on": 2,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. A timeout and an access refusal need different responses. Retry a timeout within a small budget. Stop on an access refusal and check your authorization. The demonstration keeps these outcomes separate so retries do not hide the underlying issue. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000838",
+        "draft_id": "00000000-0000-0000-0000-000000000c20",
+        "run_id": "00000000-0000-0000-0000-0000000003e9",
+        "seq": 4,
+        "kind": "reply",
+        "depends_on": 3,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. The announcement closes with a practical next step: try the workflow on a local test service, inspect one failure group, and compare it with the original request log. No availability, pricing, or performance claim is implied. (Operated by Fixture Team)",
+        "status": "pending"
+      }
+    ]
+  },
+  {
+    "id": "00000000-0000-0000-0000-0000000003ea",
+    "scenario_slug": "review-fixture-educational",
+    "narrative_type": "educational",
+    "name": "Educational tutorial",
+    "segments": [
+      {
+        "id": "00000000-0000-0000-0000-000000000899",
+        "draft_id": "00000000-0000-0000-0000-000000000c81",
+        "run_id": "00000000-0000-0000-0000-0000000003ea",
+        "seq": 1,
+        "kind": "comment",
+        "depends_on": null,
+        "after_min": 0,
+        "body": "TEST FIXTURE. This tutorial uses a local test server to explain bounded retries. First define which requests you may send and what a successful response contains. A status code alone is not enough if the expected data is missing. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-00000000089a",
+        "draft_id": "00000000-0000-0000-0000-000000000c82",
+        "run_id": "00000000-0000-0000-0000-0000000003ea",
+        "seq": 2,
+        "kind": "reply",
+        "depends_on": 1,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. Next give each request a timeout and record failures separately from valid empty results. That distinction stops a temporary connection problem from becoming a false conclusion that the source contains no records. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-00000000089b",
+        "draft_id": "00000000-0000-0000-0000-000000000c83",
+        "run_id": "00000000-0000-0000-0000-0000000003ea",
+        "seq": 3,
+        "kind": "reply",
+        "depends_on": 2,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. Add a retry budget only for failures that can reasonably be temporary. Keep a failed request in the log after the budget is exhausted. Do not retry access restrictions as though they were routine timeouts. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-00000000089c",
+        "draft_id": "00000000-0000-0000-0000-000000000c84",
+        "run_id": "00000000-0000-0000-0000-0000000003ea",
+        "seq": 4,
+        "kind": "reply",
+        "depends_on": 3,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. Now simulate a timeout followed by a valid response. Check that the workflow records both attempts but counts only one completed request. Then simulate repeated failure and check that it stops at the configured budget. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-00000000089d",
+        "draft_id": "00000000-0000-0000-0000-000000000c85",
+        "run_id": "00000000-0000-0000-0000-0000000003ea",
+        "seq": 5,
+        "kind": "reply",
+        "depends_on": 4,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. Finish by comparing the output with the test server log. You should be able to explain every attempt and every stop. This exercise demonstrates a verification method, not measured performance from a customer deployment. (Operated by Fixture Team)",
+        "status": "pending"
+      }
+    ]
+  },
+  {
+    "id": "00000000-0000-0000-0000-0000000003eb",
+    "scenario_slug": "review-fixture-case_study",
+    "narrative_type": "case_study",
+    "name": "Illustrative case study",
+    "segments": [
+      {
+        "id": "00000000-0000-0000-0000-0000000008fd",
+        "draft_id": "00000000-0000-0000-0000-000000000ce5",
+        "run_id": "00000000-0000-0000-0000-0000000003eb",
+        "seq": 1,
+        "kind": "comment",
+        "depends_on": null,
+        "after_min": 0,
+        "body": "TEST FIXTURE. In this fictional case, a team treated every empty result as missing source data. A review of its local test workflow found that timeouts were also entering that bucket. No real customer or production incident is described here. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-0000000008fe",
+        "draft_id": "00000000-0000-0000-0000-000000000ce6",
+        "run_id": "00000000-0000-0000-0000-0000000003eb",
+        "seq": 2,
+        "kind": "reply",
+        "depends_on": 1,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. The team separated valid empty responses, timeouts, and access refusals. It used a bounded retry for temporary failures and retained the original error when the retry budget ended. The change made each outcome explainable from the request log. (Operated by Fixture Team)",
+        "status": "pending"
+      },
+      {
+        "id": "00000000-0000-0000-0000-0000000008ff",
+        "draft_id": "00000000-0000-0000-0000-000000000ce7",
+        "run_id": "00000000-0000-0000-0000-0000000003eb",
+        "seq": 3,
+        "kind": "reply",
+        "depends_on": 2,
+        "after_min": 1440,
+        "body": "TEST FIXTURE. The lesson is to validate failure handling before interpreting output. The team could distinguish unavailable data from a failed collection attempt in the demonstration. This case contains no invented customer metric, testimonial, or business result. (Operated by Fixture Team)",
+        "status": "pending"
+      }
+    ]
+  }
+]

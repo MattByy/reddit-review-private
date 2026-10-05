@@ -53,6 +53,9 @@
   try {
     const rows = await sbAll('thread_activity', 'select=*&stage=neq.no_draft&order=thread_id.asc');
 
+    const scripts = await sbAll('script_review_state', 'select=id,thread_id,effective_review_status,status,segment_count&order=started_at.desc');
+    const scriptsFor = r => scripts.filter(s => s.thread_id === r.thread_id);
+    const scriptLinks = r => scriptsFor(r).map(s => `<a href="review?script=${encodeURIComponent(s.id)}#script-${encodeURIComponent(s.id)}" class="chip info">Script (${s.segment_count}) · ${esc(s.effective_review_status || 'pending')} · ${esc(s.status)}</a>`).join('');
     const GROUP = s => (['draft_pending_review', 'approved_not_cleared', 'cleared_not_sent', 'gate_refused'].includes(s)) ? 'human'
       : (s === 'waiting_on_engain' || s === 'pullback_requested') ? 'engain' : (s in STAGE_BAD) ? 'bad' : 'live';
     const ORDER = { human: 0, engain: 1, live: 2, bad: 3 };
@@ -94,7 +97,7 @@
           <summary>
             <span class="sub">r/${esc(r.subreddit || '?')}</span>
             <span class="title">${esc(cleanTitle(r.title, r.thread_url) || r.thread_id)}</span>
-            <span class="side">${strategyChip(r.mode)}${track(r.stage)}${chip(stageKind(r.stage), stageLabel(r.stage))}</span>
+            <span class="side">${scriptLinks(r) || strategyChip(r.mode)}${track(r.stage)}${chip(stageKind(r.stage), stageLabel(r.stage))}</span>
           </summary>
           <div class="body">
             <div class="why">${esc(stageWords(r.stage).charAt(0).toUpperCase() + stageWords(r.stage).slice(1))}.</div>

@@ -166,8 +166,9 @@
     <div class="body"><b>No drafts are visible to this page.</b> Either none have been written yet, or the anon policy on <code>drafts</code> is missing. Apply <code>supabase/migrations/008-review-anon.sql</code>. This page will not show an empty queue as good news.</div>
   </div>
   <div id="held" class="notice warn" hidden style="margin-bottom:12px"><div class="body"></div></div>
-  <div id="none" class="empty" hidden><b>Nothing to review.</b>When the agent writes a draft it lands here. Run <code>agent-file.py</code> or <code>write-comment.py</code> to draft the next thread.</div>
+  <div id="none" class="empty" hidden><b>No standalone comments to review.</b>When the agent writes a draft it lands here. Run <code>agent-file.py</code> or <code>write-comment.py</code> to draft the next thread.</div>
   
+  <button id="batch-open" class="btn" hidden>Batch review comments</button>
   <!-- Batch approve section -->
   <div id="batch-section" hidden style="padding: 0">
     <h2 style="font-size:16px;margin-bottom:12px">Batch review (skim all, approve the set)</h2>
@@ -181,8 +182,9 @@
         <button id="batch-approve-btn" class="btn" disabled>Approve selected</button>
       </div>
     </div>
+    <p id="batch-eligibility" class="muted small" role="status"></p>
     <div id="batch-grid" class="batch-grid"></div>
-    <div id="batch-status" class="notice" style="display:none;margin-top:12px"><div class="body"></div></div>
+    <div id="batch-status" class="notice" hidden style="margin-top:12px"><div class="body"></div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
       <button id="batch-cancel" class="btn">Back to single review</button>
     </div>
@@ -196,7 +198,7 @@
     </div>
   </div>
   <div id="scenarios-section" hidden style="margin-top:24px;padding-top:24px;border-top:1px solid var(--line)">
-    <h2 style="font-size:18px;margin-bottom:12px">Multi-turn scenarios</h2>
+    <h2 style="font-size:18px;margin-bottom:12px">Scripts · ordered comment narratives</h2>
     <div id="scenarios-list" class="stack"></div>
   </div>
 </div>
@@ -502,7 +504,7 @@
       <div class="modebar">
         <div class="row1"><span class="lbl">How we respond</span>
           <select class="field" data-mode aria-label="Strategy">
-            ${STRATEGIES.map(([k, label, , why]) =>
+            ${STRATEGIES.filter(([k]) => k !== 'scenario').map(([k, label, , why]) =>
               `<option value="${esc(k)}" ${d.mode === k ? 'selected' : ''}>${esc(label)}: ${esc(why.split('.')[0])}</option>`).join('')}
           </select>
           <button class="btn" data-a="redirect">Send back to the agent</button>
@@ -782,11 +784,17 @@
   /* ── scenario runs ────────────────────────────────────────────────────── */
   const scenarioMessages = new Map();
   async function renderScenarios() {
-    const runs = await api('scenario_runs?select=id,scenario_slug,subreddit,thread_url,thread_id,status,review_status,reviewed_at,reviewed_by,review_note,abort_reason,started_at,account_id&order=started_at.desc&limit=50');
+    const opened = new Set([...document.querySelectorAll('.scenario-card details[open]')].map(el => el.closest('.scenario-card').dataset.runId));
+    const requested = new URLSearchParams(location.search).get('script');
+    const runs = await api('script_review_state?select=*&order=started_at.desc&limit=50');
+    if (requested && /^[0-9a-f-]{36}$/i.test(requested) && !runs.some(r => r.id === requested)) {
+      runs.unshift(...await api(`script_review_state?select=*&id=eq.${requested}`));
+    }
     if (!runs.length) { $('scenarios-section').hidden = true; return; }
     
     // Fetch all scenarios once
-    const scenarios = await api('scenarios?select=slug,name,hypothesis,spec,enabled,same_thread_accounts,ring_reason&limit=200');
+    const slugs = [...new Set(runs.map(r => r.scenario_slug))];
+    const scenarios = await api(`scenarios?select=slug,name,hypothesis,spec,enabled,same_thread_accounts,ring_reason&slug=in.(${slugs.map(encodeURIComponent).join(',')})`);
     const scenarioMap = {};
     for (const s of scenarios) scenarioMap[s.slug] = s;
     const accountMap = {};
@@ -805,7 +813,7 @@
     const draftIds = allActs.filter(a => a.draft_id).map(a => a.draft_id).join(',');
     let draftsById = {};
     if (draftIds) {
-      const drafts = await api(`drafts?select=id,body,body_original,source,agent_note&id=in.(${draftIds})`);
+      const drafts = await api(`drafts?select=id,body,body_original,source,agent_note,status,engain_task_id&id=in.(${draftIds})`);
       for (const d of drafts) draftsById[d.id] = d;
     }
     
@@ -814,6 +822,7 @@
     box.innerHTML = '';
     
     for (const run of runs) {
+      run.review_status = run.effective_review_status || run.review_status;
       const scenario = scenarioMap[run.scenario_slug];
       if (!scenario) continue;
       
@@ -821,6 +830,7 @@
       const rejected = run.review_status === 'rejected';
       card.className = 'card scenario-card' + (rejected ? ' rejected' : '');
       card.dataset.runId = run.id;
+      card.id = `script-${run.id}`;
       
       const acts = actsByRun[run.id] || [];
       const acct = run.account_id ? accountMap[run.account_id] : null;
@@ -878,8 +888,15 @@
             ${a.status === 'due' || a.status === 'pending' ? `<div class="delay">Scheduled eligibility: ${a.due_at ? stamp(a.due_at) : 'unknown — waiting for parent publication'}</div>` : ''}
             <div class="delay">Engain: ${esc(a.engain_status || 'unknown')} · Last checked: ${stamp(a.engain_seen_at)}</div>
             ${voice ? `<div class="src">Voice: <b>${esc(voice)}</b>${humanReject ? ' (' + esc(humanReject) + ')' : ''}</div>` : ''}
-            <div class="status-badge">${chip(removed ? 'bad' : a.status === 'published' && a.url ? 'ok' : 'warn', a.status || 'unknown')}</div>
+            <div class="status-badge">${chip('', 'Review: ' + (draft?.status || 'missing draft'))}${chip(removed ? 'bad' : a.status === 'published' && a.url ? 'ok' : 'warn', a.status || 'unknown')}</div>
             <div class="text">${esc(body || '(no text)')}</div>
+            ${draft && !rejected && run.status === 'open' && !a.task_id && !draft.engain_task_id && ['pending', 'edited', 'approved'].includes(draft.status) ? `<div data-segment="${esc(draft.id)}">
+              <label>Segment text<textarea class="field" data-segment-body aria-label="Segment ${a.seq} text">${esc(body)}</textarea></label>
+              <button class="btn" data-segment-action="edit">Save segment edit</button>
+              <button class="btn" data-segment-action="approve">Approve segment</button>
+              <button class="btn danger" data-segment-action="reject">Reject segment</button>
+              <span role="status" data-segment-status></span>
+            </div>` : ''}
             ${bodyOrig && bodyOrig !== body ? `<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,.03);border-radius:4px"><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Pre-humanizer original:</div><div class="text" style="margin:0;font-size:12px">${esc(bodyOrig)}</div></div>` : ''}
           </div>
         `;
@@ -888,10 +905,11 @@
       const hypothesis = scenario.hypothesis ? `<p style="font-size:14px;line-height:1.6;margin-bottom:12px;color:var(--text)">${esc(scenario.hypothesis)}</p>` : '';
       
       card.innerHTML = `
-        <div class="scenario-head">
+        <details ${opened.has(run.id) || requested === run.id ? 'open' : ''}>
+        <summary class="scenario-head">
           <div class="title">${esc(scenario.name || 'Untitled scenario')}</div>
-          <div class="badges">${statusBadge}${acctChip}${scenario.enabled ? '' : chip('bad', 'disabled')}</div>
-        </div>
+          <div class="badges">${chip('info', `Script${acts.length < 2 ? " incomplete" : ""} · ${acts.length} segments`)}${statusBadge}${acctChip}${scenario.enabled ? '' : chip('bad', 'disabled')}</div>
+        </summary>
         ${ringWarning}
         ${rejected ? `<div class="notice bad"><div class="body"><b>Script stopped. No further acts will be sent.</b><br>${esc(run.review_note || 'Rejected by reviewer')}${acts.some(a => a.task_id) ? '<br>Tasks already accepted by Engain may still publish; rejection does not cancel them.' : ''}</div></div>` : ''}
         ${run.reviewed_at ? `<div class="scenario-meta">Reviewed by ${esc(run.reviewed_by || 'unknown')} · ${esc(ago(run.reviewed_at))}</div>` : ''}
@@ -903,18 +921,39 @@
           <span>${acts.length} turn${acts.length === 1 ? '' : 's'}</span>
         </div>
         ${acts.length ? `<div class="scenario-acts">
-          <h4>Script turns</h4>
+          <h4>Script segments</h4><p class="muted small">Review segments individually. Approve the entire script to release the narrative; edits require another script review.</p>
           ${actsHtml}
           <div class="acts">
             <label class="field"><span class="muted small">Reviewer</span><input data-reviewer aria-label="Script reviewer" value="reviewer" ${rejected ? 'disabled' : ''}></label>
             <label class="field"><span class="muted small">Reason</span><input data-why aria-label="Script review reason" placeholder="required to reject, optional otherwise" ${rejected ? 'disabled' : ''}></label>
-            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}" ${rejected || run.status !== 'open' || !scenario.enabled || scenario.same_thread_accounts || !acctOk ? 'disabled' : ''}>${run.review_status === 'approved' ? 'Reapprove current script' : 'Approve entire script and send'}</button>
+            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}" ${rejected || run.status !== 'open' || !scenario.enabled || scenario.same_thread_accounts || !acctOk || acts.length < 2 ? 'disabled' : ''}>${run.review_status === 'approved' ? 'Reapprove current script' : 'Approve entire script and send'}</button>
             <button class="btn danger" data-a="reject-run" data-run-id="${esc(run.id)}" ${rejected ? 'disabled' : ''}>Reject script</button>
             <span class="st" data-s></span>
           </div>
         </div>` : '<div class="notice" style="margin-top:12px"><div class="body">No acts yet.</div></div>'}
+        </details>
       `;
-      
+
+      card.querySelectorAll('[data-segment-action]').forEach(button => button.addEventListener('click', async () => {
+        const segment = button.closest('[data-segment]');
+        const status = segment.querySelector('[data-segment-status]');
+        const action = button.dataset.segmentAction;
+        const text = segment.querySelector('[data-segment-body]').value;
+        const original = draftsById[segment.dataset.segment].body;
+        if (action === 'approve' && text !== original) { status.textContent = 'Save the edit before approving.'; return; }
+        const note = card.querySelector('[data-why]').value.trim();
+        const editor = card.querySelector('[data-reviewer]').value.trim();
+        if (!editor || (action === 'reject' && !note)) { status.textContent = 'Enter reviewer and a reason for rejection.'; return; }
+        segment.querySelectorAll('button').forEach(b => b.disabled = true);
+        try {
+          await rpc('review_script_segment', {p_draft_id: segment.dataset.segment, p_action: action, p_body: action === 'edit' ? text : null, p_note: note || null, p_editor: editor});
+          scenarioMessages.set(run.id, 'Segment review saved. Review the entire script before release.');
+          await renderScenarios();
+        } catch (e) {
+          status.textContent = errText(e);
+          segment.querySelectorAll('button').forEach(b => b.disabled = false);
+        }
+      }));
       const stat = card.querySelector('[data-s]');
       const approveBtn = card.querySelector('[data-a=approve-run]');
       const rejectBtn = card.querySelector('[data-a=reject-run]');
@@ -926,6 +965,10 @@
         stat.classList.toggle('bad', rejected);
       }
       async function reviewRun(action) {
+        if (action === 'approve' && [...card.querySelectorAll('[data-segment]')].some(el => el.querySelector('[data-segment-body]').value !== draftsById[el.dataset.segment].body)) {
+          stat.textContent = 'Save segment edits before approving the script.';
+          return;
+        }
         const note = card.querySelector('[data-why]').value.trim();
         const editor = card.querySelector('[data-reviewer]').value.trim();
         if (!editor || (action === 'reject' && !note)) {
@@ -954,40 +997,46 @@
       if (rejectBtn) rejectBtn.addEventListener('click', () => reviewRun('reject'));
 
       box.appendChild(card);
+      if (requested === run.id) { $('tab-review').click(); card.scrollIntoView({block: 'start'}); }
     }
   }
 
   /* ── batch approve ──────────────────────────────────────────────────── */
   let batchMode = false;
+  let batchBusy = false;
   let batchSelected = new Set();
 
   function showBatchMode(show) {
     batchMode = show;
     $('batch-section').hidden = !show;
-    $('ws').hidden = show;
+    $('ws').hidden = show || !drafts.length;
+    $('batch-open').hidden = show || !drafts.length;
     if (show) {
       renderBatchGrid();
     } else {
       batchSelected.clear();
+      if (drafts.length) select(0);
     }
   }
 
   function renderBatchGrid() {
     const grid = $('batch-grid');
-    const selectAll = $('batch-select-all');
     grid.innerHTML = drafts.map((d, i) => {
       const c = checks[d.id];
       const isSelected = batchSelected.has(d.id);
       /* Mirrors review_draft()'s own refusals (030) plus the account and
          disclosure the send gate needs, so a row is only selectable if
          approving it would actually succeed. */
-      const needsAccount = !d.account_id;
-      const canApprove = !(d.gate_failed_at || d.redirect_pending || needsAccount ||
+      const account = accounts.find(a => a.id === d.account_id);
+      const needsAccount = !account || !account.active || !account.disclosed;
+      const bodyOK = !runChecks(d.body || '', account).hardFail;
+      const canApprove = bodyOK && !(d.gate_failed_at || d.redirect_pending || needsAccount ||
         (d.kind === 'reply' && !d.scenarioContext?.self_reply && !d.parent_confirmed_by));
       const chipVal = stateChip(d) || scoreChip(c);
       const body = d.body || '';
       const words = body.trim() ? body.trim().split(/\s+/).length : 0;
-      const why = needsAccount ? 'no account set, open it in single review'
+      const why = needsAccount ? 'choose an active disclosed account in single review'
+        : !bodyOK ? 'text needs changes; open in single review'
         : d.redirect_pending ? 'sent back to the agent'
         : d.gate_failed_at ? 'gate refused'
         : (d.kind === 'reply' && !d.scenarioContext?.self_reply && !d.parent_confirmed_by) ? 'confirm the parent first'
@@ -996,7 +1045,8 @@
         <input type="checkbox" data-draft-id="${esc(d.id)}" ${isSelected ? 'checked' : ''} ${!canApprove ? 'disabled' : ''}>
         <div>
           <div class="title">${esc(cleanTitle(threadTitle(d)))}</div>
-          <div class="sub">r/${esc(threadSub(d) || '?')}${why ? ' · ' + esc(why) : ''}</div>
+          <div class="sub">r/${esc(threadSub(d) || '?')}</div>
+          ${why ? `<div class="wc">Cannot approve: ${esc(why)}</div>` : ''}
           <div class="btext">${esc(body)}</div>
           <div class="wc">${words} words</div>
           <button class="more" data-more="${esc(d.id)}">Show full text</button>
@@ -1027,35 +1077,36 @@
       });
     });
     
-    selectAll.addEventListener('change', () => {
-      grid.querySelectorAll('input[type=checkbox]:not(:disabled)').forEach(cb => {
-        cb.checked = selectAll.checked;
-        const id = cb.dataset.draftId;
-        if (selectAll.checked) {
-          batchSelected.add(id);
-        } else {
-          batchSelected.delete(id);
-        }
-      });
-      updateBatchUI();
-    });
-    
     $('batch-total').textContent = drafts.length;
     updateBatchUI();
   }
   
   function updateBatchUI() {
+    const eligible = new Set([...$('batch-grid').querySelectorAll('input[data-draft-id]:not(:disabled)')].map(cb => cb.dataset.draftId));
+    batchSelected = new Set([...batchSelected].filter(id => eligible.has(id)));
     $('batch-count').textContent = batchSelected.size;
-    $('batch-approve-btn').disabled = batchSelected.size === 0;
+    $('batch-approve-btn').disabled = batchBusy || batchSelected.size === 0;
     const selectAll = $('batch-select-all');
     const checkboxes = Array.from($('batch-grid').querySelectorAll('input[type=checkbox]:not(:disabled)'));
+    $('batch-eligibility').textContent = `${checkboxes.length} eligible comments. ${drafts.length - checkboxes.length} need changes in single review before approval.`;
+    selectAll.disabled = batchBusy || checkboxes.length === 0;
     selectAll.indeterminate = batchSelected.size > 0 && batchSelected.size < checkboxes.length;
     selectAll.checked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
   }
   
+  $('batch-open').addEventListener('click', () => showBatchMode(true));
+  $('batch-select-all').addEventListener('change', e => {
+    if (batchBusy) return;
+    const checked = e.target.checked;
+    $('batch-grid').querySelectorAll('input[data-draft-id]:not(:disabled)').forEach(cb => {
+      cb.checked = checked;
+      if (checked) batchSelected.add(cb.dataset.draftId); else batchSelected.delete(cb.dataset.draftId);
+    });
+    updateBatchUI();
+  });
   $('batch-cancel')?.addEventListener('click', () => showBatchMode(false));
   $('batch-approve-btn')?.addEventListener('click', async () => {
-    if (batchSelected.size === 0) return;
+    if (batchBusy || batchSelected.size === 0) return;
     const draftIds = Array.from(batchSelected);
     /* Approving clears the batch to send and a watcher posts it. There is no
        un-post, so the count gets said out loud once before that happens. */
@@ -1071,7 +1122,10 @@
     status.classList.remove('bad', 'ok', 'warn');
     status.classList.add('info');
     status.querySelector('.body').innerHTML = `Approving ${draftIds.length} draft${draftIds.length === 1 ? '' : 's'}…`;
-    $('batch-approve-btn').disabled = true;
+    batchBusy = true;
+    updateBatchUI();
+    $('batch-grid').inert = true;
+    $('batch-cancel').disabled = true;
     
     try {
       const results = await rpc('approve_draft_batch', {
@@ -1085,16 +1139,21 @@
       
       if (successful.length > 0) {
         drafts = drafts.filter(d => !successful.some(r => r.draft_id === d.id));
-        batchSelected.clear();
+        successful.forEach(r => batchSelected.delete(r.draft_id));
         setCounts();
-        await Promise.all([renderSend()]);
+        // Approval has committed. A Sending refresh failure must not turn it
+        // into a failed approval or leave already-approved rows selectable.
+        renderBatchGrid();
+        let refreshError = '';
+        try { await renderSend(); } catch (e) { refreshError = ' Sending status could not refresh: ' + errText(e); }
         
         let msg = `Approved ${successful.length} draft${successful.length === 1 ? '' : 's'}.`;
         if (withErrors.length > 0) {
           msg += ` ${withErrors.length} had issues: ${withErrors.map(r => r.error).join('; ')}`;
         }
+        msg += refreshError;
         status.classList.remove('info');
-        status.classList.add(withErrors.length > 0 ? 'warn' : 'ok');
+        status.classList.add(withErrors.length > 0 || refreshError ? 'warn' : 'ok');
         status.querySelector('.body').innerHTML = `${ICON.check}<div class="body" style="margin-left:0">${esc(msg)}</div>`;
         
         flash(`Approved ${successful.length}. Sending to Engain…`);
@@ -1110,7 +1169,11 @@
       status.classList.remove('info');
       status.classList.add('bad');
       status.querySelector('.body').innerHTML = `${ICON.x}<div class="body" style="margin-left:0">Failed: ${esc(errText(e))}</div>`;
-      $('batch-approve-btn').disabled = false;
+    } finally {
+      batchBusy = false;
+      $('batch-grid').inert = false;
+      $('batch-cancel').disabled = false;
+      updateBatchUI();
     }
   });
 
@@ -1143,9 +1206,9 @@
       /* The queue: pending and edited drafts, plus approved ones the final
          gate refused, because those need a human again. */
       drafts = await api('drafts?select=id,thread_id,kind,mode,parent_url,subreddit,title,strategy,format,body,body_original,status,source,agent_note,upvotes_suggested,upvotes_reason,prompt_version,thread_context,models,sharpen,redirect_pending,redirected_at,redirect_note,gate_failed_at,gate_failure,parent_confirmed_by,created_at,account_id,sequence_hold&or=(status.in.(pending,edited),and(status.eq.approved,gate_failed_at.not.is.null))&order=created_at.asc&limit=100');
-      await Promise.all(drafts.filter(d => d.mode === 'scenario').map(async d => {
-        d.scenarioContext = await api('rpc/scenario_context', { method: 'POST', body: JSON.stringify({ p_draft_id: d.id, p_parent_url: d.parent_url || null }) });
-      }));
+      const memberships = drafts.length ? await api(`scenario_acts?select=draft_id&draft_id=in.(${drafts.map(d => d.id).join(',')})`) : [];
+      const segmentIds = new Set(memberships.map(a => a.draft_id));
+      drafts = drafts.filter(d => d.mode !== 'scenario' && !segmentIds.has(d.id));
       if (drafts.length) {
         const rc = await api(`rule_checks?select=draft_id,verdict,removal_risk,violated_rules,summary,checked_at&draft_id=in.(${drafts.map(r => r.id).join(',')})&order=checked_at.desc`);
         for (const c of rc) if (!checks[c.draft_id]) checks[c.draft_id] = c;
