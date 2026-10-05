@@ -95,3 +95,10 @@ ever uses the anon key; the service and vendor keys are server-side only.
 ## Deploy
 
 Pushes to `main` deploy to the Vercel project `site`.
+
+## Script review hierarchy
+
+[Script hierarchy and bulk review fix](REVIEW-HIERARCHY.md) documents migration
+033, expandable scripts, individual segment review, bulk selection, Status
+links and the 4/5/3-segment test fixtures. Apply the migration before deploying
+the updated pages. Browser and SQL integration commands are in that document.
