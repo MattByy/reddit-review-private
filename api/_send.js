@@ -7,15 +7,16 @@
  *     disclosed on /plan. The shared-pool tasks backend is gone from this path:
  *     you cannot choose its account, so you cannot make its disclosure true.
  *   - every body must carry the disclosure line (_rules.js DISCLOSURE).
- *   - multiple disclosed accounts may participate in the same thread.
+ *   - one of our accounts per thread. A second account in the same thread
+ *     reads as agreement from a stranger, which is the thing we stopped doing.
  *   - no upvote orders.
  *
  * The gates, every one a refusal:
  *   0. still approved, cleared, not sent back, not gate-failed, not pulled back;
  *      scenario acts also need scenario_context().ready (approval, pace, gap)
- *   1. account: active and disclosed
+ *   1. account: active and disclosed; no other account of ours in the thread
  *   2. the copy rules (_rules.js check(), disclosure included) on the exact bytes
- *   3. a reply's parent is confirmed by the reviewer
+ *   3. a reply's parent is a stranger the reviewer confirmed
  *   4. no byte-identical body already sent on the same thread
  *   5. Engain's rule-check when the key has a project. `fail` blocks. With no
  *      project on the key it is recorded as `skipped`, visibly: the human
@@ -45,21 +46,23 @@ async function sb(method, path, body, prefer) {
 const logger = actor => async (action, detail) => { try { await sb("POST", "activity_log", [{ actor, action, detail }], "return=minimal"); } catch {} };
 async function engain(method, path, body, params) {
   const url = ENG_URL + path + (params ? "?" + new URLSearchParams(params) : "");
-  const r = await fetch(url, { method, headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "multi-account-reddit-agent/1.0 (+send)" },
+  const r = await fetch(url, { method, headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "geonode-reddit-agent/1.0 (+send)" },
                                body: body === undefined || body === null ? undefined : JSON.stringify(body) });
   const text = await r.text(); let json; try { json = JSON.parse(text); } catch { json = { raw: text.slice(0, 300) }; }
   return { status: r.status, json };
 }
-// null when the key has no unambiguous project; the rule-check is then skipped.
+// null when the key has no geonode.com project; the rule-check is then skipped.
 async function projectId() {
   if (process.env.ENGAIN_PROJECT_ID) return process.env.ENGAIN_PROJECT_ID;
   const { json } = await engain("GET", "/api/v1/me");
-  if (json.projects?.length > 1) throw new Error("set ENGAIN_PROJECT_ID to select the vendor project");
-  const p = json.projects?.length === 1 ? json.projects[0] : null;
+  if ((json.projects || []).length > 1 && !(json.projects || []).some(x => x.name === "geonode.com"))
+    throw new Error("the vendor key has several projects; set ENGAIN_PROJECT_ID");
+  const p = (json.projects || []).find(x => x.name === "geonode.com");
   return p ? p.id : null;
 }
 const enc = encodeURIComponent;
 const now = () => new Date().toISOString();
+const DEAD = ["cancelled", "failed", "removed", "deleted", "rejected"];
 
 // The account a draft posts from: the scenario act's, then the run's, then the draft's own.
 async function accountFor(draftId, draftAccount) {
@@ -98,12 +101,17 @@ async function dispatchOne(d, pid, log) {
   if (context.scenario && !context.pace_ok) return { ...head, outcome: "deferred", why: "pace floor (45m global / 24h subreddit / 20 per UTC day)" };
   if (!context.ready) return { ...head, outcome: "skipped", why: "scenario disabled, not approved, or not due yet" };
 
-  // gate 1: an active, disclosed account
+  // gate 1: a disclosed account, alone in this thread
   const acct = await accountFor(d.draft_id, cur.account_id);
   if (!acct.id) return flag("account", ["no account chosen. Pick a disclosed account for the run or draft."]);
   if (acct.missing) return flag("account", [`account ${acct.id} is not in the accounts table`]);
   if (!acct.active) return flag("account", [`${acct.label || acct.id} is inactive`]);
-  if (!acct.disclosed) return flag("account", [`${acct.label || acct.id} is not marked disclosed. Mark it on /plan once its profile identifies its operator.`]);
+  if (!acct.disclosed) return flag("account", [`${acct.label || acct.id} is not marked disclosed. Mark it on /plan once its profile says Geonode runs it.`]);
+  if (d.thread_id) {
+    const others = await sb("GET", `engain_tasks?select=id,user_account_id,status&thread_id=eq.${enc(d.thread_id)}&user_account_id=not.is.null&user_account_id=neq.${enc(acct.id)}`);
+    const live = others.filter(t => !DEAD.includes(String(t.status || "").toLowerCase()));
+    if (live.length) return flag("one account per thread", [`another of our accounts already posted here (task ${live[0].id})`]);
+  }
 
   // gate 2: the rules, disclosure included, on the exact bytes
   const low = body.toLowerCase();
@@ -111,10 +119,12 @@ async function dispatchOne(d, pid, log) {
   const v = check(body, { kind, disclosure_line: acct.disclosure_line });
   if (!v.ok || forb.length) return flag("final rule check", [...v.fails, ...forb]);
 
-  // gate 3: a reply goes under the parent the reviewer confirmed
+  // gate 3: a reply goes under a stranger the reviewer confirmed
   if (kind === "reply") {
     if (!cur.parent_url) return flag("reply", ["no parent_url"]);
     if (!cur.parent_confirmed_by && !context.self_reply) return { ...head, outcome: "skipped", why: "reply parent not confirmed by the reviewer" };
+    if (!context.self_reply && await sb("POST", "rpc/is_our_url", { p_url: cur.parent_url }))
+      return flag("stranger gate", ["parent is one of our own comments"]);
   }
   if (kind === "post" && !(d.subreddit && d.title)) return flag("post", ["needs subreddit and title"]);
 
@@ -155,7 +165,7 @@ async function dispatchOne(d, pid, log) {
   }
   await sb("POST", "engain_tasks", [{ id: taskId, draft_id: d.draft_id, thread_id: d.thread_id, project_id: "accounts-beta", task_type: kind, subreddit: d.subreddit,
     thread_url: d.thread_url || cur.parent_url, content: body, status: task.status || "pending", user_account_id: acct.id, vendor: "engain-accounts",
-    labels: ["disclosed-account"], mode: d.mode, models: d.models }], "return=minimal");
+    labels: ["geonode-disclosed"], mode: d.mode, models: d.models }], "return=minimal");
   await sb("PATCH", `drafts?id=eq.${enc(d.draft_id)}&status=neq.rejected`, { status: "dispatched", engain_task_id: taskId, engain_status: task.status || null, engain_seen_at: now() }, "return=minimal");
   await sb("PATCH", `scenario_acts?draft_id=eq.${enc(d.draft_id)}&status=neq.rejected`, { status: "dispatched", task_id: taskId, account_id: acct.id, dispatched_at: now(),
     engain_status: task.status || null, engain_seen_at: now() }, "return=minimal");

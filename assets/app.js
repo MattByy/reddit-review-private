@@ -158,7 +158,7 @@ function chip(kind, text) { return `<span class="chip ${kind}">${esc(text)}</spa
 
    [key, short label, chip tone, one-line meaning for a human]
    `needsParent` marks the strategies that answer a specific comment: those
-   carry parent_url and CANNOT be approved without the reviewer's parent
+   carry parent_url and CANNOT be approved without the reviewer's stranger
    tick (parent_confirmed_by), because two of our accounts in one exchange is
    the ring pattern (02-RUNBOOK.md:48). */
 const STRATEGIES = [
@@ -166,7 +166,7 @@ const STRATEGIES = [
    "A top-level answer to the post itself. Chosen when no comment in the thread scored high enough to be worth answering.",
    { needsParent: false }],
   ["reply", "reply", "info",
-   "An answer under one specific comment by the intended participant. Gets read where a top-level comment in a busy thread would sink.",
+   "An answer under one specific comment by a real stranger, picked by rank-comments.py. Gets read where a top-level comment in a busy thread would sink.",
    { needsParent: true }],
   ["sharpen", "sharpened", "info",
    "Not a strategy for posting. A small model simulates how this sub will react as PRIVATE context, then one real comment is filed. The simulation is never posted.",
@@ -191,6 +191,21 @@ function strategyOf(mode) {
 /* The chip every page uses, so the word for a strategy is the same word
    everywhere. Always rendered, including for `comment` — an unlabelled row
    reads as "no strategy", not as the default one. */
+/* What an item IS, the same words on Review, Status and Plan:
+   Comment · Reply · Post · Script "name" · step n of m · Follow-up to u/x.
+   row: {type, kind, script_name, step, of, replying_to} (status_items shape). */
+function typeLabel(row) {
+  const r = row || {};
+  if (r.type === 'script') return `Script${r.script_name ? ' "' + r.script_name + '"' : ''}${r.step ? ` · step ${r.step}${r.of ? ' of ' + r.of : ''}` : ''}`;
+  if (r.type === 'follow_up') return `Follow-up${r.replying_to ? ' to u/' + r.replying_to : ''}`;
+  const k = r.type || r.kind || 'comment';
+  return k.charAt(0).toUpperCase() + k.slice(1);
+}
+function typeChip(row) {
+  const r = row || {};
+  return chip(r.type === 'script' ? 'ink' : r.type === 'follow_up' ? 'warn' : 'info', typeLabel(r));
+}
+
 function strategyChip(mode) {
   const s = strategyOf(mode);
   return chip(s.tone, s.label);

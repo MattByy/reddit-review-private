@@ -56,7 +56,7 @@
 <div id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden><div id="runs"></div></div>
 <div id="panel-books" role="tabpanel" aria-labelledby="tab-books" hidden><div id="books"></div></div>
 <div id="panel-accts" role="tabpanel" aria-labelledby="tab-accts" hidden>
-  <p class="muted small" style="margin-bottom:10px">An account can post only once someone checks that its Reddit profile identifies its operator (bio, display name or flair) and marks it here. Every comment also carries the account's disclosure line.</p>
+  <p class="muted small" style="margin-bottom:10px">An account can post only once someone checks that its Reddit profile says Geonode runs it (bio, display name or flair) and marks it here. Every comment also carries the account's disclosure line.</p>
   <div id="accts" class="box"></div>
 </div>
 </main>
@@ -181,13 +181,13 @@
           <div class="sub">${esc(a.niche || '')} · ${esc(a.lifecycle || '')} · line: “${esc(a.disclosure_line)}”${a.disclosed ? ` · checked by ${esc(a.disclosed_by)} ${ago(a.disclosed_at)}` : ''}${a.notes ? ` · ${esc(a.notes)}` : ''}</div></div>
         <form data-id="${esc(a.id)}">${a.disclosed
           ? `<button class="btn small danger" data-v="0">Mark not disclosed</button>`
-          : `<input class="field" name="note" placeholder="How the profile identifies its operator" aria-label="How the profile discloses its operator"><button class="btn small primary" data-v="1">Mark disclosed</button>`}</form></div>`).join('')
+          : `<input class="field" name="note" placeholder="How the profile says Geonode runs it" aria-label="How the profile discloses Geonode"><button class="btn small primary" data-v="1">Mark disclosed</button>`}</form></div>`).join('')
         || `<div class="empty">No accounts yet. The tick cron syncs them from Engain every 15 minutes.</div>`;
       $('accts').querySelectorAll('form').forEach(f => f.addEventListener('submit', e => e.preventDefault()));
       $('accts').querySelectorAll('button[data-v]').forEach(btn => btn.addEventListener('click', async e => {
         e.preventDefault();
         const f = btn.closest('form'), note = f.note ? f.note.value.trim() : 'unmarked on /plan';
-        if (btn.dataset.v === '1' && !note) { f.note.focus(); f.note.placeholder = 'Required: say how the profile discloses its operator'; return; }
+        if (btn.dataset.v === '1' && !note) { f.note.focus(); f.note.placeholder = 'Required: say how the profile discloses Geonode'; return; }
         btn.disabled = true;
         try {
           const row = await rpc('set_account_disclosed', { p_account_id: f.dataset.id, p_disclosed: btn.dataset.v === '1', p_note: note, p_editor: 'reviewer' });

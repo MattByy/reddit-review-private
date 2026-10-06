@@ -2,12 +2,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
 <style>
-  .legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);margin:10px 0 0}
-  .legend span{display:flex;align-items:center;gap:6px}
-  .legend i{width:8px;height:8px;border-radius:50%;background:var(--line-strong);display:inline-block}
+  .strip>div{cursor:pointer}
+  .strip>div[aria-pressed=true]{box-shadow:inset 0 -3px 0 var(--ink)}
   .facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13.5px;margin-top:8px}
-  .facts dt{color:var(--muted)}.facts dd{margin:0}
-  .row .why{font-size:14px;color:var(--text)}
+  .facts dt{color:var(--muted)}.facts dd{margin:0;overflow-wrap:anywhere}
+  .text{white-space:pre-wrap;overflow-wrap:anywhere;max-width:70ch;font-size:13.5px;line-height:1.55;margin-top:6px;padding:10px 12px;background:var(--panel);border-radius:6px}
+  .replies{font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .replies b{color:var(--ink)}
+  .strip{grid-template-columns:repeat(5,1fr)}
   @media (max-width:720px){.strip{grid-template-columns:repeat(2,1fr)}}
 </style></head>
 <body><script src="assets/gate.js"></script>
@@ -15,107 +17,96 @@
 <div class="page-head">
   <div>
     <h1>Status</h1>
-    <p class="lede">What actually happened to each thread we drafted for? The stage is derived from what exists, never from a flag someone remembered to set.</p>
+    <p class="lede">Everything we wrote and what became of it: posted, planned, waiting for review, rejected or ignored. Each row says whether it is a comment, a reply, a post, a script step or a follow-up, and how many people replied on Reddit.</p>
   </div>
   <div class="tools">
     <select class="field" id="show" aria-label="Show">
-      <option value="">Show: everything</option><option value="human">needs a human</option><option value="engain">waiting on Engain</option>
-      <option value="live">live on Reddit</option><option value="bad">failed or removed</option>
+      <option value="">Show: everything</option><option value="posted">Posted</option><option value="planned">Planned</option>
+      <option value="review">Needs review</option><option value="rejected">Rejected</option><option value="ignored">Ignored</option>
+    </select>
+    <select class="field" id="type" aria-label="Type">
+      <option value="">Any type</option><option value="comment">Comments</option><option value="reply">Replies</option>
+      <option value="post">Posts</option><option value="script">Scripts</option><option value="follow_up">Follow-ups</option>
     </select>
   </div>
 </div>
 
-<div class="strip" id="strip">
-  <div><div class="v" id="s-review">…</div><div class="l">waiting for review</div></div>
-  <div><div class="v" id="s-sent">…</div><div class="l">sent, not published yet</div></div>
-  <div><div class="v" id="s-live">…</div><div class="l">live on Reddit</div></div>
-  <div><div class="v" id="s-bad">…</div><div class="l">failed or removed</div></div>
+<div class="strip" id="strip" role="group" aria-label="Filter by outcome">
+  <div data-b="posted" role="button" tabindex="0"><div class="v" id="s-posted">…</div><div class="l">posted</div></div>
+  <div data-b="planned" role="button" tabindex="0"><div class="v" id="s-planned">…</div><div class="l">planned</div></div>
+  <div data-b="review" role="button" tabindex="0"><div class="v" id="s-review">…</div><div class="l">needs review</div></div>
+  <div data-b="rejected" role="button" tabindex="0"><div class="v" id="s-rejected">…</div><div class="l">rejected</div></div>
+  <div data-b="ignored" role="button" tabindex="0"><div class="v" id="s-ignored">…</div><div class="l">ignored or failed</div></div>
 </div>
-<div class="legend" aria-hidden="true"><span><i></i>draft</span><span><i></i>approved</span><span><i></i>cleared</span><span><i></i>sent</span><span><i></i>published</span><span><i></i>upvotes</span><span><i></i>done</span></div>
 
-<section>
+<section style="margin-top:18px">
   <div class="rows" id="list"><div style="padding:16px"><div class="sk" style="width:70%"></div><div class="sk" style="width:55%"></div><div class="sk" style="width:62%"></div></div></div>
   <p class="muted small" id="foot" style="margin-top:8px"></p>
-</section>
-
-<section>
-  <details class="dx quiet">
-    <summary>Why "sent" is not "published"</summary>
-    <div class="dx-body prose">
-      <p>Engain schedules. It posts through its own pool of aged Reddit accounts, and the delay between sending and publishing is the anti-detection mechanism, not a fault. There is no publish-now route, so a comment sitting at "sent" for most of a day is early, not stuck. The thing to watch for is a task that ends up cancelled: it charges a credit and never gets a Reddit URL. Removal by a moderator is separate and rarer.</p>
-    </div>
-  </details>
 </section>
 </main>
 <script>
 (async () => {
   const $ = id => document.getElementById(id);
+  const BUCKET = { posted: ['ok', 'posted'], planned: ['info', 'planned'], review: ['warn', 'needs review'], rejected: ['bad', 'rejected'], ignored: ['', 'ignored'] };
+  const ORDER = { review: 0, planned: 1, posted: 2, rejected: 3, ignored: 4 };
   try {
-    const rows = await sbAll('thread_activity', 'select=*&stage=neq.no_draft&order=thread_id.asc');
+    const rows = await sbAll('status_items', 'select=*&order=at.desc.nullslast');
+    for (const b of Object.keys(BUCKET)) $('s-' + b).textContent = fmtN(rows.filter(r => r.bucket === b).length);
 
-    const scripts = await sbAll('script_review_state', 'select=id,thread_id,effective_review_status,status,segment_count&order=started_at.desc');
-    const scriptsFor = r => scripts.filter(s => s.thread_id === r.thread_id);
-    const scriptLinks = r => scriptsFor(r).map(s => `<a href="review?script=${encodeURIComponent(s.id)}#script-${encodeURIComponent(s.id)}" class="chip info">Script (${s.segment_count}) · ${esc(s.effective_review_status || 'pending')} · ${esc(s.status)}</a>`).join('');
-    const GROUP = s => (['draft_pending_review', 'approved_not_cleared', 'cleared_not_sent', 'gate_refused'].includes(s)) ? 'human'
-      : (s === 'waiting_on_engain' || s === 'pullback_requested') ? 'engain' : (s in STAGE_BAD) ? 'bad' : 'live';
-    const ORDER = { human: 0, engain: 1, live: 2, bad: 3 };
-    const when = r => r.published_at || r.submitted_at || '';
-
-    /* "Live" means live. A task sitting with Engain has not been published and
-       is never counted as if it were on Reddit. That false all-clear shipped once. */
-    const n = s => rows.filter(r => r.stage === s).length;
-    $('s-review').textContent = fmtN(n('draft_pending_review') + n('approved_not_cleared') + n('cleared_not_sent') + n('gate_refused'));
-    $('s-sent').textContent = fmtN(n('waiting_on_engain') + n('pullback_requested'));
-    $('s-live').textContent = fmtN(n('published_awaiting_upvotes') + n('upvotes_running') + n('upvotes_delivered'));
-    $('s-bad').textContent = fmtN(n('send_failed') + n('removed'));
-
-    function facts(r) {
-      const f = [];
-      if (r.removal_risk != null) f.push(['Score', (r.rule_verdict !== 'fail' && r.removal_risk <= 40) ? `passes, risk ${r.removal_risk}` : `does not pass, risk ${r.removal_risk} over 40`]);
-      else if (r.rule_verdict) f.push(['Score', 'not scored']);
-      if (r.upvotes_suggested != null) f.push(['Upvotes proposed', String(r.upvotes_suggested)]);
-      // Strategy is a fact about every row, not an exception worth noting
-      // only when it is not `comment`. The old `mode !== 'comment'` test meant
-      // a top-level comment showed no strategy at all, which reads as missing
-      // data rather than as the default. It also hid a NULL mode completely.
-      f.push(['Strategy', `${strategyOf(r.mode).label} — ${strategyOf(r.mode).why}`]);
-      if (r.gate_failure) f.push(['Not sent', r.gate_failure.replace(/^[^:]*: /, '')]);
-      if (r.task_status) f.push(['Engain task', `${r.task_status}${r.task_id ? ', id ' + r.task_id : ''}`]);
-      if (r.cancel_requested_at) f.push(['Pull back', `requested ${ago(r.cancel_requested_at)}${r.cancel_result ? ', ' + r.cancel_result : ', not attempted yet'}`]);
-      if (r.published_at) f.push(['Published', `${fmtDate(r.published_at)}, ${ago(r.published_at)}`]);
-      if (r.order_id) f.push(['Upvotes', `${r.upvotes_delivered ?? 0} of ${r.upvotes_ordered} delivered${r.order_status ? ', ' + r.order_status : ''}`]);
-      if (r.credits_used != null) f.push(['Credits used', String(r.credits_used)]);
-      return f.length ? `<dl class="facts">${f.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '';
-    }
+    const scriptLink = r => r.script_source === 'scenario' ? `review?script=${encodeURIComponent(r.script_id)}#script-${encodeURIComponent(r.script_id)}`
+      : r.script_source === 'sequence' ? 'sequences' : null;
+    const replies = r => {
+      if (r.bucket !== 'posted') return '';
+      const n = r.reply_count;
+      return `<span class="replies">${n == null ? 'replies: <b>?</b>' : `<b>${n}</b> repl${n === 1 ? 'y' : 'ies'}`}${r.followups ? ` · ${r.followups} to answer` : ''}</span>`;
+    };
 
     function render() {
-      const show = $('show').value;
-      const list = rows.filter(r => !show || GROUP(r.stage) === show)
-        .sort((a, b) => ORDER[GROUP(a.stage)] - ORDER[GROUP(b.stage)] || String(when(b)).localeCompare(String(when(a))) || a.thread_id.localeCompare(b.thread_id));
-      $('list').innerHTML = list.length ? list.map(r => `
-        <details class="row">
+      const show = $('show').value, type = $('type').value;
+      document.querySelectorAll('#strip [data-b]').forEach(el => el.setAttribute('aria-pressed', el.dataset.b === show));
+      const list = rows.filter(r => (!show || r.bucket === show) && (!type || r.type === type))
+        .sort((a, b) => ORDER[a.bucket] - ORDER[b.bucket] || String(b.at || '').localeCompare(String(a.at || '')));
+      $('list').innerHTML = list.length ? list.map(r => {
+        const [kind, label] = BUCKET[r.bucket] || ['', r.bucket];
+        const facts = [
+          ['Type', typeLabel(r)],
+          ['Where', `r/${r.subreddit || '?'}${r.title ? ' · ' + cleanTitle(r.title, r.thread_url) : ''}`],
+          ['Account', r.account_label || 'none chosen'],
+          ['Stage', r.stage || ''],
+          r.bucket === 'posted' ? ['Replies on Reddit', r.reply_count == null ? 'not counted yet (the tick fills this in)' : String(r.reply_count)] : null,
+          r.followups ? ['Follow-ups', `${r.followups} answer${r.followups === 1 ? '' : 's'} planned to people who replied`] : null,
+          r.replying_to ? ['Answering', 'u/' + r.replying_to] : null,
+          r.at ? ['When', `${fmtDate(r.at)}, ${ago(r.at)}`] : null,
+        ].filter(Boolean);
+        const link = scriptLink(r);
+        return `<details class="row">
           <summary>
             <span class="sub">r/${esc(r.subreddit || '?')}</span>
-            <span class="title">${esc(cleanTitle(r.title, r.thread_url) || r.thread_id)}</span>
-            <span class="side">${scriptLinks(r) || strategyChip(r.mode)}${track(r.stage)}${chip(stageKind(r.stage), stageLabel(r.stage))}</span>
+            <span class="title">${esc(cleanTitle(r.title, r.thread_url) || r.thread_id || r.script_name || '')}</span>
+            <span class="side">${typeChip(r)}${replies(r)}${chip(kind, label)}</span>
           </summary>
           <div class="body">
-            <div class="why">${esc(stageWords(r.stage).charAt(0).toUpperCase() + stageWords(r.stage).slice(1))}.</div>
-            ${facts(r)}
-            <div class="flex" style="margin-top:10px">
+            <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+            ${r.body ? `<div class="text">${esc(r.body)}</div>` : ''}
+            <div class="flex" style="margin-top:10px;gap:14px">
               ${r.reddit_url ? `<a href="${esc(r.reddit_url)}" class="ext" target="_blank" rel="noopener">Our comment</a>` : ''}
-              <a href="${esc(r.thread_url)}" class="ext" target="_blank" rel="noopener">Thread</a>
-              ${GROUP(r.stage) === 'human' ? '<a href="review.html">Go to Review</a>' : ''}
+              ${r.thread_url ? `<a href="${esc(r.thread_url)}" class="ext" target="_blank" rel="noopener">Thread</a>` : ''}
+              ${r.parent_url && r.type !== 'comment' ? `<a href="${esc(r.parent_url)}" class="ext" target="_blank" rel="noopener">Comment we answer</a>` : ''}
+              ${link ? `<a href="${link}">Open the script</a>` : ''}
+              ${r.bucket === 'review' ? '<a href="review">Go to Review</a>' : ''}
             </div>
           </div>
-        </details>`).join('')
-        : (rows.length ? '<div class="empty"><b>Nothing in this group.</b>Change the filter to see the rest.</div>'
-          : '<div class="empty"><b>No thread has reached the draft stage yet.</b>Threads appear here once <code>write-comment.py</code> has drafted for them.</div>');
-      const sent = n('waiting_on_engain');
-      $('foot').textContent = `${list.length} of ${rows.length} thread${rows.length === 1 ? '' : 's'} · updated ${new Date().toISOString().slice(0, 16).replace('T', ' ')}Z` +
-        (sent ? ` · ${sent} sent, not published yet, which is normal` : '');
+        </details>`;
+      }).join('') : `<div class="empty"><b>Nothing here.</b>${rows.length ? ' Change the filter to see the rest.' : ' Items appear once a draft exists.'}</div>`;
+      $('foot').textContent = `${list.length} of ${rows.length} items · updated ${new Date().toISOString().slice(0, 16).replace('T', ' ')}Z`;
     }
+    document.querySelectorAll('#strip [data-b]').forEach(el => {
+      const pick = () => { $('show').value = $('show').value === el.dataset.b ? '' : el.dataset.b; render(); };
+      el.addEventListener('click', pick);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+    });
     $('show').addEventListener('input', render);
+    $('type').addEventListener('input', render);
     render();
   } catch (err) {
     fail(err, 'the status list');

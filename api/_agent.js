@@ -108,7 +108,7 @@ const isRedditUrl = u => /^https?:\/\/(www\.|old\.)?reddit\.com\//i.test(String(
    spikes badly is still visible in the record. */
 async function vendorCheckOnce(body, kind, subreddit, title, pid) {
   const r = await fetch(`${ENG_URL}/api/v1/rule-check`, { method: "POST",
-    headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "multi-account-reddit-agent/1.0 (+api)" },
+    headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "geonode-reddit-agent/1.0 (+api)" },
     body: JSON.stringify({ projectId: pid, subreddit, taskType: kind, content: body, mediaKind: "text", context: { postTitle: title || "" } }) });
   const text = await r.text(); let j; try { j = JSON.parse(text); } catch { j = { raw: text.slice(0, 300) }; }
   if (!r.ok) return { unavailable: true, status: r.status, retryable: r.status === 429,
@@ -136,9 +136,8 @@ const VC_SAMPLES = Number(process.env.VC_SAMPLES || 2);   // see the budget note
 async function vendorCheck(body, kind, subreddit, title) {
   if (!ENG_KEY) return { unavailable: true, status: 0, why: "ENGAIN_API_KEY not configured" };
   try {
-    const me = await fetch(`${ENG_URL}/api/v1/me`, { headers: { "X-API-Key": ENG_KEY, "User-Agent": "multi-account-reddit-agent/1.0 (+api)" } }).then(r => r.json());
-    if (!process.env.ENGAIN_PROJECT_ID && me.projects?.length > 1) throw new Error("set ENGAIN_PROJECT_ID to select the vendor project");
-    const pid = process.env.ENGAIN_PROJECT_ID || (me.projects?.length === 1 ? me.projects[0].id : null);
+    const me = await fetch(`${ENG_URL}/api/v1/me`, { headers: { "X-API-Key": ENG_KEY, "User-Agent": "geonode-reddit-agent/1.0 (+api)" } }).then(r => r.json());
+    const pid = process.env.ENGAIN_PROJECT_ID || ((me.projects || []).find(p => p.name === "geonode.com") || {}).id;
     // 027: the vendor key no longer carries a project, so Engain cannot score
     // anything. That is recorded as a visible `skipped`, not a refusal: the
     // local rules (disclosure included) still gate, and a human approves.
@@ -228,15 +227,15 @@ const HELP = {
     "GET  /api/agent/plan":                 "the planner: jobs and acts, due and blocked, next 48h",
     "GET  /api/agent/queue":                "everything queued, grouped by hour. ?hours=48",
     "GET  /api/agent/sequences":            "the sequences people built on /sequences (ordered steps: write, approve, send, wait_live, wait, check_replies, answer_replies, agent_task)",
-    "POST /api/agent/sequences/:id/runs":   "start a sequence {thread_url, account_id, note?}. The run account is the default; steps may specify account_id and replies may use reply_to_step (1-based wait_live step). Its write steps come back as jobs.",
+    "POST /api/agent/sequences/:id/runs":   "start a sequence {thread_url, account_id, note?}. Its write steps come back to you as jobs.",
     "GET  /api/agent/sequence-runs":        "runs and where each one is. ?status=open",
     "POST /api/agent/jobs":                 "queue a task for later {title, due_at | delay_minutes, thread_id?, target_url?, account_id?, payload?}. It comes back from /jobs/due when due.",
     "(drafts) send_after | delay_minutes":  "on POST /api/agent/drafts: queue the send. A human still approves it; the server sends it no earlier than that time.",
   },
   not_here: "approve, clear-to-send, post, upvote and pull-back. Humans on /review; the server sends what they approve.",
-  disclosure: "every draft carries the account's disclosure_line, e.g. '(Operated by Example Team)'. A draft without it is refused. Multiple disclosed accounts may participate in one thread.",
+  disclosure: "every draft carries the account's disclosure_line, e.g. '(Geonode team here)'. A draft without it is refused. Never two of our accounts in one thread.",
   door: `a draft is filed only if Engain's rule-check scores it at or under ${RISK_CEILING} of 100 and not 'fail'. Above that it is refused with the vendor's reason and nothing is stored. Rewrite from a different angle; do not hill-climb the same idea.`,
-  modes: "comment = top-level answer. reply = answer under a selected comment (parent_url, and send thread_context.parent so the reviewer sees it). sharpen = you ran a small model to simulate the sub's reaction and used it as PRIVATE context; put it in `sharpen`, never in the body. Sequence steps may assign different disclosed accounts.",
+  modes: "comment = top-level answer. reply = answer under ONE real stranger's comment (parent_url, and send thread_context.parent so the reviewer sees it). sharpen = you ran a small model to simulate the sub's reaction and used it as PRIVATE context; put it in `sharpen`, never in the body. Never file both sides of a conversation.",
 };
 
 async function getQueries(sp) {
@@ -295,6 +294,9 @@ const commentId = u => { const m = String(u || "").match(/\/comments\/[A-Za-z0-9
 async function ourComments() {
   const rows = await sb("GET", "engain_tasks?select=id,thread_id,reddit_url,published_at&reddit_url=not.is.null&order=published_at.desc");
   return rows.map(r => ({ task: r.id, thread: r.thread_id, url: r.reddit_url, comment_id: commentId(r.reddit_url), published_at: r.published_at }));
+}
+async function isOurs(url) {
+  return await sb("POST", "rpc/is_our_url", { p_url: url });
 }
 
 async function postThread(body) {
@@ -403,7 +405,13 @@ async function postDraft(body) {
     if (t[0].archived === true || t[0].locked === true) bad(409, `thread ${d.thread_id} is ${t[0].archived ? "archived" : "locked"}. Nothing can be posted there.`);
     thread = t[0];
   }
-  const verdict = check(d.body, { kind: d.kind, disclosure_line: account?.disclosure_line });
+  // POST creates a new draft: it has no DB act association yet, so caller
+  // flags/ids cannot grant the scenario exemption. Existing linked acts use
+  // PATCH below, which proves act -> run -> spec -> exact dependency URL.
+  if (d.kind === "reply" && await isOurs(d.parent_url)) {
+    bad(422, "parent_url is one of OUR OWN published comments. A reply answers a real stranger, unless it is an existing DB-linked same-account scenario act (PATCH that draft; 02-RUNBOOK.md §0 rule 8). GET /api/agent/our-comments lists them.");
+  }
+  const verdict = check(d.body, { kind: d.kind, ...(account ? { disclosure_line: account.disclosure_line } : {}) });
   if (!verdict.ok) bad(422, "the draft breaks a hard rule. Fix and refile.", { verdict });
   // The door: Engain's own score, at or under the ceiling, or it is not filed.
   const sub = d.subreddit || (thread && thread.subreddit) || null;
@@ -449,11 +457,14 @@ async function patchDraft(id, body) {
   // not grant access to the scenario exemption or create a second draft.
   if (cur.source !== "agent_api" && !cur.redirect_pending && !context.scenario)
     bad(409, "this draft was not filed through the API. Only the reviewer edits it.");
-  if (context.scenario && !context.allowed) bad(422, "scenario is disabled or unavailable");
+  if (context.scenario && !context.allowed) bad(422, "scenario is disabled or uses multiple accounts in one thread");
+  if (cur.kind === "reply" && cur.parent_url && await isOurs(cur.parent_url) && !context.self_reply)
+    bad(422, "parent is ours but is not this act's sanctioned scenario dependency");
   const patch = optional(body, {});
   if (body.body !== undefined) {
-    const account = await disclosedAccount(body.account_id || cur.account_id);
-    const verdict = check(String(body.body), { kind: cur.kind, disclosure_line: account.disclosure_line });
+    const acctId = body.account_id || cur.account_id;
+    const account = acctId ? await disclosedAccount(acctId) : null;
+    const verdict = check(String(body.body), { kind: cur.kind, ...(account ? { disclosure_line: account.disclosure_line } : {}) });
     if (!verdict.ok) bad(422, "the revision breaks a hard rule.", { verdict });
     const t = cur.thread_id ? await sb("GET", `threads?select=subreddit&id=eq.${enc(cur.thread_id)}`) : [];
     const sub = cur.subreddit || (t[0] && t[0].subreddit) || null;
@@ -464,6 +475,9 @@ async function patchDraft(id, body) {
     verdict.vendor = vc; patch._vc = [sub, vc];
     patch.body = String(body.body); patch.body_original = patch.body; patch._verdict = verdict;
     if (cur.redirect_pending) patch.redirect_pending = false;   // delivered: approval opens again
+  }
+  if (cur.kind === "reply" && cur.redirect_pending && body.body !== undefined && cur.parent_url && await isOurs(cur.parent_url) && !context.self_reply) {
+    bad(422, "this draft's parent is one of our own comments. Do not deliver a body; withdraw it.");
   }
   if (cur.kind === "post" && body.title !== undefined) {
     const t = String(body.title).trim(); if (!t || t.length > 300) bad(422, "title must be 1 to 300 characters");
@@ -553,7 +567,7 @@ async function disclosedAccount(id) {
   const [a] = await sb("GET", `accounts?select=*&id=eq.${enc(id)}`);
   if (!a) bad(422, `account ${id} is not in the accounts table. GET /api/agent/accounts lists them.`);
   if (!a.active) bad(422, `account ${a.label || id} is inactive`);
-  if (!a.disclosed) bad(422, `account ${a.label || id} is not marked disclosed. A human marks it on /plan once its profile identifies its operator.`);
+  if (!a.disclosed) bad(422, `account ${a.label || id} is not marked disclosed. A human marks it on /plan once its profile says Geonode runs it.`);
   return a;
 }
 
@@ -587,6 +601,9 @@ async function postRun(body) {
     if (!t.length) bad(422, `thread ${body.thread_id} is not registered. POST /api/agent/threads first.`);
     if (t[0].archived || t[0].locked) bad(409, `thread ${tid} is archived or locked`);
     thread = t[0]; subreddit = thread.subreddit; threadUrl = thread.url;
+    const others = await sb("GET", `engain_tasks?select=id,status&thread_id=eq.${enc(tid)}&user_account_id=not.is.null&user_account_id=neq.${enc(acct.id)}`);
+    if (others.some(x => !["cancelled", "failed", "removed"].includes(String(x.status).toLowerCase())))
+      bad(409, "another of our accounts already posted in this thread. One account per thread.");
   }
 
   // Every act must pass the rules and the door before anything is stored.
@@ -686,7 +703,7 @@ module.exports = async function handler(req, res) {
       out = { verdict, ceiling: RISK_CEILING };
     }
     else if (a === "lessons" && !b && m === "GET")             out = await getLessons(sp);
-    else if (a === "our-comments" && !b && m === "GET")        out = { comments: await ourComments(), note: "Published comments from managed accounts. Replies are allowed with disclosure and reviewer confirmation." };
+    else if (a === "our-comments" && !b && m === "GET")        out = { comments: await ourComments(), note: "never file a reply whose parent_url is one of these. Never two of our accounts in one exchange." };
     else if (a === "status" && !b && m === "GET")              out = await getStatus(sp);
     else if (a === "jobs" && b === "due" && m === "GET")       out = await getJobsDue(sp);
     else if (a === "jobs" && !b && m === "POST")               out = await postJob(await readBody(req));

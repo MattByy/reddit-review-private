@@ -45,12 +45,18 @@ function vendorState(c) {
 async function poll() {
   const open = await sb("GET", "engain_tasks?select=id,draft_id,thread_id,status&project_id=eq.accounts-beta&reddit_url=is.null&cancelled_at=is.null&limit=200");
   const want = new Map(open.filter(t => !["failed", "cancelled", "removed"].includes(String(t.status).toLowerCase())).map(t => [t.id, t]));
+  // Every accounts-beta task, so /status can show Engain's reply count (034).
+  const known = new Map((await sb("GET", "engain_tasks?select=id,reply_count&project_id=eq.accounts-beta&limit=1000")).map(t => [t.id, t.reply_count]));
   const changes = [];
-  let cursor = null;
-  for (let page = 0; want.size && page < 10; page++) {
+  let cursor = null, replyCounts = 0;
+  for (let page = 0; page < 10; page++) {
     const { status, json } = await engain("GET", "/api/v1/accounts-beta/comments", undefined, cursor ? { cursor } : undefined);
     if (status >= 300) { changes.push({ error: `vendor ${status}` }); break; }
     for (const c of json.page || []) {
+      if (known.has(c._id) && c.replyCount != null && known.get(c._id) !== c.replyCount) {
+        await sb("PATCH", `engain_tasks?id=eq.${enc(c._id)}`, { reply_count: c.replyCount }, "return=minimal").catch(() => {});
+        replyCounts++;
+      }
       const t = want.get(c._id); if (!t) continue;
       want.delete(c._id);
       const state = vendorState(c);
@@ -74,7 +80,7 @@ async function poll() {
     if (json.isDone || !json.continueCursor) break;
     cursor = json.continueCursor;
   }
-  return { open: open.length, changes };
+  return { open: open.length, changes, reply_counts_updated: replyCounts };
 }
 
 async function checkReplies() {
