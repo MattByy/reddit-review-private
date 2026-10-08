@@ -26,7 +26,7 @@ class Element {
 function harness() {
   const elements = Object.fromEntries(['batch-eligibility','batch-section','ws','batch-open','batch-grid','batch-select-all','batch-total','batch-count','batch-approve-btn','batch-cancel','batch-status'].map(id => [id,new Element()]));
   const calls=[];
-  const context = { Set, console, document:{}, accounts:[{id:'acct',active:true,disclosed:true,disclosure_line:'(Operated by Fixture Team)'}],
+  const context = { Set, console, document:{}, accounts:[{id:'acct',active:true,disclosed:true,usable:true,disclosure_line:'(Operated by Fixture Team)'}],
     drafts:Array.from({length:3}, (_,i)=>({id:'d'+i,kind:'comment',body:'Fixture narrative (Operated by Fixture Team)',account_id:i===2?null:'acct'})), checks:{},
     $:id=>elements[id], esc:String, stateChip:()=>'', scoreChip:()=>'', stratChip:()=>'', cleanTitle:String, threadTitle:d=>d.id,threadSub:()=> 'testing',
     runChecks:()=>({hardFail:false}),select:()=>{},setCounts:()=>{},showEmpty:()=>{},renderSend:async()=>{},flash:()=>{},describe:()=>'',errText:e=>e.message,

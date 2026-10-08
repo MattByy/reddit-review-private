@@ -1,47 +1,15 @@
-/* api/cron/pullback.js — the kill switch's clock.
- *
- * A reviewer presses "Pull back" on /review; request_pullback() writes
- * engain_tasks.cancel_requested_at. Engain refuses cancels for the first 24
- * hours of a task's life (TASK_NOT_CANCELLABLE), so someone has to come back
- * at the 24h mark and fire it. engain-post.py watch does that when it is
- * running; this cron is the fallback that does not depend on a laptop being
- * awake. Vercel calls it hourly (vercel.json "crons").
- *
- * This function can ONLY cancel. It has no route to post, approve or clear,
- * and the vendor key it holds is used for exactly two calls: list tasks and
- * cancel one. It reports every outcome twice: in the JSON it returns and in
- * activity_log, so a silent cron is impossible.
- *
- * Env (Vercel project, production): CRON_SECRET (Vercel sets the header),
- * SUPABASE_URL, SUPABASE_SERVICE_KEY, and ENGAIN_API_KEY. Without the Engain
- * key it still runs, still reports what is waiting, and cancels nothing.
+/* Hourly cancellation worker. Accounts-beta uses its comments/posts endpoint;
+ * legacy project tasks retain their original cancellation window. A successful
+ * request without explicit confirmation remains pending for status polling.
  */
 const SB_URL  = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
 const SB_KEY  = process.env.SUPABASE_SERVICE_KEY || "";
 const ENG_KEY = process.env.ENGAIN_API_KEY || "";
-const ENG_URL = "https://api.engain.io";
 const WINDOW_H = 24;
 const ACTOR = "cron/pullback";
 
-async function sb(method, path, body, prefer) {
-  const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" };
-  if (prefer) headers.Prefer = prefer;
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-  if (!r.ok) throw new Error(`supabase ${r.status} on ${method} ${path.split("?")[0]}: ${(await r.text()).slice(0, 300)}`);
-  const text = await r.text();
-  return text.trim() ? JSON.parse(text) : null;   // return=minimal answers 201/204 with an empty body
-}
-async function log(action, detail) {
-  try { await sb("POST", "activity_log", [{ actor: ACTOR, action, detail }], "return=minimal"); } catch {}
-}
-async function engain(method, path, body, params) {
-  const url = ENG_URL + path + (params ? "?" + new URLSearchParams(params) : "");
-  const r = await fetch(url, { method, headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "multi-account-reddit-agent/1.0 (+cron)" },
-                               body: body === undefined ? undefined : JSON.stringify(body) });
-  let json = null; const text = await r.text();
-  try { json = JSON.parse(text); } catch { json = { raw: text.slice(0, 300) }; }
-  return { status: r.status, json };
-}
+const {sb,engain,logger}=require('../_db.js');
+const log=logger(ACTOR);
 
 async function projectId() {
   if (process.env.ENGAIN_PROJECT_ID) return process.env.ENGAIN_PROJECT_ID;
@@ -64,8 +32,12 @@ async function cancelOne(t, live) {
       await log("pullback_failed_live", { task: t.id, thread: t.thread_id });
       return { outcome: "live", message: m };
     }
-    const { status, json } = await engain("POST", `/api/v1/accounts-beta/comments/${encodeURIComponent(t.id)}/cancel`, null);
-    if (status >= 200 && status < 300) {
+    const { status, json } = await engain("POST", `/api/v1/accounts-beta/${t.task_type==="post"?"posts":"comments"}/${encodeURIComponent(t.id)}/cancel`, null);
+    if (status >= 200 && status < 300 && json.success!==false) {
+      if(!['cancelled','canceled'].includes(String(json.status||'').toLowerCase())){
+        await patch({cancel_result:'Cancellation requested; waiting for vendor confirmation'});
+        return {outcome:'requested',message:'Awaiting confirmed vendor cancellation'};
+      }
       await patch({ cancel_result: "cancelled", cancelled_at: now.toISOString(), status: "cancelled" });
       await sb("PATCH", `eval_log?task_id=eq.${encodeURIComponent(t.id)}`, { survival_status: "cancelled", survival_checked_at: now.toISOString(), note: "pulled back before publish (cron)" }, "return=minimal");
       if (t.draft_id) {
@@ -129,7 +101,7 @@ module.exports = async function handler(req, res) {
   if (!SB_URL || !SB_KEY) return out(503, { error: "SUPABASE_URL / SUPABASE_SERVICE_KEY not configured" });
 
   try {
-    const waiting = await sb("GET", "engain_tasks?select=id,draft_id,thread_id,project_id,submitted_at,cancel_requested_at,cancel_attempts&cancel_requested_at=not.is.null&cancelled_at=is.null&reddit_url=is.null&order=submitted_at.asc");
+    const waiting = await sb("GET", "engain_tasks?select=id,draft_id,thread_id,project_id,task_type,submitted_at,cancel_requested_at,cancel_attempts&cancel_requested_at=not.is.null&cancelled_at=is.null&reddit_url=is.null&order=last_cancel_attempt_at.asc.nullsfirst&limit=10");
     if (!waiting.length) {
       await log("pullback_cron", { waiting: 0, note: "nothing requested" });
       return out(200, { ok: true, waiting: 0, results: [], note: "no pull-back requests waiting: none requested, or all already cancelled or live" });
@@ -143,8 +115,11 @@ module.exports = async function handler(req, res) {
     }
     const byId = new Map();
     if (waiting.some(t => t.project_id === "accounts-beta")) {
-      const { json } = await engain("GET", "/api/v1/accounts-beta/comments");
-      for (const c of json.page || []) byId.set(c._id, c);
+      for(const kind of ['comments','posts']){
+        const {status,json}=await engain('GET','/api/v1/accounts-beta/'+kind);
+        if(status>=300)continue;
+        for(const c of json.page||[])byId.set(c._id,c);
+      }
     }
     if (waiting.some(t => t.project_id !== "accounts-beta")) {
       const pid = await projectId().catch(() => null);
@@ -152,7 +127,12 @@ module.exports = async function handler(req, res) {
                  for (const t of listing.page || []) byId.set(t._id, t); }
     }
     const results = [];
-    for (const t of waiting) results.push({ task: t.id, thread: t.thread_id, ...(await cancelOne(t, byId.get(t.id))) });
+    const deadline=Date.now()+30000;
+    for(const t of waiting){
+      if(Date.now()>=deadline)break;
+      try{results.push({task:t.id,thread:t.thread_id,...await cancelOne(t,byId.get(t.id))});}
+      catch(e){results.push({task:t.id,outcome:'error',message:e.message});}
+    }
     await log("pullback_cron", { waiting: waiting.length, results });
     return out(200, { ok: true, waiting: waiting.length, results });
   } catch (e) {

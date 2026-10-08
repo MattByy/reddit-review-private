@@ -1,0 +1,19 @@
+{
+  "observed_at": "2026-10-06T21:32:37.421Z",
+  "mode": "read-only",
+  "provider": "https://api.engain.io",
+  "endpoints": {
+    "/api/v1/me": {"http_status": 200, "projects": 0},
+    "/api/v1/accounts-beta/accounts": {"http_status": 200, "accounts": 25, "usable": 23},
+    "/api/v1/accounts-beta/comments": {
+      "http_status": 200,
+      "tasks": 7,
+      "isDone": true,
+      "statuses": {"completed": 2, "failed": 3, "cancelled": 2},
+      "tasks_with_resultUrl": 2,
+      "tasks_with_reported_reason": 0
+    },
+    "/api/v1/accounts-beta/posts": {"http_status": 200, "tasks": 0, "isDone": true}
+  },
+  "limits": "No vendor writes, public posts, cancellations, account edits or production migrations were made. Reasons cannot be inferred from the returned task fields."
+}

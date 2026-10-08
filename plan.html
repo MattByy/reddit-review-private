@@ -29,7 +29,7 @@
 </style></head>
 <body>
 <script src="assets/gate.js"></script>
-<script src="assets/config.js"></script><script src="assets/app.js"></script><main>
+<script src="assets/operator.js"></script><script src="assets/config.js"></script><script src="assets/app.js"></script><main>
 <div class="page-head">
   <div>
     <h1>Plan</h1>
@@ -65,6 +65,7 @@
   const $ = id => document.getElementById(id);
   const H = () => ({ apikey: window.SB_KEY, Authorization: 'Bearer ' + window.SB_KEY, 'Content-Type': 'application/json' });
   const rpc = async (fn, args) => {
+    if(fn!=='scenario_context')return window.operatorCall('/api/operator',{rpc:fn,args});
     const r = await fetch(`${window.SB_URL}/rest/v1/rpc/${fn}`, { method: 'POST', headers: H(), body: JSON.stringify(args) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || r.status);
     return r.json();
@@ -116,7 +117,7 @@
     $('s-due').textContent = upcoming.filter(p => p.status !== 'blocked').length;
     $('s-blocked').textContent = upcoming.filter(p => p.status === 'blocked' || p.blocked_reason).length;
     $('s-runs').textContent = runs.filter(r => r.status === 'open').length;
-    $('s-accts').textContent = `${accts.filter(a => a.disclosed && a.active).length} / ${accts.length}`;
+    $('s-accts').textContent = `${accts.filter(a => a.disclosed && a.active && a.usable === true).length} / ${accts.length}`;
 
     const groups = {};
     for (const p of upcoming) {
@@ -192,7 +193,7 @@
         try {
           const row = await rpc('set_account_disclosed', { p_account_id: f.dataset.id, p_disclosed: btn.dataset.v === '1', p_note: note, p_editor: 'reviewer' });
           Object.assign(accts.find(a => a.id === f.dataset.id), row);
-          $('s-accts').textContent = `${accts.filter(a => a.disclosed && a.active).length} / ${accts.length}`;
+          $('s-accts').textContent = `${accts.filter(a => a.disclosed && a.active && a.usable === true).length} / ${accts.length}`;
           drawAccts();
         } catch (err) { btn.disabled = false; fail(err, 'the account update'); }
       }));

@@ -18,10 +18,11 @@
  */
 const { sb } = require("./_send.js");
 const { repliesTo } = require("./_reddit.js");
+const {planReplies}=require("./_monitor.js");
 
 const enc = encodeURIComponent;
 const nowIso = () => new Date(Date.now()).toISOString();
-const DEAD = ["failed", "cancelled", "canceled", "removed", "deleted", "error"];
+const DEAD = ["failed", "cancelled", "canceled", "removed", "deleted", "error", "rejected"];
 
 // The most recent earlier step output carrying `key`.
 function lastOut(run, upto, key) {
@@ -48,7 +49,7 @@ const STEPS = {
     const j = await job(key);
     if (!j) return { note: "queueing the write job" };
     if (j.status === "done" && j.draft_id) return { done: true, out: { draft_id: j.draft_id, job_id: j.id } };
-    if (["skipped", "failed"].includes(j.status)) return { fail: `the writer ${j.status} it: ${(j.result && (j.result.reason || j.result.note)) || "no reason given"}` };
+    if (["skipped", "failed", "blocked"].includes(j.status)) return { fail: `the writer ${j.status} it: ${(j.result && (j.result.reason || j.result.note)) || "no reason given"}` };
     return { note: j.status === "claimed" ? `the agent is writing it (${j.claimed_by})` : "waiting for the agent to write it" };
   },
 
@@ -68,6 +69,8 @@ const STEPS = {
     if (ctx.enter) await sb("PATCH", `drafts?id=eq.${enc(id)}`, { sequence_hold: false }, "return=minimal");
     const [t] = await sb("GET", `engain_tasks?select=id,status&draft_id=eq.${enc(id)}&limit=1`);
     if (t) return { done: true, out: { task_id: t.id } };
+    const [attempt]=await sb('GET',`publication_attempts?select=state,reason&draft_id=eq.${enc(id)}`);
+    if(attempt&&['unknown','failed'].includes(attempt.state))return {note:`Publication ${attempt.state}; operator reconciliation required: ${attempt.reason||''}`};
     const [d] = await sb("GET", `drafts?select=status,send_cleared_at,gate_failure,gate_failed_at&id=eq.${enc(id)}`);
     if (!d || d.status === "rejected") return { fail: "the draft was rejected" };
     if (d.gate_failed_at) return { note: `refused by a send gate: ${d.gate_failure}` };
@@ -75,12 +78,13 @@ const STEPS = {
     return { note: "released to the sender; goes out on the next send pass (pace floors apply)" };
   },
 
-  async wait_live(run, i) {
+  async wait_live(run, i, s, ctx) {
     const task = lastOut(run, i, "task_id");
     if (!task) return { fail: "nothing to watch: no send step before this one" };
-    const [t] = await sb("GET", `engain_tasks?select=status,reddit_url,published_at&id=eq.${enc(task)}`);
-    if (t && t.reddit_url) return { done: true, out: { url: t.reddit_url, published_at: t.published_at } };
-    if (t && DEAD.includes(String(t.status || "").toLowerCase())) return { fail: `Engain reports ${t.status}` };
+    const [t] = await sb("GET", `engain_tasks?select=status,visibility,reddit_url,published_at&id=eq.${enc(task)}`);
+    if(t&&(DEAD.includes(String(t.status||'').toLowerCase())||['removed','deleted'].includes(t.visibility)))return {fail:`Parent unavailable (${t.visibility||t.status})`};
+    if(t?.reddit_url&&t.visibility==='visible')return {done:true,out:{url:t.reddit_url,published_at:t.published_at}};
+    if(ctx.st.started_at&&Date.now()-Date.parse(ctx.st.started_at)>24*3600000)return {fail:'Publication was not verified within 24 hours. Operator review required.'};
     return { note: `waiting for Engain to publish it (${(t && t.status) || "submitted"})` };
   },
 
@@ -107,13 +111,14 @@ const STEPS = {
     for (let k = 0; k < i; k++) for (const id of ((run.state[k] && run.state[k].out && run.state[k].out.replied_to) || [])) answered.add(id);
     const todo = replies.filter(r => !answered.has(r.id));
     if (!todo.length) return { done: true, out: { replied_to: [] }, note: "no new replies" };
-    if (ctx.enter) for (const r of todo) await addJob({ kind: "draft_followup", sequence_run_id: run.id, step: i, account_id: run.account_id,
-      thread_id: run.thread_id, target_url: r.permalink, created_by: "engine", dedupe_key: `seqreply:${run.id}:${r.id}`,
-      title: `Answer u/${r.author}`, payload: { author: r.author, body: r.body, score: r.score, brief: s.brief || "",
-        our_comment_url: lastOut(run, i, "url"), disclosure_line: ctx.account && ctx.account.disclosure_line } });
-    const jobs = await sb("GET", `jobs?select=status,dedupe_key&sequence_run_id=eq.${enc(run.id)}&step=eq.${i}`);
-    const open = jobs.filter(j => ["planned", "claimed"].includes(j.status)).length;
-    if (!open) return { done: true, out: { replied_to: todo.map(r => r.id), answered: jobs.filter(j => j.status === "done").length } };
+    const planned=await planReplies({replies:todo,url:lastOut(run,i,'url'),thread_id:run.thread_id,account_id:run.account_id,sequence_run_id:run.id,step:i});
+    const jobs=planned;
+    let open=jobs.filter(j=>['planned','claimed'].includes(j.status)).length;
+    for(const j of jobs.filter(j=>j.status==='done'&&j.draft_id)){
+      const [d]=await sb('GET',`drafts?select=status&id=eq.${enc(j.draft_id)}`);
+      if(d&&!['posted','rejected','cancelled','removed'].includes(d.status))open++;
+    }
+    if(!open)return {done:true,out:{replied_to:todo.map(r=>r.id),answered:jobs.filter(j=>j.status==='done').length}};
     return { note: `${open} of ${jobs.length} replies still with the agent. Each answer goes to Review and sends when approved.` };
   },
 
@@ -123,7 +128,7 @@ const STEPS = {
       target_url: run.thread_url, title: String(s.instruction).slice(0, 300), created_by: "engine", dedupe_key: key, payload: { sequence: run.name } });
     const j = await job(key);
     if (j && ["done", "skipped"].includes(j.status)) return { done: true, out: { result: j.result } };
-    if (j && j.status === "failed") return { fail: `agent task failed: ${(j.result && j.result.reason) || ""}` };
+    if (j && ["failed","blocked"].includes(j.status)) return { fail: `agent task failed: ${(j.result && j.result.reason) || ""}` };
     return { note: "with the agent" };
   },
 };
@@ -143,18 +148,19 @@ async function advance(run, ctx) {
     current++; moved++;
   }
   if (status === "open" && current >= run.steps.length) status = "done";
-  await sb("PATCH", `sequence_runs?id=eq.${enc(run.id)}`, { state, current, status, next_at, updated_at: nowIso() }, "return=minimal");
+  await sb("PATCH", `sequence_runs?id=eq.${enc(run.id)}&status=eq.open`, { state, current, status, next_at, updated_at: nowIso() }, "return=minimal");
   return { run: run.id, name: run.name, step: Math.min(current, run.steps.length - 1) + 1, of: run.steps.length, status,
            note: (state[current] && state[current].note) || (state[current - 1] && state[current - 1].note) || null, moved };
 }
 
-async function runEngine() {
+async function runEngine(deadline=Infinity) {
   const runs = await sb("GET", `sequence_runs?select=*&status=eq.open&next_at=lte.${enc(nowIso())}&order=next_at.asc&limit=25`);
   if (!runs.length) return { runs: 0 };
   const ours = new Set((await sb("GET", "accounts?select=reddit_username&reddit_username=not.is.null")).map(a => a.reddit_username.toLowerCase()));
   const accounts = Object.fromEntries((await sb("GET", "accounts?select=id,disclosure_line")).map(a => [a.id, a]));
   const results = [];
   for (const run of runs) {
+    if(Date.now()>=deadline)break;
     try { results.push(await advance(run, { ours, account: accounts[run.account_id] })); }
     catch (e) { results.push({ run: run.id, error: String(e.message).slice(0, 200) }); }
   }

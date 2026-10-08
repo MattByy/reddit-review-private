@@ -146,7 +146,7 @@
 
 </style></head>
 <body>
-<script src="assets/config.js"></script><script src="assets/app.js"></script><main>
+<script src="assets/operator.js"></script><script src="assets/config.js"></script><script src="assets/app.js"></script><main>
 <div class="page-head">
   <div>
     <h1>Review</h1>
@@ -230,6 +230,13 @@
   const $ = id => document.getElementById(id);
   const H = () => ({ apikey: window.SB_KEY, Authorization: 'Bearer ' + window.SB_KEY, 'Content-Type': 'application/json' });
   async function api(path, opts = {}) {
+    if(opts.method && opts.method !== 'GET') {
+      const value=JSON.parse(opts.body||'{}');
+      if(path.startsWith('rpc/'))return window.operatorCall('/api/operator',{rpc:path.slice(4),args:value});
+      const match=path.match(/^drafts\?id=eq\.([0-9a-f-]+)$/i);
+      if(match)return window.operatorCall('/api/operator',{draft_id:match[1],patch:value});
+      throw Error('Unsupported operator action');
+    }
     const r = await fetch(`${window.SB_URL}/rest/v1/${path}`, { headers: H(), ...opts });
     if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
     return r.status === 204 ? null : r.json();
@@ -239,7 +246,7 @@
      to act on them right now instead of waiting for a clock. It re-checks
      every gate itself, so calling it is never an authorization. */
   async function dispatch() {
-    try { const r = await fetch('/api/dispatch', { method: 'POST' }); return await r.json(); }
+    try { return await window.operatorCall('/api/dispatch'); }
     catch (e) { return { error: String(e.message || e) }; }
   }
   function describe(res) {
@@ -319,7 +326,7 @@
      passes (Engain risk at or under the ceiling, not a fail) or it does not.
      No warn, no fail, no vendor words. */
   const passes = c => !!c && c.verdict !== 'fail' && c.removal_risk != null && c.removal_risk <= CEILING;
-  const scoreChip = c => !c || c.removal_risk == null ? chip('', 'not scored')
+  const scoreChip = c => c?.verdict==='skipped' ? chip('warn','vendor score unavailable') : !c || c.removal_risk == null ? chip('', 'not scored')
     : passes(c) ? chip('ok', `passes · risk ${c.removal_risk}`) : chip('bad', `does not pass · risk ${c.removal_risk} over ${CEILING}`);
   const commentId = u => { const m = String(u || '').match(/\/comments\/[A-Za-z0-9]+\/[^/?#]+\/([A-Za-z0-9]+)/); return m ? m[1].toLowerCase() : null; };
   const absUrl = u => /^https?:/i.test(u || '') ? u : 'https://www.reddit.com' + (u || '');
@@ -392,7 +399,7 @@
 
   function checkPanel(c, gated) {
     if (gated) return '';
-    if (!c || c.removal_risk == null) return `<div class="notice" style="margin-top:12px"><div class="body"><div class="flex">${scoreChip(c)}<span class="small">scored when you approve</span></div></div></div>`;
+    if (!c || c.removal_risk == null) return `<div class="notice" style="margin-top:12px"><div class="body"><div class="flex">${scoreChip(c)}<span class="small">${c?.verdict==='skipped' ? esc(c.summary||'No Engain project configured; manual review required') : 'Score not available'}</span></div></div></div>`;
     const ok = passes(c);
     const viol = (c.violated_rules || []).length ? `<div class="small" style="margin-top:6px;color:var(--bad)">${c.violated_rules.map(esc).join(' · ')}</div>` : '';
     return `<div class="notice ${ok ? '' : 'bad'}" style="margin-top:12px"><div class="body"><div class="flex">${scoreChip(c)}<span class="muted tiny right">${esc(ago(c.checked_at))}</span></div>
@@ -485,10 +492,10 @@
           <label style="display:flex;gap:6px;align-items:center"><span class="muted small">Posts from</span>
             <select class="field" data-acct aria-label="Account this posts from">
               <option value="">choose an account…</option>
-              ${accounts.map(a => `<option value="${esc(a.id)}" ${d.account_id === a.id ? 'selected' : ''} ${a.disclosed && a.active ? '' : 'disabled'}>${esc(a.label || a.id)}${a.reddit_username ? ' · u/' + esc(a.reddit_username) : ''}${a.disclosed && a.active ? '' : ' (not disclosed)'}</option>`).join('')}
+              ${accounts.map(a => `<option value="${esc(a.id)}" ${d.account_id === a.id ? 'selected' : ''} ${a.disclosed && a.active && a.usable === true ? '' : 'disabled'}>${esc(a.label || a.id)}${a.reddit_username ? ' · u/' + esc(a.reddit_username) : ''}${a.disclosed && a.active && a.usable === true ? '' : ' (not disclosed)'}</option>`).join('')}
             </select></label>
           <button class="btn small" data-adddisc type="button">Add disclosure line</button>
-          ${accounts.some(a => a.disclosed && a.active) ? '' : '<span class="small muted">No account can post yet. Change the account\'s bio in Engain so it says Geonode runs it, then mark it on <a href="plan">Plan</a> → Accounts.</span>'}
+          ${accounts.some(a => a.disclosed && a.active && a.usable === true) ? '' : '<span class="small muted">No account can post yet. Change the account\'s bio in Engain so it says Geonode runs it, then mark it on <a href="plan">Plan</a> → Accounts.</span>'}
         </div>
         ${d.sequence_hold ? '<div class="notice" style="margin-top:10px"><div class="body">Part of a sequence. Approving clears it; it goes out when the sequence reaches its Send step.</div></div>' : ''}
       </div>`;
@@ -536,7 +543,7 @@
     const confirmBox = w.querySelector('[data-confirm]');
     const parentOurs = isReply && !d.scenarioContext?.self_reply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
     const acctSel = w.querySelector('[data-acct]');
-    const acctOk = () => { const a = accounts.find(x => x.id === d.account_id); return !!(a && a.disclosed && a.active); };
+    const acctOk = () => { const a = accounts.find(x => x.id === d.account_id); return !!(a && a.disclosed && a.active && a.usable === true); };
     acctSel.addEventListener('change', async () => {
       const prev = d.account_id; d.account_id = acctSel.value || null; refresh();
       try { await api(`drafts?id=eq.${d.id}`, { method: 'PATCH', headers: { ...H(), Prefer: 'return=minimal' }, body: JSON.stringify({ account_id: d.account_id }) }); }
@@ -672,13 +679,13 @@
 
   /* ── sending ───────────────────────────────────────────────────────── */
   async function renderSend() {
-    const rows = await api('drafts?select=id,thread_id,kind,mode,body,status,upvotes_suggested,send_cleared_at,pullback_requested_at,gate_failed_at,gate_failure,redirect_pending,thread_context,created_at,reviewed_at,posted_at,subreddit,title&or=(status.eq.approved,status.eq.posted)&order=reviewed_at.desc.nullslast&limit=100');
-    const tasks = await api('engain_tasks?select=id,draft_id,thread_id,status,reddit_url,submitted_at,published_at,cancel_requested_at,cancel_requested_by,cancelled_at,cancel_result,cancel_attempts,last_cancel_attempt_at&status=neq.test_artifact&order=submitted_at.desc');
+    const rows = await api('drafts?select=id,thread_id,kind,mode,body,status,upvotes_suggested,send_cleared_at,pullback_requested_at,gate_failed_at,gate_failure,redirect_pending,thread_context,created_at,reviewed_at,posted_at,subreddit,title&status=in.(approved,dispatched,posted,cancelled,removed)&order=reviewed_at.desc.nullslast&limit=100');
+    const tasks = await api('engain_tasks?select=id,draft_id,thread_id,status,reddit_url,submitted_at,published_at,cancel_requested_at,cancel_requested_by,cancelled_at,cancel_result,cancel_attempts,last_cancel_attempt_at,project_id,visibility,error&status=neq.test_artifact&order=submitted_at.desc');
     const byDraft = {};
     for (const t of tasks) if (!byDraft[t.draft_id]) byDraft[t.draft_id] = t;
     /* Live comments are done here; they belong to Status. Everything else
        between "approved" and "published" is a decision still open to you. */
-    const list = rows.filter(r => { const t = byDraft[r.id]; return !(t && t.reddit_url); });
+    const list = rows.filter(r => { const t = byDraft[r.id]; return !(t && t.visibility==='visible' && !/failed|cancel|error|reject|remov|delet/i.test(t.status||'')); });
     const rc = {};
     if (list.length) {
       const rcs = await api(`rule_checks?select=draft_id,verdict,removal_risk&draft_id=in.(${list.map(r => r.id).join(',')})&order=checked_at.desc`);
@@ -695,12 +702,13 @@
       let state, acts = '', win = '';
       if (t) {
         const opens = new Date(new Date(t.submitted_at).getTime() + 24 * 3600 * 1000);
-        const open = Date.now() >= opens.getTime();
+        const open = t.project_id==='accounts-beta' || Date.now() >= opens.getTime();
         if (t.cancelled_at || t.status === 'cancelled') state = chip('bad', 'pulled back');
         else if (t.cancel_requested_at) state = chip('warn', open ? 'pull back requested, window open' : 'pull back requested, waiting for the window');
-        else state = chip('info', `sent to Engain ${ago(t.submitted_at)}, not published yet`);
+        else if(/failed|error|reject|remov|delet/i.test(t.status||''))state=chip('bad',t.status)+` <span>${esc(t.error||'Reason not supplied')}</span>`;
+        else state = chip('info', t.reddit_url ? `Engain URL returned; Reddit ${t.visibility||'unverified'}` : `sent to Engain ${ago(t.submitted_at)}, not published yet`);
         win = `<div class="win">Task <code>${esc(t.id)}</code> · can be pulled back ${open ? 'now' : 'from ' + esc(fmtWhen(opens.toISOString()))}${t.cancel_result ? ` · ${esc(t.cancel_result)}` : ''}</div>`;
-        if (!(t.cancelled_at || t.status === 'cancelled')) acts = `
+        if (!(t.cancelled_at || /failed|cancel|error|reject|remov|delet/i.test(t.status||''))) acts = `
           <button class="btn danger" data-a="pullback" ${t.cancel_requested_at ? 'disabled' : ''}>${t.cancel_requested_at ? 'Pull back requested' : 'Pull back'}</button>
           <span class="st" data-s>${t.cancel_requested_at ? esc(open ? 'Pull-back fires within the hour.' : 'Pull-back fires when the window opens, unless it publishes first.') : (c && !passes(c) ? 'This one does not pass the current ceiling. Pull it back if you do not want it published.' : 'Possible until it publishes.')}</span>`;
       } else if (d.gate_failed_at) {
@@ -809,7 +817,7 @@
     const scenarioMap = {};
     for (const s of scenarios) scenarioMap[s.slug] = s;
     const accountMap = {};
-    for (const a of await api('accounts?select=id,label,reddit_username,disclosed,active,disclosure_line')) accountMap[a.id] = a;
+    for (const a of await api('accounts?select=id,label,reddit_username,disclosed,active,usable,disclosure_line')) accountMap[a.id] = a;
     
     // For each run, fetch its acts
     const runIds = runs.map(r => r.id).join(',');
@@ -845,7 +853,7 @@
       
       const acts = actsByRun[run.id] || [];
       const acct = run.account_id ? accountMap[run.account_id] : null;
-      const acctOk = !!(acct && acct.disclosed && acct.active);
+      const acctOk = !!(acct && acct.disclosed && acct.active && acct.usable === true);
       const acctChip = !acct ? chip('bad', 'no account') : chip(acctOk ? 'ok' : 'bad',
         `${acct.label || acct.reddit_username || 'account'} · ${acctOk ? 'disclosed' : 'not disclosed'}`);
       
@@ -920,7 +928,7 @@
         <details ${opened.has(run.id) || requested === run.id ? 'open' : ''}>
         <summary class="scenario-head">
           <div class="title">${esc(scenario.name || 'Untitled scenario')}</div>
-          <div class="badges">${chip('info', `Script${acts.length < 2 ? " incomplete" : ""} · ${acts.length} segments`)}${statusBadge}${acctChip}${scenario.enabled ? '' : chip('bad', 'disabled')}</div>
+          <div class="badges">${chip('info', `Script${acts.length < 1 ? " incomplete" : ""} · ${acts.length} segments`)}${statusBadge}${acctChip}${scenario.enabled ? '' : chip('bad', 'disabled')}</div>
         </summary>
         ${ringWarning}
         ${rejected ? `<div class="notice bad"><div class="body"><b>Script stopped. No further acts will be sent.</b><br>${esc(run.review_note || 'Rejected by reviewer')}${acts.some(a => a.task_id) ? '<br>Tasks already accepted by Engain may still publish; rejection does not cancel them.' : ''}</div></div>` : ''}
@@ -938,7 +946,7 @@
           <div class="acts">
             <label class="field"><span class="muted small">Reviewer</span><input data-reviewer aria-label="Script reviewer" value="reviewer" ${rejected ? 'disabled' : ''}></label>
             <label class="field"><span class="muted small">Reason</span><input data-why aria-label="Script review reason" placeholder="required to reject, optional otherwise" ${rejected ? 'disabled' : ''}></label>
-            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}" ${rejected || run.status !== 'open' || !scenario.enabled || scenario.same_thread_accounts || !acctOk || acts.length < 2 ? 'disabled' : ''}>${run.review_status === 'approved' ? 'Reapprove current script' : 'Approve entire script and send'}</button>
+            <button class="btn primary" data-a="approve-run" data-run-id="${esc(run.id)}" ${rejected || run.status !== 'open' || !scenario.enabled || scenario.same_thread_accounts || !acctOk || acts.length < 1 ? 'disabled' : ''}>${run.review_status === 'approved' ? 'Reapprove current script' : 'Approve entire script and send'}</button>
             <button class="btn danger" data-a="reject-run" data-run-id="${esc(run.id)}" ${rejected ? 'disabled' : ''}>Reject script</button>
             <span class="st" data-s></span>
           </div>
@@ -1040,7 +1048,7 @@
          disclosure the send gate needs, so a row is only selectable if
          approving it would actually succeed. */
       const account = accounts.find(a => a.id === d.account_id);
-      const needsAccount = !account || !account.active || !account.disclosed;
+      const needsAccount = !account || !account.active || !account.disclosed || account.usable !== true;
       const bodyOK = !runChecks(d.body || '', account).hardFail;
       const ours = d.kind === 'reply' && !d.scenarioContext?.self_reply && commentId(d.parent_url) && ourIds.has(commentId(d.parent_url));
       const canApprove = bodyOK && !ours && !(d.gate_failed_at || d.redirect_pending || needsAccount ||
@@ -1216,7 +1224,7 @@
       /* Our own published comments, so a reply under one of them is caught
          on this screen and again in review_draft(). */
       try { const ours = await api('engain_tasks?select=reddit_url&reddit_url=not.is.null'); ourIds = new Set(ours.map(t => commentId(t.reddit_url)).filter(Boolean)); } catch (e) { ourIds = new Set(); }
-      try { accounts = await api('accounts?select=id,label,reddit_username,disclosed,active,disclosure_line&order=label.asc'); } catch (e) { accounts = []; }
+      try { accounts = await api('accounts?select=id,label,reddit_username,disclosed,active,usable,disclosure_line&order=label.asc'); } catch (e) { accounts = []; }
       /* The queue: pending and edited drafts, plus approved ones the final
          gate refused, because those need a human again. */
       drafts = await api('drafts?select=id,thread_id,kind,mode,parent_url,subreddit,title,strategy,format,body,body_original,status,source,agent_note,upvotes_suggested,upvotes_reason,prompt_version,thread_context,models,sharpen,redirect_pending,redirected_at,redirect_note,gate_failed_at,gate_failure,parent_confirmed_by,created_at,account_id,sequence_hold&or=(status.in.(pending,edited),and(status.eq.approved,gate_failed_at.not.is.null))&order=created_at.asc&limit=100');
@@ -1245,7 +1253,7 @@
       /* Swello, 2026-09-03: only show what scored at or under the ceiling.
          Anything unscored or over it is held back, and the page says how
          many, so an empty queue is never mistaken for a clean one. */
-      const held = drafts.filter(d => { const c = checks[d.id]; return !d.gate_failed_at && !d.redirect_pending && (!c || c.verdict === 'fail' || c.removal_risk == null || c.removal_risk > CEILING); });
+      const held = drafts.filter(d => { const c = checks[d.id]; return !d.gate_failed_at && !d.redirect_pending && c?.verdict !== 'skipped' && (!c || c.verdict === 'fail' || c.removal_risk == null || c.removal_risk > CEILING); });
       drafts = drafts.filter(d => !held.includes(d));
       if (held.length) $('held').hidden = false, $('held').querySelector('.body').innerHTML = `<b>${held.length} held back:</b> ${held.length === 1 ? 'it does' : 'they do'} not pass (risk over ${CEILING}, or not scored). Not shown. The agent rewrites.`;
       setCounts();

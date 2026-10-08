@@ -1,0 +1,9 @@
+.mcp.json
+.agents/
+.codex/
+.env*
+tests/
+reports/
+simulation/
+scripts/
+node_modules/

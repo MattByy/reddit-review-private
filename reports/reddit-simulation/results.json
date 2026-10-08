@@ -1,0 +1,120 @@
+{
+  "at": "2026-10-08T23:23:27.288Z",
+  "mode": "isolated integration simulation",
+  "summary": {
+    "cases": 18,
+    "passed": 18,
+    "failed": 0
+  },
+  "scope": "Real API handlers and new PostgreSQL migrations. Invented Reddit/Engain responses and local database only. Tests do not prove live publication, LLM decision quality, or production multi-connection locking.",
+  "results": [
+    {
+      "name": "migration keeps public reads but fences claims, completions and publication RPCs",
+      "status": "passed",
+      "duration_ms": 698.726625,
+      "error": null
+    },
+    {
+      "name": "expired claim carries saved progress to a fresh worker and rejects the old token",
+      "status": "passed",
+      "duration_ms": 332.190375,
+      "error": null
+    },
+    {
+      "name": "thread finder registers, queues once, and filing a claimed draft completes the job atomically",
+      "status": "passed",
+      "duration_ms": 318.355625,
+      "error": null
+    },
+    {
+      "name": "concurrent dispatch calls create one vendor task and one durable attempt",
+      "status": "passed",
+      "duration_ms": 315.948208,
+      "error": null
+    },
+    {
+      "name": "response lost after vendor acceptance is held unknown and never blindly resubmitted",
+      "status": "passed",
+      "duration_ms": 330.907583,
+      "error": null
+    },
+    {
+      "name": "publication reservations enforce pacing across unrelated drafts",
+      "status": "passed",
+      "duration_ms": 329.818459,
+      "error": null
+    },
+    {
+      "name": "nested reply reader locates the requested parent and only its direct external children",
+      "status": "passed",
+      "duration_ms": 315.880834,
+      "error": null
+    },
+    {
+      "name": "publication verification rejects wrong URLs and tracks later cancellation even after a URL appeared",
+      "status": "passed",
+      "duration_ms": 320.984167,
+      "error": null
+    },
+    {
+      "name": "verified comment, reader reply, and nested answer complete the publication loop",
+      "status": "passed",
+      "duration_ms": 351.066166,
+      "error": null
+    },
+    {
+      "name": "edited parent invalidates approval; deleted parent blocks dependent work",
+      "status": "passed",
+      "duration_ms": 317.753459,
+      "error": null
+    },
+    {
+      "name": "posts are polled and verified without assuming that the first comment is the post",
+      "status": "passed",
+      "duration_ms": 324.432334,
+      "error": null
+    },
+    {
+      "name": "unknown Reddit responses and rate limits defer without filing or publishing",
+      "status": "passed",
+      "duration_ms": 303.041208,
+      "error": null
+    },
+    {
+      "name": "overlapping cron runs cannot both own the clock; a terminal lease exhaustion is visible",
+      "status": "passed",
+      "duration_ms": 304.555,
+      "error": null
+    },
+    {
+      "name": "a complete one-act playbook can be reviewed; an empty or incomplete one cannot",
+      "status": "passed",
+      "duration_ms": 312.353834,
+      "error": null
+    },
+    {
+      "name": "parent cancellation blocks queued descendants and cancels an already submitted descendant",
+      "status": "passed",
+      "duration_ms": 326.329917,
+      "error": null
+    },
+    {
+      "name": "sequence cannot advance past a cancelled parent even when the vendor supplied a URL",
+      "status": "passed",
+      "duration_ms": 302.015458,
+      "error": null
+    },
+    {
+      "name": "pullback uses the posts endpoint and waits for explicit cancellation confirmation",
+      "status": "passed",
+      "duration_ms": 307.01925,
+      "error": null
+    },
+    {
+      "name": "the actual tick handler sends, verifies, and gives a fresh worker durable follow-up work",
+      "status": "passed",
+      "duration_ms": 335.238334,
+      "error": null
+    }
+  ]
+}

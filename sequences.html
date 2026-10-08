@@ -33,7 +33,7 @@
 </style></head>
 <body>
 <script src="assets/gate.js"></script>
-<script src="assets/config.js"></script><script src="assets/app.js"></script><main>
+<script src="assets/operator.js"></script><script src="assets/config.js"></script><script src="assets/app.js"></script><main>
 <div class="page-head">
   <div>
     <h1>Sequences</h1>
@@ -80,6 +80,7 @@
   const $ = id => document.getElementById(id);
   const H = () => ({ apikey: window.SB_KEY, Authorization: 'Bearer ' + window.SB_KEY, 'Content-Type': 'application/json' });
   const rpc = async (fn, args) => {
+    if(fn!=='scenario_context')return window.operatorCall('/api/operator',{rpc:fn,args});
     const r = await fetch(`${window.SB_URL}/rest/v1/rpc/${fn}`, { method: 'POST', headers: H(), body: JSON.stringify(args) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.message || r.status);
@@ -91,7 +92,7 @@
     write:          { label: 'Write', help: 'The agent drafts it from your brief. It is held until a Send step.' },
     approve:        { label: 'Approve on Review', help: 'Waits until a person approves the draft above.' },
     send:           { label: 'Send via Engain', help: 'Releases the draft. Goes out on the next send pass, pace floors apply.' },
-    wait_live:      { label: 'Wait until live', help: 'Waits for Engain to publish it and report the URL.' },
+    wait_live:      { label: 'Wait until live', help: 'Waits for the exact post or comment to be verified on Reddit.' },
     wait:           { label: 'Wait', help: 'Pauses the sequence.' },
     check_replies:  { label: 'Check replies', help: 'Reads the replies under our comment on Reddit. Ours and AutoModerator are ignored.' },
     answer_replies: { label: 'Answer replies', help: 'The agent drafts an answer to each new real reply. Each goes to Review and sends when approved.' },
@@ -239,8 +240,8 @@
   try { const t = sessionStorage.getItem('seq_tab'); if (tabs.includes(t)) show(t); } catch {}
 
   try {
-    [seqs, accounts] = await Promise.all([sbAll('sequences', 'select=*&order=name.asc'), sbAll('accounts', 'select=id,label,reddit_username,disclosed,active&order=label.asc')]);
-    $('acct').innerHTML = '<option value="">Account…</option>' + accounts.map(a => `<option value="${esc(a.id)}" ${a.disclosed && a.active ? '' : 'disabled'}>${esc(a.label || a.id)}${a.disclosed && a.active ? '' : ' (not disclosed)'}</option>`).join('');
+    [seqs, accounts] = await Promise.all([sbAll('sequences', 'select=*&order=name.asc'), sbAll('accounts', 'select=id,label,reddit_username,disclosed,active,usable&order=label.asc')]);
+    $('acct').innerHTML = '<option value="">Account…</option>' + accounts.map(a => `<option value="${esc(a.id)}" ${a.disclosed && a.active && a.usable === true ? '' : 'disabled'}>${esc(a.label || a.id)}${a.disclosed && a.active && a.usable === true ? '' : ' (not disclosed)'}</option>`).join('');
     open(seqs[0] ? seqs[0].id : null);
     await loadRuns();
   } catch (e) { fail(e, 'sequences'); }

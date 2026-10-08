@@ -27,7 +27,6 @@ const { check } = require("./_rules.js");
 const SB_URL  = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
 const SB_KEY  = process.env.SUPABASE_SERVICE_KEY || "";
 const ENG_KEY = process.env.ENGAIN_API_KEY || "";
-const ENG_URL = "https://api.engain.io";
 const MAX_PER_RUN = 3;
 const FORBIDDEN = [
   ["owned ip", "never 'owned IPs'"], ["we own the network", "never claim network ownership"], ["own our ips", "never claim IP ownership"],
@@ -35,26 +34,14 @@ const FORBIDDEN = [
   ["85,000", "85,000 is not a real figure"], ["85000", "85,000 is not a real figure"], ["/v1/scrape", "the endpoint is /v1/extract"],
 ];
 
-async function sb(method, path, body, prefer) {
-  const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" };
-  if (prefer) headers.Prefer = prefer;
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-  if (!r.ok) throw new Error(`supabase ${r.status} on ${method} ${path.split("?")[0]}: ${(await r.text()).slice(0, 300)}`);
-  const text = await r.text();
-  return text.trim() ? JSON.parse(text) : null;
-}
-const logger = actor => async (action, detail) => { try { await sb("POST", "activity_log", [{ actor, action, detail }], "return=minimal"); } catch {} };
-async function engain(method, path, body, params) {
-  const url = ENG_URL + path + (params ? "?" + new URLSearchParams(params) : "");
-  const r = await fetch(url, { method, headers: { "X-API-Key": ENG_KEY, "Content-Type": "application/json", "User-Agent": "geonode-reddit-agent/1.0 (+send)" },
-                               body: body === undefined || body === null ? undefined : JSON.stringify(body) });
-  const text = await r.text(); let json; try { json = JSON.parse(text); } catch { json = { raw: text.slice(0, 300) }; }
-  return { status: r.status, json };
-}
+const {sb,engain,logger,event}=require('./_db.js');
+const {conversation}=require('./_reddit.js');
+const workflow=require('./_workflow.js');
 // null when the key has no geonode.com project; the rule-check is then skipped.
 async function projectId() {
   if (process.env.ENGAIN_PROJECT_ID) return process.env.ENGAIN_PROJECT_ID;
-  const { json } = await engain("GET", "/api/v1/me");
+  const { status, json } = await engain("GET", "/api/v1/me");
+  if(status>=300)throw Error(`Engain identity unavailable (${status})`);
   if ((json.projects || []).length > 1 && !(json.projects || []).some(x => x.name === "geonode.com"))
     throw new Error("the vendor key has several projects; set ENGAIN_PROJECT_ID");
   const p = (json.projects || []).find(x => x.name === "geonode.com");
@@ -62,7 +49,7 @@ async function projectId() {
 }
 const enc = encodeURIComponent;
 const now = () => new Date().toISOString();
-const DEAD = ["cancelled", "failed", "removed", "deleted", "rejected"];
+const DEAD = ["cancelled", "canceled", "failed", "removed", "deleted", "rejected", "error"];
 
 // The account a draft posts from: the scenario act's, then the run's, then the draft's own.
 async function accountFor(draftId, draftAccount) {
@@ -89,7 +76,7 @@ async function dispatchOne(d, pid, log) {
   };
 
   // gate 0: re-read the row itself
-  const [cur] = await sb("GET", `drafts?select=status,send_cleared_at,redirect_pending,gate_failed_at,pullback_requested_at,body,parent_url,parent_confirmed_by,kind,account_id,send_after,sequence_hold&id=eq.${enc(d.draft_id)}`);
+  const [cur] = await sb("GET", `drafts?select=status,send_cleared_at,redirect_pending,gate_failed_at,pullback_requested_at,body,parent_url,parent_confirmed_by,kind,account_id,send_after,sequence_hold,thread_context,thread_id,filing_key&id=eq.${enc(d.draft_id)}`);
   if (!cur || cur.status !== "approved" || !cur.send_cleared_at || cur.redirect_pending || cur.gate_failed_at || cur.pullback_requested_at)
     return { ...head, outcome: "skipped", why: "state changed since the queue was read" };
   // 028: a queued draft waits for its slot, however early it was approved.
@@ -106,6 +93,7 @@ async function dispatchOne(d, pid, log) {
   if (!acct.id) return flag("account", ["no account chosen. Pick a disclosed account for the run or draft."]);
   if (acct.missing) return flag("account", [`account ${acct.id} is not in the accounts table`]);
   if (!acct.active) return flag("account", [`${acct.label || acct.id} is inactive`]);
+  if(acct.usable!==true)return {...head,outcome:'deferred',why:'Engain reports this account unavailable'};
   if (!acct.disclosed) return flag("account", [`${acct.label || acct.id} is not marked disclosed. Mark it on /plan once its profile says Geonode runs it.`]);
   if (d.thread_id) {
     const others = await sb("GET", `engain_tasks?select=id,user_account_id,status&thread_id=eq.${enc(d.thread_id)}&user_account_id=not.is.null&user_account_id=neq.${enc(acct.id)}`);
@@ -127,6 +115,21 @@ async function dispatchOne(d, pid, log) {
       return flag("stranger gate", ["parent is one of our own comments"]);
   }
   if (kind === "post" && !(d.subreddit && d.title)) return flag("post", ["needs subreddit and title"]);
+
+  // Re-read the actual parent immediately before submission. Saved URLs and
+  // reviewer snapshots identify intent, not current Reddit availability.
+  if(kind!=='post'){
+    const observed=await conversation(kind==='reply'?cur.parent_url:d.thread_url);
+    if(!observed.ok)return {...head,outcome:'deferred',why:observed.reason};
+    if(observed.visibility!=='visible'||observed.thread.removed||observed.thread.locked||observed.thread.archived)
+      return flag('Reddit parent',['Parent is removed, deleted, locked or archived']);
+    if(observed.thread.id!==d.thread_id)return flag('Reddit parent',['Parent is in a different thread']);
+    if(kind==='reply'&&(!observed.target||cur.thread_context?.parent?.body!==observed.target.body)){
+      await sb('PATCH',`drafts?id=eq.${enc(d.draft_id)}`,{status:'pending',send_cleared_at:null,parent_confirmed_by:null,
+        redirect_pending:true,redirect_note:'Parent context changed. Read the current job/thread context and revise before review.'},'return=minimal');
+      return {...head,outcome:'context_changed',why:'Approval invalidated because the reader parent changed'};
+    }
+  }
 
   // gate 4: never the same bytes twice on one thread
   if (d.thread_id) {
@@ -157,26 +160,38 @@ async function dispatchOne(d, pid, log) {
       fresh.redirect_pending || fresh.gate_failed_at || fresh.pullback_requested_at)
     return { ...head, outcome: "skipped", why: "approval or text changed before submission" };
 
-  const { status, json: task } = await engain("POST", endpoint, payload);
-  const taskId = task.id || task.taskId || task._id;
-  if (status >= 300 || !taskId) {
-    await log("engain_submit_failed", { draft: d.draft_id, thread: d.thread_id, status, vendor: task });
-    return { ...head, outcome: "vendor_error", status, vendor: JSON.stringify(task).slice(0, 300) };
+  const reserved=await sb('POST','rpc/reserve_publication',{p_draft_id:d.draft_id,p_body:body,p_parent_url:cur.parent_url||null,p_account_id:acct.id});
+  if(!reserved.ok)return {...head,outcome:'deferred',why:reserved.reason};
+  const attempt=reserved.attempt;
+  const record=async(state,reason,extra={})=>{
+    await sb('PATCH',`publication_attempts?id=eq.${enc(attempt.id)}`,{state,reason,updated_at:now(),...extra},'return=minimal');
+    await event({event_key:`send:${attempt.id}:${state}`,event:state==='accepted'?'submitted':state==='failed'?'submission_failed':'submission_unknown',
+      source:'sender',draft_id:d.draft_id,thread_id:d.thread_id,experiment:workflow.experiment(cur.thread_context?.experiment),reason,
+      detail:{request_id:cur.filing_key||d.draft_id,subreddit:d.subreddit,attempt_id:attempt.id}});
+  };
+  try{
+    const {status,json:task}=await engain('POST',endpoint,payload);
+    const taskId=task.id||task.taskId||task._id;
+    if(status>=300||!taskId){
+      const uncertain=status>=500||status<300;
+      await record(uncertain?'unknown':'failed',`Engain ${status}: ${JSON.stringify(task).slice(0,1000)}`,{vendor_response:task});
+      return {...head,outcome:uncertain?'submission_unknown':'vendor_error',status,attempt:attempt.id};
+    }
+    // Preserve the provider ID even if the following transaction needs retrying.
+    await sb('PATCH',`publication_attempts?id=eq.${enc(attempt.id)}`,{task_id:taskId,vendor_response:task,updated_at:now()},'return=minimal');
+    await sb('POST','rpc/accept_publication',{p_attempt_id:attempt.id,p_task_id:taskId,p_status:task.status||'pending',p_response:task});
+    await record('accepted',null);
+    await log(`engain_${kind}_submitted`,{task:taskId,draft:d.draft_id,account:acct.id});
+    return {...head,outcome:'sent',task:taskId,attempt:attempt.id,target};
+  }catch(e){
+    await record('unknown',String(e.message).slice(0,1000)).catch(()=>{});
+    return {...head,outcome:'submission_unknown',attempt:attempt.id,why:'Provider outcome must be reconciled before any retry'};
   }
-  await sb("POST", "engain_tasks", [{ id: taskId, draft_id: d.draft_id, thread_id: d.thread_id, project_id: "accounts-beta", task_type: kind, subreddit: d.subreddit,
-    thread_url: d.thread_url || cur.parent_url, content: body, status: task.status || "pending", user_account_id: acct.id, vendor: "engain-accounts",
-    labels: ["geonode-disclosed"], mode: d.mode, models: d.models }], "return=minimal");
-  await sb("PATCH", `drafts?id=eq.${enc(d.draft_id)}&status=neq.rejected`, { status: "dispatched", engain_task_id: taskId, engain_status: task.status || null, engain_seen_at: now() }, "return=minimal");
-  await sb("PATCH", `scenario_acts?draft_id=eq.${enc(d.draft_id)}&status=neq.rejected`, { status: "dispatched", task_id: taskId, account_id: acct.id, dispatched_at: now(),
-    engain_status: task.status || null, engain_seen_at: now() }, "return=minimal");
-  await sb("POST", "eval_log", [{ draft_id: d.draft_id, task_id: taskId, thread_id: d.thread_id, subreddit: d.subreddit, kind, mode: d.mode,
-    strategy: d.strategy, prompt_version: d.prompt_version, models: d.models, submitted_at: now(), survival_status: task.status || "pending", user_account_id: acct.id }], "return=minimal");
-  await log(`engain_${kind}_submitted`, { task: taskId, thread: d.thread_id, kind, account: acct.label || acct.id, subreddit: d.subreddit, rule_verdict: verdict });
-  return { ...head, outcome: "sent", task: taskId, account: acct.label || acct.id, rule_verdict: verdict, target };
+
 }
 
 /* Send what is approved and cleared, oldest first, at most MAX_PER_RUN. */
-async function runQueue(actor) {
+async function runQueue(actor,deadline=Date.now()+45000) {
   const log = logger(actor);
   if (!SB_URL || !SB_KEY) return { status: 503, body: { error: "SUPABASE_URL / SUPABASE_SERVICE_KEY not configured" } };
   if (!ENG_KEY) return { status: 503, body: { error: "ENGAIN_API_KEY not configured on this project: nothing can be sent" } };
@@ -192,6 +207,7 @@ async function runQueue(actor) {
   const pid = await projectId();
   const results = [];
   for (const d of queue) {
+    if(Date.now()>=deadline)break;
     try { results.push(await dispatchOne(d, pid, log)); }
     catch (e) { results.push({ draft: d.draft_id, thread: d.thread_id, outcome: "error", error: String(e.message).slice(0, 300) }); }
   }

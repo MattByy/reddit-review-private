@@ -1,0 +1,10 @@
+{
+  "name": "geonode-reddit-workflow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node checkrules.js && node checkpages.js && node --test tests/review-batch.test.js tests/workflow.test.cjs",
+    "simulate": "node simulation/run.cjs"
+  },
+  "devDependencies": { "@electric-sql/pglite": "0.3.14" }
+}

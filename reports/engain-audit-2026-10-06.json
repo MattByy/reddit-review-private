@@ -1,0 +1,371 @@
+{
+  "title": "Engain and Reddit workflow audit",
+  "audited_at": "2026-10-06T16:36:25.725901+00:00",
+  "scope": "Initial understanding, existing checks, production reads, browser reads, and offline reproductions. No production mutations, approvals, publishing, cancellations, migrations, commits, or deployments.",
+  "conclusion": "The site and vendor are reachable and the server tick is running, but the current workflow is not ready for an end-to-end publishing test. Account configuration blocks all sends, and multiple independent workflow defects must be addressed.",
+  "source_repositories": {
+    "review": "/Users/matas/Documents/Geonode/reddit-review",
+    "strategy": "/Users/matas/Documents/geonode-strategy/04-reddit"
+  },
+  "architecture": {
+    "discovery": "Queries, ranking observations, threads and Engain opportunities feed candidate selection; discovery and LLM helpers are in the strategy repository.",
+    "writer": "An external agent is expected to read lessons and redirects, claim jobs using GET /api/agent/jobs/due, and file drafts with job_id. The server has no scheduled LLM writer.",
+    "review": "Static HTML reads Supabase directly with the public anon key. SQL RPCs record edits, approvals, rejections and run snapshots.",
+    "sending": "Review calls /api/dispatch; Vercel /api/cron/tick also invokes api/_send.js. This sender uses Engain accounts-beta comments and posts.",
+    "tracking": "Tick synchronizes accounts, polls vendor comments, processes reply checks, advances sequences and sends approved work every 15 minutes.",
+    "pullback": "Hourly /api/cron/pullback processes requested cancellations. It supports both accounts-beta and legacy shared-pool tasks.",
+    "workflow_variants": [
+      "Standalone drafts: comment, reply or text post, optionally scheduled with send_after.",
+      "Scenario playbooks: scenarios -> scenario_runs -> scenario_acts, snapshot review, watch-triggered reply jobs.",
+      "Sequences: editable write/approve/send/wait_live/wait/check_replies/answer_replies/agent_task steps, sequence_runs state and jobs."
+    ],
+    "important_distinctions": [
+      "An Engain task ID proves acceptance, not Reddit publication.",
+      "Browser batch approval supports up to 100 selected draft IDs. Agent ingestion accepts individual drafts/runs, not a bulk file upload.",
+      "Current sending policy requires disclosed accounts and company disclosure in each body, one account per thread, no upvote orders and human approval.",
+      "Legacy strategy documents and CLI tools contain conflicting older rules. Their presence does not establish they are running."
+    ]
+  },
+  "live_state": {
+    "drafts": {
+      "total": 277,
+      "pending": 30
+    },
+    "accounts": {
+      "total": 25,
+      "vendor_usable": 23,
+      "active_and_disclosed": 0
+    },
+    "job_counts": [
+      {
+        "kind": "write",
+        "count": 3,
+        "status": "skipped",
+        "claim_attempts": 0
+      }
+    ],
+    "latest_tick": {
+      "at": "2026-10-06T16:30:46.438663+00:00",
+      "detail": {
+        "poll": {
+          "open": 3,
+          "changes": [],
+          "reply_counts_updated": 0
+        },
+        "send": {
+          "ok": true,
+          "note": "nothing approved and cleared that is not already sent, refused, held or with the agent",
+          "cleared": 0,
+          "results": []
+        },
+        "accounts": {
+          "ok": true,
+          "synced": 25
+        },
+        "sequences": {
+          "runs": 0
+        },
+        "check_replies": []
+      }
+    },
+    "queue_count": 0,
+    "snapshot_at": "2026-10-06T16:36:25.725901+00:00",
+    "status_buckets": [
+      {
+        "count": 137,
+        "bucket": "ignored"
+      },
+      {
+        "count": 11,
+        "bucket": "planned"
+      },
+      {
+        "count": 25,
+        "bucket": "posted"
+      },
+      {
+        "count": 74,
+        "bucket": "rejected"
+      },
+      {
+        "count": 30,
+        "bucket": "review"
+      }
+    ],
+    "sequence_counts": [
+      {
+        "count": 3,
+        "status": "cancelled"
+      }
+    ],
+    "local_beta_tasks": [
+      {
+        "count": 2,
+        "status": "completed",
+        "task_type": "comment"
+      },
+      {
+        "count": 3,
+        "status": "failed",
+        "task_type": "comment"
+      }
+    ],
+    "last_agent_filing": "2026-10-01T09:43:28.590194+00:00",
+    "legacy_unfinished_tasks": 55
+  },
+  "direct_http_checks": {
+    "review": 200,
+    "status": 200,
+    "agent_without_credentials": 401,
+    "authenticated_agent": 200,
+    "agent_route_count": 25,
+    "engain_identity": 200,
+    "engain_projects": [],
+    "engain_accounts": {
+      "status": 200,
+      "total": 25,
+      "usable": 23
+    },
+    "engain_comments": {
+      "status": 200,
+      "total": 7,
+      "completed_with_url": 2,
+      "failed": 3,
+      "cancelled": 2
+    },
+    "engain_posts": {
+      "status": 200,
+      "total": 0
+    },
+    "interpretation": "These are read-only endpoint observations. Completed comment URLs were not independently verified on Reddit."
+  },
+  "validations": {
+    "copy_rules": {
+      "passed": 8
+    },
+    "page_syntax_and_ids": {
+      "passed_pages": 10
+    },
+    "existing_node_review_tests": {
+      "passed": 7
+    },
+    "chrome_production_pages": {
+      "pages": [
+        "review",
+        "status",
+        "plan",
+        "sequences"
+      ],
+      "runtime_errors": 0,
+      "failed_requests": 0,
+      "mutation_requests": 0
+    },
+    "offline_sender_and_polling": {
+      "checks": 9,
+      "working_guards": 5,
+      "reproduced_defect_groups": 4,
+      "external_requests": 0
+    },
+    "chrome_skipped_score_fixture": "Reproduced: one pending skipped-score draft is held back, displayed count zero.",
+    "writer_function_probe": "Extracted and executed file_draft with mocked agent_api: defaults to comment, upvotes_suggested=3, no account_id, no job_id.",
+    "limits": [
+      "No fresh draft-to-Reddit-to-follow-up live cycle has been executed.",
+      "Existing Python browser suite was inspected but not run; Python Playwright is absent. Separate Chrome checks used an existing Node playwright-core installation.",
+      "SQL fixture tests were inspected but not run on production. Live function definitions and permissions were read.",
+      "External writer scheduler and process health remain unverified."
+    ]
+  },
+  "findings": [
+    {
+      "id": "E01",
+      "priority": "P0 prerequisite",
+      "title": "No account is currently eligible to send",
+      "evidence": "Live accounts and authenticated agent/accounts both report 0 active disclosed accounts out of 25. Engain reports 23 usable accounts.",
+      "impact": "All new runs and sends using the intended gates are blocked.",
+      "recommendation": "Choose an actually disclosed usable account, verify its public profile, then record the disclosure through Plan with a reviewer and note. Do not merely toggle the database field."
+    },
+    {
+      "id": "E02",
+      "priority": "P1",
+      "title": "Skipped vendor scoring hides valid new drafts from Review",
+      "evidence": "Live Engain identity has no projects. API explicitly permits skipped scoring. Review excludes null removal_risk. A Chrome fixture reproduced one filed pending draft disappearing from the visible review queue.",
+      "sources": [
+        "api/_agent.js:145",
+        "review.html:1248"
+      ],
+      "recommendation": "Define one scoring policy across API, UI and sender. Show skipped scores explicitly with a reviewable state, or refuse filing consistently."
+    },
+    {
+      "id": "E03",
+      "priority": "P1",
+      "title": "All enabled disclosed playbooks conflict with the minimum script length",
+      "evidence": "Live d_answer, d_answer_then_followup and d_own_post_then_answers each contain one act. Live scenario_approved requires at least two acts and review_scenario_run rejects templates with fewer than two.",
+      "sources": [
+        "supabase/migrations/033-script-review-hierarchy.sql:27",
+        "supabase/migrations/033-script-review-hierarchy.sql:62"
+      ],
+      "recommendation": "Separate single-action playbook approval from multi-segment editorial scripts, or support both explicitly without weakening approval."
+    },
+    {
+      "id": "E04",
+      "priority": "P1",
+      "title": "The available writer script does not implement the current job contract",
+      "evidence": "agent-writer.py reads planned jobs without claiming or due-time filtering. It files a standalone comment with upvotes_suggested=3, omits account_id/job_id, and does not complete the job. Current API rejects positive upvote suggestions. The three historical write jobs have zero claim attempts.",
+      "sources": [
+        "/Users/matas/Documents/geonode-strategy/04-reddit/scripts/agent-writer.py:118",
+        "/Users/matas/Documents/geonode-strategy/04-reddit/scripts/agent-writer.py:217",
+        "api/_agent.js:359"
+      ],
+      "recommendation": "Use the current agent skill as the contract: atomic claims, job_id, account disclosure, required kind/parent, zero upvote orders and explicit completion. Verify an actual scheduler heartbeat."
+    },
+    {
+      "id": "E05",
+      "priority": "P1",
+      "title": "Standalone and sequence drafts bypass pacing",
+      "evidence": "_send.js checks pace_ok only when context.scenario is true. Live posting_queue adds no independent pace check. Offline run submitted two ordinary drafts to the same subreddit in one pass.",
+      "sources": [
+        "api/_send.js:101"
+      ],
+      "recommendation": "Apply an atomic global and per-subreddit send reservation to every draft, including sequence work. Test 45-minute global, 24-hour subreddit and daily limits."
+    },
+    {
+      "id": "E06",
+      "priority": "P1",
+      "title": "Concurrent dispatchers can duplicate a submission",
+      "evidence": "Offline overlapping dispatch and cron calls both submitted the same draft before either recorded the vendor task. No atomic draft claim or vendor idempotency key is used; live engain_tasks has no unique draft_id constraint.",
+      "sources": [
+        "api/_send.js:155",
+        "api/_send.js:160"
+      ],
+      "recommendation": "Reserve submission atomically and persist an attempt before vendor I/O. Handle acceptance with lost response through vendor idempotency or reconciliation. A post-submission unique constraint alone is insufficient."
+    },
+    {
+      "id": "E07",
+      "priority": "P1",
+      "title": "Original posts do not have a complete tracking and follow-up path",
+      "evidence": "The sender uses accounts-beta/posts but poll reads only accounts-beta/comments. Vendor GET posts exists and returned 200. Offline Reddit post fixture with two top-level questions returned zero follow-ups because the first question was parsed as our comment. Post runs also begin without a thread_id and need linking after publication.",
+      "sources": [
+        "api/cron/tick.js:53",
+        "api/cron/tick.js:97",
+        "api/_reddit.js:22",
+        "api/_agent.js:596"
+      ],
+      "recommendation": "Poll and cancel by task type, register the created Reddit thread after publication, and parse original-post comments separately from replies to a comment."
+    },
+    {
+      "id": "E08",
+      "priority": "P2",
+      "title": "Status can remain stale after publication and for legacy tasks",
+      "evidence": "poll only updates publication state for tasks whose reddit_url is null. Offline vendor removal of an already published comment caused no status update. There are 55 locally unfinished non-accounts-beta tasks outside the current tick's tracking scope.",
+      "sources": [
+        "api/cron/tick.js:46"
+      ],
+      "recommendation": "Refresh survival state for published items and explicitly reconcile or archive legacy tasks. Display freshness and source of status rather than treating a saved URL as proof of current visibility."
+    },
+    {
+      "id": "E09",
+      "priority": "P1 design",
+      "title": "Human approval is not an authenticated boundary",
+      "evidence": "Live Supabase permissions allow anon to execute review_draft, review_scenario_run and set_account_disclosed. The public browser receives that key; the PIN is only a client-side screen. No unauthorized mutation was attempted.",
+      "sources": [
+        "build.js:36",
+        "assets/gate.js:1",
+        "supabase/migrations/033-script-review-hierarchy.sql:119"
+      ],
+      "recommendation": "If approval must be restricted to reviewers, bind approval and account disclosure RPCs to authenticated reviewer identity. Keep writer credentials unable to call those operations.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable"
+    },
+    {
+      "id": "E10",
+      "priority": "P2",
+      "title": "Claims exist but completion is not tied to the claimant",
+      "evidence": "Live claim_jobs uses FOR UPDATE SKIP LOCKED, a 30-minute lease and an attempts limit. complete_job does not verify claimed_by or lease ownership and also accepts planned jobs. Filing and completion are separate operations.",
+      "recommendation": "Use a lease token and conditional completion, make one job produce at most one draft, and define recovery for expired/exhausted/blocked jobs before adding multiple workers."
+    },
+    {
+      "id": "E11",
+      "priority": "P2",
+      "title": "Sequence cancellation and concurrent advancement need stronger guarantees",
+      "evidence": "Live cancel_sequence_run rejects only sequence_hold drafts. A draft already released at Send can remain approved after the run is cancelled. Engine updates run state by ID without an open-status/version condition. This is code inspection, not a concurrency reproduction.",
+      "sources": [
+        "api/_engine.js:68",
+        "api/_engine.js:146"
+      ],
+      "recommendation": "Cancel all unsent drafts associated with the run, request vendor pullback for accepted work where appropriate, and use a version or lease when advancing runs."
+    },
+    {
+      "id": "E12",
+      "priority": "P2",
+      "title": "Several writers and sender descriptions have drifted",
+      "evidence": "Current README describes the server as the only sender, while agent-dispatcher.py still supports shared-pool writes and omits sequence hold/send_after and account disclosure checks. cron-run.sh now delegates writing to the agent API but still aborts if the key has no project. Older docs also describe upvote workflows.",
+      "recommendation": "Designate one supported writer contract and one sender implementation. Mark legacy tools as retired and update operational docs before scheduling agents. Do not run old wrappers as a health check."
+    }
+  ],
+  "proposed_test_scenarios": [
+    {
+      "id": "T01",
+      "scenario": "One top-level comment",
+      "input": "One registered unlocked controlled thread, one disclosed usable account, one draft",
+      "pass": "Draft visible, reviewer approves exact bytes, exactly one vendor task, real permalink, independently verified author and body, timestamps consistent."
+    },
+    {
+      "id": "T02",
+      "scenario": "Reply to a real reader",
+      "input": "Real reader comment and parent context",
+      "pass": "Parent confirmation required, correct reply parent and account, no self-reply, exactly one task."
+    },
+    {
+      "id": "T03",
+      "scenario": "Original post and two reader questions",
+      "input": "Text post in controlled subreddit, two real reader questions",
+      "pass": "Post tracked using post endpoint; thread linked; both questions become separate jobs; answers each return for human approval."
+    },
+    {
+      "id": "T04",
+      "scenario": "Batch of mixed items",
+      "input": "Three comments on distinct threads, one invalid draft, one unconfirmed reply",
+      "pass": "Per-item validation and partial approval; failures remain visible; eligible submissions respect global/subreddit/daily limits."
+    },
+    {
+      "id": "T05",
+      "scenario": "Delayed send",
+      "input": "Approved draft with send_after and a sequence with an explicit wait",
+      "pass": "No early submission; send occurs once when due; UI distinguishes planned, approved, vendor-accepted and published."
+    },
+    {
+      "id": "T06",
+      "scenario": "Complete sequence",
+      "input": "write -> approve -> send -> wait_live -> wait -> check_replies -> answer_replies",
+      "pass": "Agent claims/completes correct job, held draft advances through all steps, every new answer is separately reviewed."
+    },
+    {
+      "id": "T07",
+      "scenario": "Multiple writing workers",
+      "input": "Two agents concurrently claiming the same due queue",
+      "pass": "Exclusive claims, no duplicate drafts, owner/lease checked on completion, expired claim recovers correctly."
+    },
+    {
+      "id": "T08",
+      "scenario": "Concurrent dispatch and crash recovery",
+      "input": "Approve button and cron overlap; simulate lost vendor response and failed persistence",
+      "pass": "At most one vendor submission and durable reconciliation of ambiguous acceptance."
+    },
+    {
+      "id": "T09",
+      "scenario": "Edit, reject, redirect and cancel",
+      "input": "Change review state before send, during checks, after release and after vendor acceptance",
+      "pass": "Changed text needs review; cancellation prevents future local sends; vendor cancellation result is explicit; published content is not labelled cancelled."
+    },
+    {
+      "id": "T10",
+      "scenario": "Failure and status reconciliation",
+      "input": "Vendor 429/5xx, Reddit 403, deleted/removed comment, unavailable account",
+      "pass": "Bounded retries, visible blocked reason, no silent success, stale claims recovered and no duplicate publication."
+    }
+  ],
+  "remaining_inputs": [
+    "Controlled Reddit test subreddit/thread or explicit selection of real targets for the live phase.",
+    "Where the writing agents are scheduled and which writer implementation they run.",
+    "Which account has an actual public Geonode disclosure and is intended for the test."
+  ]
+}
