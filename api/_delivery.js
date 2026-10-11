@@ -7,13 +7,13 @@ async function capabilities(){
   const projects=me.json.projects||[];
   const project=process.env.ENGAIN_PROJECT_ID||projects.find(p=>/^(geonode|geonode\.com)$/i.test(p.name))?.id||(projects.length===1?projects[0].id:null);
   const requested=process.env.ENGAIN_DELIVERY||'auto';let accounts=[];
-  if(!project||requested==='private'){
+  if((!project&&requested==='auto')||requested==='private'){
     const result=await engain('GET','/api/v1/accounts-beta/accounts');
     if(result.status<300)accounts=(result.json.accounts||[]).filter(a=>a.usable===true);
   }
   return {project_id:project||null,accounts,requested,
     available:requested==='pool'?!!project:requested==='private'?accounts.length>0:!!project||accounts.length>0,
-    mode:requested==='private'||!project?'private':'pool',reason:!project&&!accounts.length?'Engain has no accessible project or available private posting account.':null};
+    mode:requested==='pool'?'pool':requested==='private'||!project?'private':'pool',reason:!project&&!accounts.length?(requested==='pool'?'Pooled delivery requires an accessible project. Private fallback is disabled.':'Engain has no accessible project or available private posting account.'):null};
 }
 async function choose(caps,parentTransport){
   if(!caps.available)throw Error(caps.reason||'Engain delivery is unavailable');

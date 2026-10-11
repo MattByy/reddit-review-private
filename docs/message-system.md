@@ -24,7 +24,7 @@ This document describes both the current implementation and the requested tracki
 | Failed steps included in a complete flow report | Message rows retain failed work | Existing shape aggregate includes only previously verified messages |
 | Balanced content suggestions | Implemented, 20% target per action per stage | No learned policy or automatic performance-based reweighting |
 | Mixing new threads and follow-ups | Jobs ordered by due time and ID | Reserved queue shares in the queue simulation are **a proposal** |
-| Humanizer | Optional provenance fields implemented | No humanizer service is configured in the server |
+| Humanizer | Optional provenance fields implemented | Agent clarity edit is the default; external editor optional |
 | Disclosure evidence before filing | Worker instruction in this documentation | No dedicated message-workflow disclosure field or server gate yet |
 
 Use [the agent runbook](agent-runbook.md) for requests that work today. Use [the tracking specification](message-tracking.md) for the changes needed to meet the requested reporting behavior. The current bootstrap and database remain authoritative for wire formats and state meanings.
@@ -41,7 +41,7 @@ Use [the agent runbook](agent-runbook.md) for requests that work today. Use [the
 | Engain | Delivery task and provider observations | Authority to declare our verified Reddit outcome |
 | Dashboard / reports | Show queue, evidence, outcomes and limitations | A separate operator API key entered by the dashboard user |
 
-The writer may use an authorized style-editing tool. That tool improves clarity while preserving meaning and attribution; it must not simulate independent experiences or hide affiliation.
+The writer performs a separate clarity edit (`agent:self-edit`) or uses an explicitly configured style-editing tool. That tool improves clarity while preserving meaning and attribution; it must not simulate independent experiences or hide affiliation.
 
 ## The unit of work
 
@@ -247,7 +247,7 @@ The message tables and functions are service-role only. Workers use the API; the
 | Provider result uncertain | Reconcile; never create a second task blindly |
 | Confirmed removal | Stop flow and pending local messages; preserve observed reason/source |
 | No useful permitted contribution | Skip with a reason; no replacement conversation |
-| Humanizer required but absent | Block with a dependency reason; never claim it ran |
+| Launcher explicitly requires an unavailable external editor | Block with a dependency reason; never claim it ran |
 | Message/depth limit | Stop or use only an otherwise useful allowed parent; never force a mention |
 
 Five unsuccessful job claims can exhaust the job retry allowance. This is an operational block, not a marketing outcome. Some inherited messages say “operator review required”; that does not create a routine publishing approval step.

@@ -46,7 +46,8 @@ async function conversation(value){
     if(!post)return {ok:false,visibility:'unknown',reason:'The requested thread was not present in the response',url};
     const thread={id:post.id,url:`https://www.reddit.com/r/${post.subreddit||id.subreddit}/comments/${post.id}/_/`,
       title:post.title||'',body:post.selftext||'',subreddit:post.subreddit||id.subreddit,locked:post.locked===true,archived:post.archived===true,
-      removed:post.removed_by_category!=null||post.selftext==='[removed]'||post.selftext==='[deleted]',author:post.author||null};
+      removed:post.removed_by_category!=null||post.selftext==='[removed]'||post.selftext==='[deleted]',author:post.author||null,
+      score:Number.isFinite(post.score)?post.score:null,num_comments:Number.isFinite(post.num_comments)?post.num_comments:null,created_utc:Number.isFinite(post.created_utc)?post.created_utc:null,over_18:post.over_18===true};
     const comments=flatten(data[1]?.data?.children),target=id.comment_id?comments.find(c=>c.id===id.comment_id):null;
     if(id.comment_id&&!target)return {ok:false,visibility:'unknown',reason:'Requested parent was not in the returned comment tree',thread,comments,url};
     if(target&&target.thread_id&&target.thread_id!==thread.id)return {ok:false,visibility:'unknown',reason:'Comment belongs to a different thread',url};

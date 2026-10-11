@@ -8,7 +8,7 @@
 
 const STEPS = [
   ["plan.html", 1, "Experiments", "P"],
-  ["targets.html", 2, "Threads", "T"],
+  ["library.html", 2, "Thread library", "T"],
   ["queries.html", 3, "Discovery", "Q"]
 ];
 

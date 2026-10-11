@@ -32,6 +32,10 @@ const root=path.resolve(__dirname,'..');
         }
         return answer(result.body,result.status);
       }
+      if(url.pathname==='/api/library'){
+        const result=await h.call(require('../api/library.js'),url.pathname+url.search,req.method()==='POST'?req.postDataJSON():undefined,req.method(),null,{...await req.allHeaders(),host:url.host});
+        return answer(result.body,result.status);
+      }
       if(url.pathname==='/api/dispatch'){dispatches++;return answer({results:[]});}
       if(url.pathname.startsWith('/rest/v1/')){
         assert.equal(req.method(),'GET','Browser writes must go through the operator API');
@@ -51,7 +55,7 @@ const root=path.resolve(__dirname,'..');
     await page.waitForFunction(()=>document.querySelector('h1').textContent==='Choose your password');
     assert.equal(new URL(page.url()).hash,'','Setup token is removed from browser history');
     await page.locator('#password').fill(password);await page.locator('#confirm').fill(password);await page.locator('#submit').click();
-    await page.waitForURL(/\/plan(?:#queue)?$/);
+    await page.waitForURL(/\/plan(?:\.html)?(?:#queue)?$/);
     const sessionCookie=(await page.context().cookies()).find(c=>c.name==='__Host-reddit_admin');
     assert.equal(sessionCookie.httpOnly,true);assert.equal(sessionCookie.secure,true);assert.equal(sessionCookie.sameSite,'Strict');
     assert.ok(sessionCookie.expires>Date.now()/1000+29*86400);
@@ -108,6 +112,20 @@ const root=path.resolve(__dirname,'..');
     await page.locator('[data-stop]').click();await page.locator('.experiment-card').waitFor({state:'detached'});await page.locator('#filter').selectOption('stopped');await page.locator('.experiment-card').waitFor();
     assert.match(await page.locator('.experiment-card').innerText(),/Stopped in dashboard/);
     await page.goto('https://fixture.test/review.html');await page.waitForURL('**/plan#queue');await page.locator('#start-experiment').waitFor();
+    // Discovery is separate from writing; the dashboard can refresh and queue one isolated test.
+    h.project=true;const libraryThread=await h.thread('lib123'),createdUtc=Math.floor(Date.now()/1000)-86400*7;
+    Object.assign(h.reddit.get('lib123')[0].data.children[0].data,{score:20,num_comments:12,created_utc:createdUtc,over_18:false});
+    h.opportunities=[{id:'opp-lib123',type:'new_opportunities',redditPostId:'lib123',relevance:.9,reasons:['Relevant'],postContent:{url:libraryThread.url,title:'Compare proxy parsing',content:'A useful question',createdUtc,score:20,numComments:12}}];
+    await page.goto('https://fixture.test/library.html');await page.locator('#collect-library').click();await page.locator('[data-thread="lib123"]').waitFor();
+    assert.equal(await page.locator('[data-queue="test"]').isDisabled(),true);
+    await page.locator('[data-refresh="lib123"]').click();await page.waitForFunction(()=>!document.querySelector('[data-queue="test"]')?.disabled);
+    await page.screenshot({path:'/tmp/reddit-library-mobile.png',fullPage:true});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
+    await page.locator('[data-queue="test"]').click();await page.waitForFunction(()=>document.querySelector('#library-status').textContent.startsWith('Queued test experiment'));
+    assert.equal(await page.locator('[data-thread="lib123"]').count(),0,'Used targets leave the candidates view');
+    await page.locator('#library-scope').selectOption('all');await page.locator('[data-thread="lib123"]').waitFor();assert.match(await page.locator('[data-thread="lib123"]').innerText(),/already used/);
+    await page.goto('https://fixture.test/plan.html');await page.locator('#filter').selectOption('test');await page.locator('.experiment-card').waitFor();assert.equal(await page.locator('.experiment-card').count(),1);assert.match(await page.locator('.experiment-card').innerText(),/isolated test/);
+    await page.locator('#filter').selectOption('active');assert.equal(await page.locator('.experiment-card').count(),0);
     assert.equal(dispatches,0,'No browser approval or manual publication step');
     const saved=await page.context().storageState(),restored=await browser.newContext({storageState:saved}),tab=await restored.newPage();
     await tab.route('**/*',handle);await tab.goto('https://fixture.test/plan');await tab.locator('#start-experiment').waitFor();
@@ -115,9 +133,9 @@ const root=path.resolve(__dirname,'..');
     await tab.locator('[data-sign-out]').click();await tab.waitForURL('**/login');
     await page.reload();await page.waitForURL('**/login?*');
     await page.locator('#password').fill('wrong');await page.locator('#submit').click();await page.getByText('Incorrect password.',{exact:true}).waitFor();
-    await page.locator('#password').fill(password);await page.locator('#submit').click();await page.waitForURL(/\/plan(?:#queue)?$/);
+    await page.locator('#password').fill(password);await page.locator('#submit').click();await page.waitForURL(/\/plan(?:\.html)?(?:#queue)?$/);
     await restored.close();
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({password_setup:true,remembered_session:true,logout_revoked_other_tabs:true,no_api_key_prompt:true,no_account_selectors:true,retry_same_experiment:true,one_message_at_a_time:true,mobile_overflow:false,no_approval_buttons:true,edit_and_stop:true,legacy_review_redirect:true,first_reply_forced:true,sibling_parent_saved:true,brand_stops_writing:true,seven_day_monitoring:true,page_errors:0}));
+    console.log(JSON.stringify({password_setup:true,remembered_session:true,logout_revoked_other_tabs:true,no_api_key_prompt:true,no_account_selectors:true,retry_same_experiment:true,one_message_at_a_time:true,mobile_overflow:false,no_approval_buttons:true,edit_and_stop:true,legacy_review_redirect:true,first_reply_forced:true,sibling_parent_saved:true,brand_stops_writing:true,seven_day_monitoring:true,library_refresh_and_test_queue:true,isolated_test_view:true,page_errors:0}));
   }finally{await browser.close();await h.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

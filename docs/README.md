@@ -8,3 +8,5 @@ Read [START_HERE.md](../START_HERE.md) for the exact setup and reading order.
 | Accounts Beta | Deferred; do not configure for the pooled trial | [Separate private-account reference](accounts-beta.md) |
 
 After pooled setup, [the daily agent runbook](agent-runbook.md) supplies the writing prompt and exact API fields. The system and tracking documents are deeper references, not prerequisite account-setup steps.
+
+[Thread library](thread-library.md) explains collection, freshness, selection settings and isolated test jobs. Read it when selecting the first test thread or assigning discovery work.

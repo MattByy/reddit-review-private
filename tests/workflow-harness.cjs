@@ -17,7 +17,8 @@ function condition(key,value){
   const dot=value.indexOf('.'),op=value.slice(0,dot),val=value.slice(dot+1),f=field(key);
   if(op==='is')return f+' IS '+(val==='null'?'NULL':val==='true'?'TRUE':'FALSE');
   if(op==='in')return f+' IN ('+split(val.slice(1,-1)).map(quote).join(',')+')';
-  const sql={eq:'=',neq:'<>',gte:'>=',gt:'>',lte:'<=',lt:'<',like:'LIKE'}[op];
+  const sql={eq:'=',neq:'<>',gte:'>=',gt:'>',lte:'<=',lt:'<',like:'LIKE',ilike:'ILIKE'}[op];
+  if(op==='ilike')return f+' ILIKE '+quote(val.replaceAll('*','%'));
   if(!sql)throw Error('Unsupported filter '+value);return f+sql+quote(val);
 }
 class Harness{
@@ -28,7 +29,7 @@ class Harness{
     await this.db.exec(`create function scenario_context(p_draft_id uuid,p_parent_url text default null) returns jsonb language sql as $$select '{"ready":true,"scenario":false,"self_reply":false}'::jsonb$$;
       create function scenario_ready(p_draft_id uuid) returns boolean language sql as $$select true$$;
       create function is_our_url(p_url text) returns boolean language sql as $$select exists(select 1 from engain_tasks where reddit_url=p_url)$$;`);
-    for(const name of ['035-durable-workflow.sql','036-operator-review.sql','037-verified-status.sql','038-account-playbooks.sql','039-automatic-publishing.sql','040-dashboard-sessions.sql','041-message-experiments.sql','042-queued-message-decisions.sql','043-message-decision-context.sql']){
+    for(const name of ['035-durable-workflow.sql','036-operator-review.sql','037-verified-status.sql','038-account-playbooks.sql','039-automatic-publishing.sql','040-dashboard-sessions.sql','041-message-experiments.sql','042-queued-message-decisions.sql','043-message-decision-context.sql','044-thread-library.sql']){
       if(name==='041-message-experiments.sql'&&options.beforeMessages)await options.beforeMessages(this);
       if(name==='042-queued-message-decisions.sql'&&options.beforeQueueDecisions)await options.beforeQueueDecisions(this);
       if(name==='043-message-decision-context.sql'&&options.beforeDecisionContext)await options.beforeDecisionContext(this);
@@ -91,6 +92,8 @@ class Harness{
     }
     if(u.hostname!=='api.engain.io')throw Error('Network forbidden in tests: '+u.hostname);
     if(u.pathname==='/api/v1/me')return json({projects:this.project?[{id:'project-test',name:'geonode.com'}]:[]});
+    if(u.pathname==='/api/v1/opportunities')return this.opportunityFeed?this.opportunityFeed(u):json({opportunities:(this.opportunities||[]).filter(r=>r.type===u.searchParams.get('type')),isDone:true});
+    if(u.pathname.startsWith('/api/v1/opportunities/')){const r=(this.opportunities||[]).find(r=>r.id===u.pathname.split('/').pop());return new Response(JSON.stringify(r||{}),{status:r?200:404});}
     if(u.pathname==='/api/v1/accounts-beta/accounts')return json({accounts:[{userAccountId:'test-account',profileUsername:'geonode_test',label:'Test account',usable:true}]});
     if(u.pathname==='/api/v1/rule-check')return new Response(JSON.stringify(this.ruleVerdict||{verdict:'pass',removalRisk:20}),{status:this.ruleStatus});
     if(u.pathname.endsWith('/cancel'))return json({status:'cancelled'});

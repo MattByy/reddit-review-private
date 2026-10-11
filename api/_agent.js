@@ -612,8 +612,12 @@ module.exports = async function handler(req, res) {
     else if (a === 'messages' && b && m === 'GET') out = {message:await require('./_messages.js').getMessage(b)};
     else if (a === 'messages' && b && m === 'POST') out = {message:await require('./_messages.js').file(b,await readBody(req))};
     else if (a === 'experiments' && !b && m === 'GET') out = await require('./_messages.js').rows();
+    else if (a === 'library' && !b && m === 'GET') out = await require('./_library.js').list(Object.fromEntries(sp));
+    else if (a === 'library' && b === 'collect' && m === 'POST') out = await require('./_library.js').collect();
+    else if (a === 'library' && b && c === 'refresh' && m === 'POST') out = await require('./_library.js').refresh(b);
+    else if (a === 'library' && b && c === 'queue' && m === 'POST') out = {experiment:await require('./_library.js').queue(b,await readBody(req))};
     else if (a === 'delivery' && !b && m === 'GET') {
-      const caps=await require('./_delivery.js').capabilities();out={available:caps.available,mode:caps.mode,has_project:!!caps.project_id,available_private_accounts:caps.accounts.length,reason:caps.reason};
+      const caps=await require('./_delivery.js').capabilities();out={available:caps.available,mode:caps.mode,requested_mode:caps.requested,pooled_only:caps.requested==='pool',has_project:!!caps.project_id,available_private_accounts:caps.accounts.length,reason:caps.reason};
     }
     else if (a === "outcomes" && !b && m === "GET")           out = await workflow.outcomes(sp);
     else if (a === "threads" && b && c === "queue" && m === "POST") out = await workflow.queueThread(b,await readBody(req));

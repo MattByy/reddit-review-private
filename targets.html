@@ -154,7 +154,7 @@
             <div class="flex" style="margin-top:10px">${o.thread_id ? `<a href="https://www.reddit.com/comments/${esc(o.thread_id)}" class="ext" target="_blank" rel="noopener">Open thread</a>` : ''}<span class="muted small">${o.posted_utc ? 'posted ' + esc(fmtDate(o.posted_utc)) : ''} · ${esc(String(o.kind || '').replace('_', ' '))}</span></div>
           </div>
         </details>`; }).join('')
-        : '<div class="empty"><b>Nothing in the feed matches.</b>Run <code>engain-sync.py</code> to pull the latest opportunities.</div>';
+        : '<div class="empty"><b>Nothing in the feed matches.</b>Open the <a href="library.html">Thread library</a> to sync and refresh Engain opportunities.</div>';
       $('olist').querySelectorAll('[data-more]').forEach(b => b.addEventListener('click', () => {
         const op = b.previousElementSibling; op.classList.toggle('clamp'); b.textContent = op.classList.contains('clamp') ? 'Show full post' : 'Show less';
       }));

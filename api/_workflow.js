@@ -32,9 +32,11 @@ async function bootstrap(){
       sb('GET','queries?select=id,q,shape,intent&in_scope=eq.true&limit=20')
     ]);
     return {protocol_version:5,workflow:'message_experiments',at:now(),unfinished:jobs,
-      capabilities:{can_draft_messages:true,reply_actions:['reply','chain','sibling'],timing:'server queue',defaults:{max_messages:6,max_depth:4},content_allocation:'20% suggestions per stage; context overrides recorded',automatic_tasks:['delivery','provider polling','URL persistence','Reddit visibility checks','seven-day monitoring'],agent_tasks:['parent selection','content action','drafting','humanizing with configured agent tool'],success:'fresh verification after seven days',approval:'automatic; no account selection or approval'},
+      capabilities:{can_draft_messages:true,reply_actions:['reply','chain','sibling'],timing:'server queue',defaults:{max_messages:6,max_depth:4},content_allocation:'20% suggestions per stage; context overrides recorded',automatic_tasks:['delivery','provider polling','URL persistence','Reddit visibility checks','seven-day monitoring'],agent_tasks:['parent selection','content action','drafting','editing for clarity (agent:self-edit by default)'],success:'fresh verification after seven days',approval:'automatic; no account selection or approval'},
       finder:{queries,register:'POST /api/agent/threads',queue:'POST /api/agent/threads/:id/queue {request_id, strategy?, max_messages?, max_depth?}'},
-      next:{claim:'POST /api/agent/jobs/claim {agent, kinds:["write","agent_task"]}',file:'POST /api/agent/messages/:id {agent,claim_token,reply_mode,content_action,action_override_reason?,body,rationale,draft_body?,humanization?}'},
+      library:{list:'GET /api/agent/library',collect:'POST /api/agent/library/collect',refresh:'POST /api/agent/library/:thread_id/refresh',queue:'POST /api/agent/library/:thread_id/queue',separate_from_writing_queue:true},
+      test_queue:{queue_lane:'test',claim_requires:'experiment_id',max_messages:1,max_depth:1,strategy:'direct',excluded_from_work_claims:true},
+      next:{claim:'POST /api/agent/jobs/claim {agent, kinds:["write","agent_task"], queue_lane?:"work"|"test", experiment_id?}',file:'POST /api/agent/messages/:id {agent,claim_token,reply_mode,content_action,action_override_reason?,body,rationale,draft_body?,humanization?}'},
       rules:['One due message per queue turn. A verified unbranded publication requeues with its URL; the scheduler owns timing.', 'The first follow-up is reply to the opening; later turns explicitly choose chain or sibling, then brand content.', 'A verified brand mention stops writing and enters seven-day monitoring. Success requires a fresh check at the end.','Use the opening brand condition supplied by the job. No automatic brand footer.','Follow subreddit requirements; do not invent personal experiences or endorsements.','No account management or manual publishing approval. Delivery is handled by the server.','Unknown delivery is not failure; never blindly resubmit.']};
   }
   const [accounts,jobs,redirects,recent,attempts,queries]=await Promise.all([
@@ -82,7 +84,10 @@ async function claim(body){
   const allowed=['write','draft_followup','agent_task'];
   const kinds=Array.isArray(body.kinds)?body.kinds.filter(k=>allowed.includes(k)):allowed;
   if(!kinds.length)problem(422,'No supported job kinds');
-  const jobs=await sb('POST','rpc/claim_jobs',{p_agent:agent,p_kinds:kinds,p_limit:Math.max(1,Math.min(Number(body.limit)||3,5))});
+  const lane=body.queue_lane||'work';if(!['work','test'].includes(lane))problem(422,'Use work or test queue_lane');
+  if(body.experiment_id&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(body.experiment_id))problem(422,'experiment_id must be a UUID');
+  if(lane==='test'&&!body.experiment_id)problem(422,'Test claims require the exact experiment_id');
+  const jobs=await sb('POST','rpc/claim_jobs_in_lane',{p_agent:agent,p_kinds:kinds,p_limit:Math.max(1,Math.min(Number(body.limit)||3,5)),p_lane:lane,p_experiment_id:body.experiment_id||null});
   const enriched=[];
   for(const j of jobs){try{enriched.push(await jobContext(j));}catch(e){enriched.push({...j,actionable:false,context_error:e.message,instructions:'Save progress or defer this job; its current context could not be loaded.'});}}
   return {protocol_version:await require('./_messages.js').enabled()?5:2,jobs:enriched,claimed:enriched.length,lease_minutes:30};

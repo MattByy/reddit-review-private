@@ -11,19 +11,21 @@ Base: https://site-phi-two-38.vercel.app/api/agent. Use the configured AGENT_API
 
 ## Scope and prerequisites
 
-Prepare relevant, openly affiliated contributions that follow community rules. The launcher supplies authorized facts, attribution requirements and the required style-editing tool. The current message API does not establish public disclosure for a pooled delivery identity. If adequate affiliation cannot be established, block with that concrete reason.
+Prepare relevant, openly affiliated contributions that follow community rules. The launcher supplies authorized facts, attribution requirements and optional external style-editor configuration. The current message API does not establish public disclosure for a pooled delivery identity. If adequate affiliation cannot be established, block with that concrete reason.
 
 Do not stage conversations between accounts as independent customers, invent experiences or agreement, conceal affiliation, or continue through another branch after removal. A literal brand=false value is not an exemption from disclosure. If a fixed unbranded opening conflicts with required attribution, skip the job rather than stripping it.
 
 ## Fresh invocation
 
-1. GET /bootstrap and GET /delivery, or run npm run pool:check. Require protocol_version=5, workflow=message_experiments, available=true, mode=pool and has_project=true. The check is read-only and does not prove a comment can publish. Use a unique agent label for this invocation.
-2. POST /jobs/claim with agent, kinds:["write"], limit:1. An empty result ends this invocation. Claim discovery work only when the launcher assigns that role.
+1. GET /bootstrap and GET /delivery, or run npm run pool:check. Require protocol_version=5, workflow=message_experiments, available=true, mode=pool, has_project=true, requested_mode=pool and pooled_only=true. The check is read-only and does not prove a comment can publish. Use a unique agent label for this invocation.
+2. POST /jobs/claim with agent, kinds:["write"], limit:1. Default claims use the work lane. A test must pass queue_lane:"test" and its exact experiment_id, so it cannot claim anyone else’s job. An empty result ends this invocation. Claim discovery work only when the launcher assigns that role.
 3. Read the checkpoint and complete enriched job: message, experiment, history, source_message, parent_options, context, decision_context and lease. Work only on an owned, unexpired, actionable job.
 4. Decide whether a useful permitted contribution exists. Choose an available parent option, then content action and brand relevance. Prepare only this message.
-5. Run the configured style editor; this worker requires it by default. Recheck meaning, facts, attribution, parent relevance and brand presence. Block if the required tool is absent; never invent tool provenance.
+5. Perform a separate clarity edit and record draft_body plus humanization:{tool:"agent:self-edit",meaning_preserved:true}. Recheck meaning, facts, attribution, parent relevance and brand presence. Use an external editor only if configured and record it honestly; its absence is not a default blocker.
 6. Save a checkpoint with selected parent ID/URL, short decision summary and exact filing fields. File POST /messages/:id as documented in the runbook.
 7. Verify the returned message. Filing queues delivery and completes the writing job atomically; do not send another completion. Continue within the run budget, then report filed/skipped/deferred/blocked IDs and reasons.
+
+For first-test setup or assigned discovery, read [thread-library.md](../../docs/thread-library.md). Select and refresh a relevant candidate through our API, then queue it in the appropriate lane. The hourly collector creates no writing jobs. No manual URL handoff is required when a suitable candidate is available.
 
 ## Decision rules
 

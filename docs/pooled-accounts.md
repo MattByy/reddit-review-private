@@ -46,7 +46,7 @@ ENGAIN_API_KEY=<the server's Engain API key>
 
 Keep the existing Supabase and cron settings. Explicit `pool` disables publishing through the private fallback. Do not choose `auto` for an intentionally pooled-only deployment: `auto` can use private delivery when no project is selected. If multiple projects exist, configure the intended one explicitly.
 
-This guide does not change deployed environment variables. A setting changed on the hosting platform needs a deployment that uses it. The current `/delivery` response reports the selected capability, not the configured `ENGAIN_DELIVERY` value, so the connection check cannot prove this setting is locked to pool.
+A changed hosting setting requires a new deployment. `GET /delivery` now returns `requested_mode` and `pooled_only`; the connection check requires `requested_mode: "pool"` and `pooled_only: true`, as well as an available pooled project. It fails if the server merely selected pool while configured as `auto`.
 
 ## Step 2: test locally without publishing
 
@@ -77,56 +77,55 @@ npm run pool:check
 [`scripts/pool-check.cjs`](../scripts/pool-check.cjs) loads `.env.local` if present, with exported variables taking precedence. It sends only:
 
 1. `GET /api/agent/bootstrap` — require protocol `5` and workflow `message_experiments`.
-2. `GET /api/agent/delivery` — require `available: true`, `mode: "pool"`, `has_project: true`.
+2. `GET /api/agent/delivery` — require `available: true`, `mode: "pool"`, `has_project: true`, `requested_mode: "pool"`, `pooled_only: true`.
 
 The output has `ok: true` and `posting_performed: false` on success. A failure exits with code 1 and a specific diagnostic. Do not treat any failed check as permission to switch to Accounts Beta. The script never displays keys or follows redirects with the credential.
 
-This check means **our API can currently identify a pooled delivery capability**. It does not verify a chosen Reddit thread, run a rule check, configure a humanizer, ensure a particular account identity, prove public visibility or change the server's delivery setting.
+This check means **our deployed API is locked to pooled delivery and can identify a pooled project**. It does not verify a chosen Reddit thread, run a rule check, perform the agent editing pass, ensure a particular account identity, prove public visibility or change the server's delivery setting.
+
+If an env file contains `[SENSITIVE]`, that is a redacted export, not a usable key. The checker rejects it before sending a request. A 401 with a real key means the runner must use the currently configured `AGENT_API_KEY` from its secret store. Never copy the Engain or operator key into that field.
 
 Do not substitute the older `scripts/engain-read-check.cjs`: it inspects Accounts Beta too and requires the server's Engain key. The pooled agent needs neither.
 
 ## Step 4: first live test — one message
 
-Use a designated permitted test thread and an isolated queue/workspace. The current claim API does not filter by experiment ID; a busy production queue can return someone else's earlier job. Do not bulk-claim unrelated work to reach a test item. If the queue is not isolated or no target has been designated, report that condition and finish after the read-only checks.
+The [thread library](thread-library.md) is the separate source of candidates. The agent may select a relevant permitted candidate there; the user does not need to supply a URL manually. Refresh and read the thread before queueing. If none can be verified or none permits a useful contribution, report the observed reason instead of filing arbitrary text.
 
-Use a useful, factual message with clear attribution in the body, for example a truthful “Posting on behalf of Geonode” introduction. Adequate in-message attribution does not require the worker to obtain a private-account profile. Do not assume a pooled username itself identifies Geonode, or invent a customer experience. Use the actual configured humanizer as required by the writing runbook.
+Use a useful, factual message with clear attribution in the body, for example a truthful “Posting on behalf of Geonode” introduction. Do not assume a pooled username itself identifies Geonode or invent a customer experience. The default polishing step is a separate agent editing pass, honestly recorded as `agent:self-edit`; an external service is optional unless the launcher explicitly requires one.
 
-For this first transport test, **one direct opening is enough**. It exercises the whole submit → task → URL → verification path without a planned conversation.
+All requests below use **our API**, relative to `AGENT_BASE_URL`, with the agent bearer credential and JSON bodies.
 
-All requests below use **our API**, relative to `AGENT_BASE_URL`, with `Authorization: Bearer <AGENT_API_KEY>` and JSON bodies. Replace placeholders with real designated values.
-
-1. `GET /bootstrap`, then `GET /delivery` (the connection-check command already performs these).
-2. If the designated thread is not registered, `POST /threads`:
-
-```json
-{
-  "id": "<Reddit thread ID>",
-  "url": "<canonical permitted thread URL>",
-  "title": "<actual thread title>",
-  "subreddit": "<actual subreddit>",
-  "discovery": {
-    "source": "designated-pooled-test",
-    "query": "",
-    "intent_evidence": "<why this factual contribution is relevant and permitted>"
-  }
-}
-```
-
-3. Generate and persist a stable request UUID, then `POST /threads/:thread_id/queue`:
+1. `GET /bootstrap`, then `GET /delivery` (the connection checker performs these).
+2. `GET /library` to find candidates. If needed, `POST /library/collect {}` refreshes Engain discovery without creating jobs. `POST /library/:thread_id/refresh {}` returns fresh context in `reddit_observation` and selection reasons. Read that context and current community rules; `selection.eligible` only proves basic filters.
+3. Generate and persist a stable request UUID, then `POST /library/:thread_id/queue`:
 
 ```json
 {
   "request_id": "<saved UUID>",
+  "queue_lane": "test",
   "strategy": "direct",
   "max_messages": 1,
   "max_depth": 1
 }
 ```
 
-Reuse the same UUID and parameters after a lost response. This creates one message to write; it does not post yet. Save the returned experiment ID.
+Queueing rechecks the candidate and creates one writing job. It does not send. Save the returned `experiment.id`; reuse identical parameters and UUID after a lost response. An explicitly supplied registered target can use `/threads/:thread_id/queue` with the same lane and limits.
 
-4. `POST /jobs/claim` with `{ "agent": "<unique run label>", "kinds": ["write"], "limit": 1 }`. Verify the job's experiment ID matches the designated test and `actionable` is true. If it differs, do not file against it; record the mismatch through the runbook's job deferral procedure and stop this test.
-5. Read the job, prepare the one attributed message, run the configured text tool, and checkpoint. Then `POST /messages/:message_id`:
+4. Claim exactly this test:
+
+```json
+{
+  "agent": "<unique run label>",
+  "kinds": ["write"],
+  "limit": 1,
+  "queue_lane": "test",
+  "experiment_id": "<returned experiment.id>"
+}
+```
+
+Send to `POST /jobs/claim`. The server requires an exact experiment ID for test claims. Normal claims default to `work` and cannot take test jobs; this test claim cannot take normal work or another test. Check `actionable` before drafting. The test shares delivery pacing with normal work and is a real send after filing, not a sandbox.
+
+5. Read the job, prepare the one attributed message, perform the clarity edit, and checkpoint. Then `POST /messages/:message_id`:
 
 ```json
 {
@@ -135,9 +134,9 @@ Reuse the same UUID and parameters after a lost response. This creates one messa
   "reply_mode": "opening",
   "content_action": "direct",
   "body": "<one relevant final message, clearly identifying the Geonode affiliation>",
-  "draft_body": "<exact source text passed to the actual configured tool>",
+  "draft_body": "<exact text before the editing pass>",
   "humanization": {
-    "tool": "<actual tool identifier>",
+    "tool": "agent:self-edit",
     "meaning_preserved": true
   },
   "rationale": "One attributed contribution for the designated pooled delivery test."
@@ -150,7 +149,7 @@ The runbook contains the full checkpoint request and validation rules. The serve
 
 ## Step 5: inspect evidence, do not repeat the send
 
-The writer can finish its invocation after successful filing. For test inspection, read `GET /messages/:message_id` or the dashboard. Scheduled server scripts, not an AI polling loop, observe progress.
+The writer can finish its invocation after successful filing. For test inspection, read `GET /messages/:message_id` or the dashboard’s **Isolated tests** filter. Test flows are excluded from normal experiment statistics. Scheduled server scripts, not an AI polling loop, observe progress.
 
 | Evidence | What it proves |
 | --- | --- |

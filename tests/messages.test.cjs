@@ -101,7 +101,7 @@ test('maximum depth exhausts; stopped and blocked work is excluded from success 
 });
 test('dashboard requires authentication; anonymous roles cannot mutate or read message tables',async t=>{
   const h=await setup(t);assert.equal((await h.call(h.messagesHandler,'/api/messages',undefined,'GET',null)).status,401);
-  const [priv]=await h.sql("select has_table_privilege('anon','experiment_messages','SELECT') readable,has_function_privilege('anon','start_message_experiment(text,text,uuid,integer,integer)','EXECUTE') callable");assert.equal(priv.readable,false);assert.equal(priv.callable,false);
+  const [priv]=await h.sql("select has_table_privilege('anon','experiment_messages','SELECT') readable,has_function_privilege('anon','start_message_experiment(text,text,uuid,integer,integer,text)','EXECUTE') callable");assert.equal(priv.readable,false);assert.equal(priv.callable,false);
   const response=await h.call(h.messagesHandler,'/api/messages',{action:'start',thread_url:'https://www.reddit.com/r/test/comments/new123/title/',request_id:randomUUID()},'POST','test-operator');assert.equal(response.status,200,JSON.stringify(response));assert.equal(response.body.thread_id,'new123');
   assert.equal((await h.call(h.messagesHandler,'/api/messages',{action:'start',thread_url:'https://example.com/evil',request_id:randomUUID()},'POST','test-operator')).status,422);
 });

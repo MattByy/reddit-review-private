@@ -10,6 +10,10 @@
   ],
   "crons": [
     {
+      "path": "/api/cron/collect",
+      "schedule": "17 * * * *"
+    },
+    {
       "path": "/api/cron/pullback",
       "schedule": "0 * * * *"
     },
@@ -19,6 +23,8 @@
     }
   ],
   "functions": {
+    "api/library.js": { "maxDuration": 60 },
+    "api/cron/collect.js": { "maxDuration": 60 },
     "api/messages.js": { "maxDuration": 60 },
     "api/agent/index.js": { "maxDuration": 60 },
     "api/agent/[...path].js": { "maxDuration": 60 },

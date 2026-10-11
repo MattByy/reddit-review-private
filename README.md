@@ -46,7 +46,7 @@ Each due job returns `decision_context`: limits and remaining messages, the five
 
 The Results tab compares suggested and chosen actions separately for openings, first replies and later replies. It shows sample counts, verified publications, pending work, removals and overrides. Published/written percentages include pending messages and are provisional; assignment shares are not success shares. Existing unlabeled text is not retroactively classified.
 
-Humanizing belongs to the writing agent: draft, call its configured humanizer, check meaning/facts/attribution/brand presence, then file final text. Optional `draft_body` and `humanization: {tool, meaning_preserved: true}` record agent-reported provenance. Brand presence must be preserved. No humanizer service is configured in this server; the agent needs its actual tool setup. Missing metadata is never represented as a successful tool run.
+Text polishing belongs to the writing agent: draft, perform a separate clarity edit, check meaning/facts/attribution/brand presence, then file final text. Record the default edit as `tool: "agent:self-edit"`; use an external editor only if configured. Optional `draft_body` and `humanization: {tool, meaning_preserved: true}` record agent-reported provenance. Brand presence must be preserved. No external humanizer is required by default. Missing metadata is never represented as a successful tool run.
 
 ## Delivery and API contract
 
@@ -103,4 +103,8 @@ Run `npm run simulate`, then open `reports/reddit-simulation/index.html`, or use
 
 Thirteen executable scenarios show fresh writer wake-ups, received context, example decisions and text, exact mocked Engain requests/responses, publication verification, branching, removal, limits, rate limiting, uncertain submission recovery, unreadable Reddit, private delivery, missing humanizer, lease recovery and balanced opening allocation. Each scenario runs the production handlers and migrations in a new local PGlite database. Provider/Reddit responses and writer/humanizer choices are fixtures; long intervals age local timestamps rather than waiting in real time. No live API, production database or real posting is used.
 
-The report preserves current limitations: Engain rule-check failures hold text without creating an automatic rewrite job; the humanizer needs configuration; unknown Reddit visibility cannot advance the queue. Passing replay assertions verify these behaviors, not that every scenario succeeds or that live delivery is working.
+The report preserves current limitations: Engain rule-check failures hold text without creating an automatic rewrite job; the missing-humanizer simulation represents an explicitly required external editor; unknown Reddit visibility cannot advance the queue. Passing replay assertions verify these behaviors, not that every scenario succeeds or that live delivery is working.
+
+## Thread discovery
+
+[Thread library](docs/thread-library.md) collects Engain opportunities hourly, stores freshness and engagement separately from writing jobs, and rechecks selected threads. Start the first live test with `queue_lane: "test"` and claim only its `experiment_id`. `/delivery` exposes the deployed pool lock; `npm run pool:check` verifies it. See [START_HERE.md](START_HERE.md) for a fresh agent. Migration 044 adds the library and isolated test lane.

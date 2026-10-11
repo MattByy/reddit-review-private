@@ -5,6 +5,7 @@ async function checkPool({env=process.env,fetchImpl=global.fetch}={}){
   const report={ok:false,posting_performed:false,checks:[]};
   const fail=(name,detail)=>{report.checks.push({name,ok:false,detail});return report;};
   if(!env.AGENT_API_KEY?.trim())return fail('agent_key','Set AGENT_API_KEY in the runner or ignored .env.local. No operator or Engain key is needed.');
+  if(/\[SENSITIVE\]|<.*>|REPLACE[_ -]?ME/i.test(env.AGENT_API_KEY))return fail('agent_key','AGENT_API_KEY is a placeholder, not a credential. Vercel secret downloads contain [SENSITIVE]; use the existing working agent secret from the runner secret store.');
   let base;
   try{base=new URL(env.AGENT_BASE_URL||DEFAULT_BASE);}catch{return fail('base_url','AGENT_BASE_URL must be a valid agent API URL.');}
   const local=['localhost','127.0.0.1','[::1]'].includes(base.hostname);
@@ -31,9 +32,11 @@ async function checkPool({env=process.env,fetchImpl=global.fetch}={}){
     return fail('pooled_delivery','Pooled delivery is not available. Configure server ENGAIN_DELIVERY=pool and an accessible ENGAIN_PROJECT_ID. Do not switch to Accounts Beta.');
   }
   report.checks.push({name:'pooled_delivery',ok:true,mode:'pool',has_project:true});
+  if(delivery.requested_mode!=='pool'||delivery.pooled_only!==true)return fail('pool_lock','The server has not confirmed ENGAIN_DELIVERY=pool. Deploy the current backend with that production setting.');
+  report.checks.push({name:'pool_lock',ok:true,requested_mode:'pool'});
   report.ok=true;
   report.scope='Current API connectivity and pooled capability only; no Reddit visibility, disclosure, rule check or publication was tested.';
-  report.configuration_note='Protocol 5 does not expose ENGAIN_DELIVERY. Set it to pool on the server to disable automatic private fallback; this probe does not verify that environment setting.';
+  report.configuration_note='The deployed server confirms ENGAIN_DELIVERY=pool; private fallback is disabled for new messages.';
   report.next='Read docs/pooled-accounts.md. Use the designated one-message test or an authorized queued writing job.';
   return report;
 }
