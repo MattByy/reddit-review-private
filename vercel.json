@@ -19,6 +19,7 @@
     }
   ],
   "functions": {
+    "api/messages.js": { "maxDuration": 60 },
     "api/agent/index.js": { "maxDuration": 60 },
     "api/agent/[...path].js": { "maxDuration": 60 },
     "api/dispatch.js": {

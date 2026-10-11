@@ -9,10 +9,10 @@ const { runQueue } = require("./_send.js");
 const {authorized}=require('./_operator-auth.js');
 
 module.exports = async function handler(req, res) {
-  const out = (status, obj) => { res.setHeader("Content-Type", "application/json"); res.setHeader("Cache-Control", "no-store"); res.setHeader("Access-Control-Allow-Origin", "*"); res.statusCode = status; res.end(JSON.stringify(obj, null, 2)); };
+  const out = (status, obj) => { res.setHeader("Content-Type", "application/json"); res.setHeader("Cache-Control", "no-store"); res.statusCode = status; res.end(JSON.stringify(obj, null, 2)); };
   if(req.method!=='POST')return out(405,{error:'POST required'});
-  if(!authorized(req))return out(401,{error:'Operator key required'});
   try {
+    if(!await authorized(req))return out(401,{error:'Sign in to manage this dashboard.'});
     const { status, body } = await runQueue("dispatch");
     return out(status, body);
   } catch (e) {

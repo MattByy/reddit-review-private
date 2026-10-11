@@ -8,12 +8,8 @@
  * back what the reviewer changed or rejected, and read where every thread
  * stands.
  *
- * What is deliberately NOT here, and must never be added to this file:
- *   - approve            only review_draft(), from the review page, by a human
- *   - clear to send      only the review page's send tab, by a human
- *   - post / upvote      only engain-post.py, run by a human holding the key
- * The agent files; a person decides; a script posts. Three roles, and this
- * door opens onto exactly the first one. AGENT-API.md documents the contract.
+ * The writer files and revises drafts. The automatic preparation and sender
+ * perform publication checks. Operator endpoints support optional edits and stops.
  *
  * Auth: `Authorization: Bearer <AGENT_API_KEY>`, compared in constant time.
  * Data: the Supabase service key, server-side only. It never reaches a browser
@@ -113,7 +109,7 @@ async function vendorCheck(body,kind,subreddit,title){
     if(!response.ok)return {unavailable:true,status:response.status,why:'Engain identity unavailable'};
     const me=await response.json();
     const pid=process.env.ENGAIN_PROJECT_ID||(me.projects||[]).find(p=>p.name==='geonode.com')?.id;
-    if(!pid)return {skipped:true,verdict:'skipped',removal_risk:null,violated_rules:[],summary:'Engain rule-check unavailable: this key has no project. Human review required.'};
+    if(!pid)return {skipped:true,verdict:'skipped',removal_risk:null,violated_rules:[],summary:'Engain rule-check unavailable: this key has no project. Automatic account, content and target checks still apply.'};
     return await vendorCheckOnce(body,kind,subreddit,title,pid);
   }catch(e){return {unavailable:true,status:0,why:String(e.message).slice(0,200)};}
 }
@@ -147,13 +143,18 @@ const HELP = {
   service: "Reddit GEO Ops · agent API",
   docs: "README.md and skills/reddit-agent/SKILL.md in this repo",
   auth: "Authorization: Bearer <AGENT_API_KEY>",
+  protocol_version: 5,
   routes: {
+    "GET  /api/agent/experiments": "message queue, observed outcomes and full-history strategy/depth statistics",
+    "GET  /api/agent/delivery": "available Engain delivery capability; no account setup required",
+    "GET  /api/agent/messages/:id": "one experiment message and its delivery/visibility evidence",
+    "POST /api/agent/messages/:id": "file this queue turn {agent,claim_token,reply_mode,content_action,action_override_reason?,body,rationale,draft_body?,humanization?}; atomically completes its writing job",
     "GET  /api/agent/bootstrap":           "start every agent session here: capabilities, unfinished work, recent outcomes, discovery queries and protocol",
     "POST /api/agent/jobs/claim":          "claim durable work {agent,limit}; returns a claim_token and fresh thread context",
     "POST /api/agent/jobs/:id/context":    "refresh a claimed job {agent,claim_token}",
     "POST /api/agent/jobs/:id/checkpoint": "save progress and renew the lease {agent,claim_token,checkpoint}",
     "POST /api/agent/threads/:id/context": "refresh thread context for discovery or draft revisions; optional {target_url}",
-    "POST /api/agent/threads/:id/queue":   "queue one initial answer {account_id,intent_evidence,brief?,experiment?}; deduplicated per thread",
+    "POST /api/agent/threads/:id/queue":   "start a message experiment {request_id: UUID, strategy?, max_messages?, max_depth?}; one active experiment per thread",
     "GET  /api/agent/outcomes":            "observed outcomes and exact supplied reasons; ?experiment=&group_by=topic|variant|subreddit",
     "GET  /api/agent/queries":              "the query map. ?q=term&shape=category|cost|blocked|alternative|unlimited&limit&offset",
     "GET  /api/agent/threads":              "threads worth commenting on. ?source=ranking|engain&subreddit=&status=&limit",
@@ -161,28 +162,28 @@ const HELP = {
     "POST /api/agent/threads":              "register a thread you found yourself {id,url,title,subreddit,score,num_comments}",
     "GET  /api/agent/drafts":               "drafts. ?status=pending|approved|edited|rejected|posted&kind=comment|reply|post&mode=comment|reply|sharpen&thread_id=&needs_agent=true&limit",
     "GET  /api/agent/drafts/:id":           "one draft with its revisions, rule checks and vendor task",
-    "POST /api/agent/drafts":               "file atomically {job_id,agent,claim_token,kind,body,thread_context}; standalone filing requires stable request_id",
+    "POST /api/agent/drafts":               "legacy compatibility for an experiment job; use POST /messages/:id",
     "PATCH /api/agent/drafts/:id":          "revise a pending draft: yours, or one the reviewer sent back (needs_agent). {body,models,sharpen,...} clears redirect_pending",
     "POST /api/agent/drafts/:id/withdraw":  "pull a pending draft {reason}",
     "POST /api/agent/check":                "dry-run the copy rules AND the vendor rule-check on a body {body,kind,subreddit,title}. would_file says whether the door would take it",
     "GET  /api/agent/lessons":              "what the reviewer changed, rejected and sent back (redirects), and why. Read before writing.",
-    "GET  /api/agent/our-comments":         "permalinks of comments WE published. A reply's parent must never be one of these.",
+    "GET  /api/agent/our-comments":         "permalinks of our published comments; playbook jobs supply the exact one their assigned account must reply to.",
     "GET  /api/agent/status":               "current items and publication evidence. ?bucket=posted|review|planned|rejected|ignored",
-    "GET  /api/agent/jobs/due":             "CLAIM what is due for you this hour. ?agent=<your name>&limit=5. Today that is draft_followup: a stranger replied to us, write the answer.",
+    "GET  /api/agent/jobs/due":             "CLAIM what is due for you this hour. ?agent=<your name>&limit=5. Includes playbook write steps and separate reader follow-ups.",
     "POST /api/agent/jobs/:id/complete":    "finish {agent,claim_token,status:done|skipped|failed|blocked,result}; blocked may carry retry_after_minutes",
-    "GET  /api/agent/playbooks":            "the disclosed playbooks you may start, with their acts and reply-watch schedule",
-    "GET  /api/agent/accounts":             "our Engain accounts. Only disclosed, active and usable accounts can post. Use the account's disclosure_line verbatim.",
+    "GET  /api/agent/playbooks":            "account-to-account playbooks; operators assign two accounts and start runs on Plan",
+    "GET  /api/agent/accounts":             "our Engain accounts. All accounts are enabled. Active accounts that the provider reports as usable can post. Use the account's disclosure_line verbatim.",
     "GET  /api/agent/plan":                 "the planner: jobs and acts, due and blocked, next 48h",
     "GET  /api/agent/queue":                "everything queued, grouped by hour. ?hours=48",
     "GET  /api/agent/sequences":            "the sequences people built on /sequences (ordered steps: write, approve, send, wait_live, wait, check_replies, answer_replies, agent_task)",
     "GET  /api/agent/sequence-runs":        "runs and where each one is. ?status=open",
     "POST /api/agent/jobs":                 "queue a task for later {request_id,title, due_at | delay_minutes, thread_id?, target_url?, account_id?, payload?}. It comes back from /jobs/due when due.",
-    "(drafts) send_after | delay_minutes":  "on POST /api/agent/drafts: queue the send. A human still approves it; the server sends it no earlier than that time.",
+    "(drafts) send_after | delay_minutes":  "on POST /api/agent/drafts: queue the send. Automatic checks still apply; the server sends it no earlier than that time.",
   },
-  not_here: "approve, clear-to-send, post, upvote and pull-back. Humans on /review; the server sends what they approve.",
-  disclosure: "every draft carries the account's disclosure_line, e.g. '(Geonode team here)'. A draft without it is refused. Never two of our accounts in one thread.",
-  door: `a draft is filed only if Engain's rule-check scores it at or under ${RISK_CEILING} of 100 and not 'fail'. Above that it is refused with the vendor's reason and an outcome event records the refusal. With no Engain project, scoring is explicitly skipped and human review is required.`,
-  modes: "comment = top-level answer. reply = answer under ONE real stranger's comment (parent_url, and send thread_context.parent so the reviewer sees it). sharpen = you ran a small model to simulate the sub's reaction and used it as PRIVATE context; put it in `sharpen`, never in the body. Never file both sides of a conversation.",
+  not_here: "approve, clear-to-send, post, upvote and pull-back. The server automatically checks and sends eligible drafts; optional edits and stops are on /review.",
+  disclosure: "every draft carries the account's disclosure_line, e.g. '(Geonode team here)'. A draft without it is refused. Playbooks assign different accounts to the opening comment and its reply.",
+  door: `a draft is filed only if Engain's rule-check scores it at or under ${RISK_CEILING} of 100 and not 'fail'. Above that it is refused with the vendor's reason and an outcome event records the refusal. With no Engain project, scoring is explicitly skipped; the remaining publication checks still apply.`,
+  modes: "comment = top-level answer. reply = answer under a specific comment, including the previous playbook account's comment (parent_url, and send thread_context.parent so the reviewer sees it). sharpen = you ran a small model to simulate the sub's reaction and used it as PRIVATE context; put it in `sharpen`, never in the body. For account-to-account conversations, file only the assigned playbook jobs; the engine resolves the published parent.",
 };
 
 async function getQueries(sp) {
@@ -358,7 +359,7 @@ async function postDraft(body) {
     }
   }
   const d = shapeDraft(body);
-  const account = body.account_id ? await disclosedAccount(body.account_id) : null;
+  const account = body.account_id ? await eligibleAccount(body.account_id) : null;
   let thread = null;
   if (d.thread_id) {
     const t = await sb("GET", `threads?select=id,archived,locked,subreddit&id=eq.${enc(d.thread_id)}`);
@@ -378,11 +379,10 @@ async function postDraft(body) {
       parent:observed.observation.target||null,thread:observed.observation.thread,
       experiment:workflow.experiment(body.thread_context?.experiment||forJob?.payload?.experiment)};
   }
-  // POST creates a new draft: it has no DB act association yet, so caller
-  // flags/ids cannot grant the scenario exemption. Existing linked acts use
-  // PATCH below, which proves act -> run -> spec -> exact dependency URL.
-  if (d.kind === "reply" && await isOurs(d.parent_url)) {
-    bad(422, "parent_url is one of OUR OWN published comments. A reply answers a real stranger, unless it is an existing DB-linked same-account scenario act (PATCH that draft; 02-RUNBOOK.md §0 rule 8). GET /api/agent/our-comments lists them.");
+  const play = await workflow.playbookContext(forJob?.id,body.account_id,d.parent_url);
+  if (play.playbook && !play.ready) bad(422,play.reason);
+  if (d.kind === "reply" && await isOurs(d.parent_url) && !play.self_reply) {
+    bad(422, "Replies to our comments require a playbook job assigning a different account to the preceding published comment.");
   }
   const verdict = check(d.body, { kind: d.kind, ...(account ? { disclosure_line: account.disclosure_line } : {}) });
   if (!verdict.ok) bad(422, "the draft breaks a hard rule. Fix and refile.", { verdict });
@@ -416,21 +416,23 @@ async function postDraft(body) {
   const saved=await sb('POST','rpc/file_agent_draft',{p_row:row,p_key:filingKey,p_job_id:forJob?.id||null,p_agent:String(body.agent||'agent-api'),p_token:body.claim_token||null});
   await recordCheck(saved.id, sub, vc, "filed through the door");
   await log("draft_filed", { draft: saved.id, kind: d.kind, thread: d.thread_id, subreddit: sub, words: verdict.words, removal_risk: vc.removal_risk, verdict: vc.verdict, job: forJob && forJob.id });
-  return { draft: saved, verdict, next: "A human reads it on /review. Poll GET /api/agent/drafts/" + saved.id + " or read /api/agent/lessons later." };
+  return { draft: saved, verdict, next: "Automatic checks queue eligible drafts for sending. Optional edits are on /review. Poll GET /api/agent/drafts/" + saved.id + " or read /api/agent/lessons later." };
 }
 
 async function patchDraft(id, body) {
   const cur = (await sb("GET", `drafts?select=${DRAFT_COLS}&id=eq.${enc(id)}`))[0];
   if (!cur) bad(404, `draft ${id} not found`);
-  if (cur.status !== "pending") bad(409, `draft is '${cur.status}': a human has already acted on it. File a new draft instead of rewriting history.`);
+  if (cur.status !== "pending") bad(409, `draft is '${cur.status}': it has already advanced beyond drafting. File a new draft instead of rewriting history.`);
   const context = await sb("POST", "rpc/scenario_context", { p_draft_id: id, p_parent_url: cur.parent_url || null });
+  const play = await workflow.playbookContext(cur.origin_job_id,body.account_id || cur.account_id,cur.parent_url);
+  if (play.playbook && !play.ready) bad(422,play.reason);
   // Existing pending scenario drafts are filed by roleplay.py, not this API.
   // Permit their revision only with a real DB association; caller flags do
   // not grant access to the scenario exemption or create a second draft.
   if (cur.source !== "agent_api" && !cur.redirect_pending && !context.scenario)
     bad(409, "this draft was not filed through the API. Only the reviewer edits it.");
   if (context.scenario && !context.allowed) bad(422, "scenario is disabled or uses multiple accounts in one thread");
-  if (cur.kind === "reply" && cur.parent_url && await isOurs(cur.parent_url) && !context.self_reply)
+  if (cur.kind === "reply" && cur.parent_url && await isOurs(cur.parent_url) && !context.self_reply && !play.self_reply)
     bad(422, "parent is ours but is not this act's sanctioned scenario dependency");
   const patch = optional(body, {});
   if(cur.thread_id && (body.body!==undefined||body.thread_context!==undefined)){
@@ -442,7 +444,7 @@ async function patchDraft(id, body) {
   }
   if (body.body !== undefined) {
     const acctId = body.account_id || cur.account_id;
-    const account = acctId ? await disclosedAccount(acctId) : null;
+    const account = acctId ? await eligibleAccount(acctId) : null;
     const verdict = check(String(body.body), { kind: cur.kind, ...(account ? { disclosure_line: account.disclosure_line } : {}) });
     if (!verdict.ok) bad(422, "the revision breaks a hard rule.", { verdict });
     const t = cur.thread_id ? await sb("GET", `threads?select=subreddit&id=eq.${enc(cur.thread_id)}`) : [];
@@ -455,7 +457,7 @@ async function patchDraft(id, body) {
     patch.body = String(body.body); patch.body_original = patch.body; patch._verdict = verdict;
     if (cur.redirect_pending) patch.redirect_pending = false;   // delivered: approval opens again
   }
-  if (cur.kind === "reply" && cur.redirect_pending && body.body !== undefined && cur.parent_url && await isOurs(cur.parent_url) && !context.self_reply) {
+  if (cur.kind === "reply" && cur.redirect_pending && body.body !== undefined && cur.parent_url && await isOurs(cur.parent_url) && !context.self_reply && !play.self_reply) {
     bad(422, "this draft's parent is one of our own comments. Do not deliver a body; withdraw it.");
   }
   if (cur.kind === "post" && body.title !== undefined) {
@@ -549,24 +551,24 @@ async function getQueue(sp) {
   return { hours, queue: byHour, count: rows.length };
 }
 
-async function disclosedAccount(id) {
+async function eligibleAccount(id) {
   const [a] = await sb("GET", `accounts?select=*&id=eq.${enc(id)}`);
   if (!a) bad(422, `account ${id} is not in the accounts table. GET /api/agent/accounts lists them.`);
   if (a.usable !== true) bad(422, "This account is not currently usable at Engain");
   if (!a.active) bad(422, `account ${a.label || id} is inactive`);
-  if (!a.disclosed) bad(422, `account ${a.label || id} is not marked disclosed. A human marks it on /plan once its profile says Geonode runs it.`);
+  if (!a.approved) bad(422, `account ${a.label || id} is disabled`);
   return a;
 }
 
 async function getAccounts() {
-  const rows = await sb("GET", "accounts?select=id,label,reddit_username,niche,lifecycle,usable,disclosed,disclosure_line,active&order=label.asc");
-  return { accounts: rows.map(a => ({ ...a, can_post: !!(a.disclosed && a.active && a.usable === true) })),
+  const rows = await sb("GET", "accounts?select=id,label,reddit_username,niche,lifecycle,usable,approved,disclosed,disclosure_line,active&order=label.asc");
+  return { accounts: rows.map(a => ({ ...a, can_post: !!(a.approved && a.active && a.usable === true) })),
            note: "only can_post accounts may be used. Put disclosure_line in every body, verbatim." };
 }
 
 async function getPlaybooks() {
-  return { playbooks: await sb("GET", "scenarios?select=slug,name,hypothesis,spec&enabled=eq.true&slug=like.d_*&order=slug.asc"),
-           note: "acts are written up front and approved as one run. watch entries are reply checks the server runs after an act publishes; a stranger's reply becomes a draft_followup job for you." };
+  return { playbooks: await sb("GET", "sequences?select=id,name,description,steps&enabled=eq.true&playbook=eq.true&order=name.asc"),
+    note: "Account A comments first; after verified publication and the configured delay, account B replies to that comment. Start runs on Plan, then claim each write job. Reader reply monitoring is separate." };
 }
 
 async function getJobsDue(sp) {
@@ -607,6 +609,12 @@ module.exports = async function handler(req, res) {
     else if (a === "threads" && !b && m === "GET")             out = await getThreads(sp);
     else if (a === "threads" && !b && m === "POST")            out = await postThread(await readBody(req));
     else if (a === "bootstrap" && !b && m === "GET")          out = await workflow.bootstrap();
+    else if (a === 'messages' && b && m === 'GET') out = {message:await require('./_messages.js').getMessage(b)};
+    else if (a === 'messages' && b && m === 'POST') out = {message:await require('./_messages.js').file(b,await readBody(req))};
+    else if (a === 'experiments' && !b && m === 'GET') out = await require('./_messages.js').rows();
+    else if (a === 'delivery' && !b && m === 'GET') {
+      const caps=await require('./_delivery.js').capabilities();out={available:caps.available,mode:caps.mode,has_project:!!caps.project_id,available_private_accounts:caps.accounts.length,reason:caps.reason};
+    }
     else if (a === "outcomes" && !b && m === "GET")           out = await workflow.outcomes(sp);
     else if (a === "threads" && b && c === "queue" && m === "POST") out = await workflow.queueThread(b,await readBody(req));
     else if (a === "threads" && b && c === "context" && m === "POST") out = await workflow.context(b,(await readBody(req)).target_url);
@@ -614,7 +622,11 @@ module.exports = async function handler(req, res) {
     else if (a === "drafts" && !b && m === "GET")              out = await getDrafts(sp);
     else if (a === "drafts" && !b && m === "POST") {
       const body=await readBody(req);
-      try{out=await postDraft(body);}catch(e){await workflow.recordRefusal(body,e).catch(()=>{});throw e;}
+      if(await require('./_messages.js').enabled()){
+        const [j]=body.job_id?await sb('GET','jobs?select=payload&id=eq.'+enc(body.job_id)):[];
+        if(!j?.payload?.message_id)bad(410,'Queue a message experiment, claim its job, and file through /messages/:id.');
+        out={message:await require('./_messages.js').file(j.payload.message_id,body)};
+      }else try{out=await postDraft(body);}catch(e){await workflow.recordRefusal(body,e).catch(()=>{});throw e;}
     }
     else if (a === "drafts" && b && !c && m === "GET")         out = await getDraft(b);
     else if (a === "drafts" && b && !c && m === "PATCH")       out = await patchDraft(b, await readBody(req));
@@ -628,7 +640,7 @@ module.exports = async function handler(req, res) {
       out = { verdict, ceiling: RISK_CEILING };
     }
     else if (a === "lessons" && !b && m === "GET")             out = await getLessons(sp);
-    else if (a === "our-comments" && !b && m === "GET")        out = { comments: await ourComments(), note: "never file a reply whose parent_url is one of these. Never two of our accounts in one exchange." };
+    else if (a === "our-comments" && !b && m === "GET")        out = { comments: await ourComments(), note: "Playbook write jobs assign another account to reply to the preceding verified comment. Use the job’s target_url." };
     else if (a === "status" && !b && m === "GET")              out = await getStatus(sp);
     else if (a === "jobs" && b === "due" && m === "GET")       out = await getJobsDue(sp);
     else if (a === "jobs" && b === "claim" && m === "POST")   out = await workflow.claim(await readBody(req));
@@ -649,7 +661,7 @@ module.exports = async function handler(req, res) {
     else if (a === 'runs' && !b && m === 'POST') bad(410,'Use thread registration, threads/:id/queue and leased jobs. Existing runs remain readable.');
     else if (a === "plan" && !b && m === "GET")                out = await getPlan(sp);
     else if (["approve", "clear", "send", "post", "publish", "upvote", "pullback", "cancel", "redirect"].includes(a) || ["approve", "clear", "pullback", "cancel", "redirect"].includes(c))
-      bad(403, "not through this door. Approving and clearing to send are human actions on /review; the server sends what they approve. No upvotes.");
+      bad(403, "not through this door. The server performs automatic checks and sends eligible drafts. No upvotes.");
     else bad(404, "no such route. GET /api/agent lists them.");
 
     send(res, 200, out);

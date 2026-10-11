@@ -7,21 +7,16 @@
    waiting on a human, never a vanity total. */
 
 const STEPS = [
-  ["queries.html", 1, "Queries", "Q"],
-  ["targets.html", 2, "Targets", "T"],
-  ["topics.html",  3, "Topics",  "TP"],
-  ["review.html",  4, "Review",  "R"],
-  ["sequences.html", 5, "Sequences", "SQ"],
-  ["plan.html",    6, "Plan",    "P"],
-  ["status.html",  7, "Status",  "S"],
-  ["audit.html",   8, "Audit",   "A"]
+  ["plan.html", 1, "Experiments", "P"],
+  ["targets.html", 2, "Threads", "T"],
+  ["queries.html", 3, "Discovery", "Q"]
 ];
 
 /* The funnel a thread walks through, in order. thread_activity.stage is the
    single source (supabase/migrations/007). Keep this list in the view's order. */
 const STAGES = [
-  ["draft_pending_review",       "draft",     "waiting for review"],
-  ["approved_not_cleared",       "approved",  "approved, not cleared to send"],
+  ["draft_pending_review",       "draft",     "being prepared"],
+  ["approved_not_cleared",       "approved",  "preparing to send"],
   ["cleared_not_sent",           "cleared",   "cleared, waiting for the poster"],
   ["waiting_on_engain",          "sent",      "sent to Engain, not published yet"],
   ["published_awaiting_upvotes", "published", "live on Reddit"],
@@ -43,14 +38,23 @@ function nav() {
     `<span class="n" aria-hidden="true">${n}</span><span>${l}</span><span class="c" data-count="${k}" hidden></span></a>`).join("");
   document.body.insertAdjacentHTML("afterbegin",
     `<header class="topbar"><div class="in">` +
-      `<a class="brand" href="index.html">Reddit GEO Ops</a>` +
+      `<a class="brand" href="index.html">Reddit experiments</a>` +
       `<nav class="steps" aria-label="Workflow">${steps}</nav>` +
-      `<a class="aux" href="history.html" ${is("history.html") ? 'aria-current="page"' : ""}>History</a>` +
+      `<a class="aux" href="history.html" ${is("history.html") ? 'aria-current="page"' : ""}>Archive</a>` +
+      `<button class="btn small" data-sign-out>Sign out</button>` +
     `</div></header>`);
+  document.querySelector('[data-sign-out]').addEventListener('click',async e=>{
+    const button=e.currentTarget;button.disabled=true;
+    try{
+      const response=await fetch('/api/session',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});
+      if(!response.ok)throw Error('Could not sign out. Try again.');
+      location.replace('/login');
+    }catch(err){button.disabled=false;button.textContent=err.message;}
+  });
   /* Inline favicon: one request fewer, and no 404 in every console. */
   document.head.insertAdjacentHTML("beforeend",
     '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%2317181a%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%277%27 fill=%27%23ffd815%27/%3E%3C/svg%3E">');
-  navCounts().catch(() => {});
+
 }
 
 /* Live step counts: only the numbers that mean "something is waiting". */
@@ -166,13 +170,13 @@ const STRATEGIES = [
    "A top-level answer to the post itself. Chosen when no comment in the thread scored high enough to be worth answering.",
    { needsParent: false }],
   ["reply", "reply", "info",
-   "An answer under one specific comment by a real stranger, picked by rank-comments.py. Gets read where a top-level comment in a busy thread would sink.",
+   "An answer under one specific comment. In a playbook, a different assigned account replies to the preceding published comment.",
    { needsParent: true }],
   ["sharpen", "sharpened", "info",
    "Not a strategy for posting. A small model simulates how this sub will react as PRIVATE context, then one real comment is filed. The simulation is never posted.",
    { needsParent: false }],
   ["scenario", "script segment", "info",
-   "One turn of a multi-turn script: the same account posts hours apart in sequence. Each segment can be reviewed separately; release requires approval of the entire narrative.",
+   "One step in a planned conversation. Assigned accounts comment in sequence after automatic checks.",
    { needsParent: false }]
 ];
 const STRATEGY = Object.fromEntries(
@@ -230,7 +234,7 @@ function stageLabel(stage) {
 const STAGE_WORDS_X = {
   send_failed: "send failed at Engain",
   removed: "removed after posting",
-  gate_refused: "approved, but the final check_draft.py run refused it. Edit or reject on Review",
+  gate_refused: "approved, but the final check_draft.py run refused it. Edit or stop on Drafts",
   pulled_back: "pulled back at Engain before it published"
 };
 function stageWords(stage) {

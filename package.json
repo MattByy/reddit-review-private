@@ -3,8 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "node checkrules.js && node checkpages.js && node --test tests/review-batch.test.js tests/workflow.test.cjs",
-    "simulate": "node simulation/run.cjs"
+    "test": "node checkrules.js && node checkpages.js && node --test tests/workflow.test.cjs tests/playbooks.test.cjs tests/automatic.test.cjs tests/session.test.cjs tests/messages.test.cjs tests/queued-decisions.test.cjs",
+    "simulate": "node simulation/run.cjs",
+    "simulate:queue": "node simulation/queue.cjs",
+    "simulate:check": "node simulation/check-report.cjs",
+    "simulate:preview": "node simulation/preview.cjs",
+    "test:browser": "node tests/plan-browser.cjs"
   },
-  "devDependencies": { "@electric-sql/pglite": "0.3.14" }
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.14"
+  }
 }

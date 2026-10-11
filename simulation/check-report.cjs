@@ -11,10 +11,24 @@ if(!playwright)throw Error('Set SIMULATION_PLAYWRIGHT_PATH to an installed playw
     page.on('pageerror',e=>errors.push(e.message));await page.route(/^https?:\/\//,r=>{network.push(r.request().url());return r.abort();});
     await page.goto(pathToFileURL(path.join(root,'index.html')).href);
     assert.equal(await page.locator('.case').count(),report.summary.cases);
-    await page.locator('#filter').fill('nested');assert.ok(await page.locator('.case:visible').count()>0);assert.ok(await page.locator('.case:visible').count()<report.summary.cases);
-    await page.locator('#filter').fill('');await page.screenshot({path:path.join(root,'desktop.png'),fullPage:true});
+    let events=0;
+    for(const [i,c] of report.cases.entries()){
+      await page.locator('[data-case="'+i+'"]').click();assert.equal(await page.locator('#title').textContent(),c.title);
+      for(const [j,event] of c.steps.entries()){
+        await page.locator('#steps').selectOption(String(j));assert.equal(await page.locator('#event-title').textContent(),event.title);
+        assert.equal(await page.locator('#traffic .call').count(),event.traffic.length);events++;
+      }
+      assert.equal(await page.locator('#next').isDisabled(),true);assert.equal(await page.locator('#checks li').count(),c.checks.length);
+      await page.locator('#restart').click();assert.equal(await page.locator('#previous').isDisabled(),true);
+      if(c.steps.length>1){await page.locator('#next').click();assert.equal(await page.locator('#steps').inputValue(),'1');await page.locator('#previous').click();assert.equal(await page.locator('#steps').inputValue(),'0');}
+    }
+    const branch=report.cases.findIndex(c=>c.id==='branch');await page.locator('[data-case="'+branch+'"]').click();await page.locator('#finish').click();
+    assert.equal(await page.locator('#tree .node').count(),4);assert.match(await page.locator('#tree').innerText(),/sibling → M1/);
+    await page.screenshot({path:path.join(root,'desktop.png'),fullPage:true});
+    const hash=new URL(page.url()).hash;await page.reload();assert.equal(new URL(page.url()).hash,hash);assert.equal(await page.locator('#tree .node').count(),4);
     await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-    await page.screenshot({path:path.join(root,'mobile.png'),fullPage:true});assert.deepEqual(errors,[]);assert.deepEqual(network,[]);
-    console.log(JSON.stringify({cases:report.summary.cases,filter:'passed',mobile_overflow:false,page_errors:0,external_requests:0}));
+    await page.locator('#payload-details summary').click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    await page.locator('#payload-details summary').click();await page.screenshot({path:path.join(root,'mobile.png'),fullPage:true});assert.deepEqual(errors,[]);assert.deepEqual(network,[]);
+    console.log(JSON.stringify({cases:report.summary.cases,events_checked:events,navigation:'passed',deep_link:'passed',mobile_overflow:false,page_errors:0,external_requests:0}));
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -76,7 +76,7 @@ async function dispatchOne(d, pid, log) {
   };
 
   // gate 0: re-read the row itself
-  const [cur] = await sb("GET", `drafts?select=status,send_cleared_at,redirect_pending,gate_failed_at,pullback_requested_at,body,parent_url,parent_confirmed_by,kind,account_id,send_after,sequence_hold,thread_context,thread_id,filing_key&id=eq.${enc(d.draft_id)}`);
+  const [cur] = await sb("GET", `drafts?select=status,send_cleared_at,redirect_pending,gate_failed_at,pullback_requested_at,body,parent_url,parent_confirmed_by,kind,account_id,send_after,sequence_hold,thread_context,thread_id,filing_key,origin_job_id&id=eq.${enc(d.draft_id)}`);
   if (!cur || cur.status !== "approved" || !cur.send_cleared_at || cur.redirect_pending || cur.gate_failed_at || cur.pullback_requested_at)
     return { ...head, outcome: "skipped", why: "state changed since the queue was read" };
   // 028: a queued draft waits for its slot, however early it was approved.
@@ -88,17 +88,20 @@ async function dispatchOne(d, pid, log) {
   if (context.scenario && !context.pace_ok) return { ...head, outcome: "deferred", why: "pace floor (45m global / 24h subreddit / 20 per UTC day)" };
   if (!context.ready) return { ...head, outcome: "skipped", why: "scenario disabled, not approved, or not due yet" };
 
-  // gate 1: a disclosed account, alone in this thread
+  // A playbook assigns its second account to the exact preceding comment.
+  const play = await workflow.playbookContext(cur.origin_job_id,cur.account_id,cur.parent_url);
+  if (play.playbook && !play.ready) return flag('playbook', [play.reason]);
+  // gate 1: an eligible account; cross-account replies follow a saved playbook.
   const acct = await accountFor(d.draft_id, cur.account_id);
   if (!acct.id) return flag("account", ["no account chosen. Pick a disclosed account for the run or draft."]);
   if (acct.missing) return flag("account", [`account ${acct.id} is not in the accounts table`]);
   if (!acct.active) return flag("account", [`${acct.label || acct.id} is inactive`]);
   if(acct.usable!==true)return {...head,outcome:'deferred',why:'Engain reports this account unavailable'};
-  if (!acct.disclosed) return flag("account", [`${acct.label || acct.id} is not marked disclosed. Mark it on /plan once its profile says Geonode runs it.`]);
+  if (!acct.approved) return flag("account", [`${acct.label || acct.id} is disabled`]);
   if (d.thread_id) {
     const others = await sb("GET", `engain_tasks?select=id,user_account_id,status&thread_id=eq.${enc(d.thread_id)}&user_account_id=not.is.null&user_account_id=neq.${enc(acct.id)}`);
     const live = others.filter(t => !DEAD.includes(String(t.status || "").toLowerCase()));
-    if (live.length) return flag("one account per thread", [`another of our accounts already posted here (task ${live[0].id})`]);
+    if (live.length && !play.self_reply) return flag("account assignment", [`another account already posted here; use an assigned playbook reply (task ${live[0].id})`]);
   }
 
   // gate 2: the rules, disclosure included, on the exact bytes
@@ -107,12 +110,12 @@ async function dispatchOne(d, pid, log) {
   const v = check(body, { kind, disclosure_line: acct.disclosure_line });
   if (!v.ok || forb.length) return flag("final rule check", [...v.fails, ...forb]);
 
-  // gate 3: a reply goes under a stranger the reviewer confirmed
+  // gate 3: the reviewer confirms the reply's intended parent.
   if (kind === "reply") {
     if (!cur.parent_url) return flag("reply", ["no parent_url"]);
     if (!cur.parent_confirmed_by && !context.self_reply) return { ...head, outcome: "skipped", why: "reply parent not confirmed by the reviewer" };
-    if (!context.self_reply && await sb("POST", "rpc/is_our_url", { p_url: cur.parent_url }))
-      return flag("stranger gate", ["parent is one of our own comments"]);
+    if (!context.self_reply && !play.self_reply && await sb("POST", "rpc/is_our_url", { p_url: cur.parent_url }))
+      return flag("reply target", ["parent is one of our comments without an assigned playbook reply"]);
   }
   if (kind === "post" && !(d.subreddit && d.title)) return flag("post", ["needs subreddit and title"]);
 
@@ -192,9 +195,12 @@ async function dispatchOne(d, pid, log) {
 
 /* Send what is approved and cleared, oldest first, at most MAX_PER_RUN. */
 async function runQueue(actor,deadline=Date.now()+45000) {
+  const messages=require('./_messages.js');
+  if(await messages.enabled())return {status:200,body:{ok:true,results:await messages.dispatch(deadline)}};
   const log = logger(actor);
   if (!SB_URL || !SB_KEY) return { status: 503, body: { error: "SUPABASE_URL / SUPABASE_SERVICE_KEY not configured" } };
   if (!ENG_KEY) return { status: 503, body: { error: "ENGAIN_API_KEY not configured on this project: nothing can be sent" } };
+  await require('./_automatic.js').prepareQueue(deadline);
   // Drafts queued for later (send_after in the future) are left for their slot.
   // and drafts a sequence is holding until its Send step (029).
   const queued = new Set([

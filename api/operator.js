@@ -1,13 +1,15 @@
 const {sb,engain,event}=require('./_db.js');
 const {authorized}=require('./_operator-auth.js');
 const RPC=new Set(['review_draft','redirect_draft','request_pullback','approve_draft_batch','review_script_segment',
-  'review_scenario_run','set_account_disclosed','save_sequence','start_sequence_run','cancel_sequence_run']);
+  'review_scenario_run','set_account_disclosed','save_sequence','start_sequence_run','start_playbook_run','cancel_sequence_run','update_queued_draft']);
 module.exports=async(req,res)=>{
   const out=(status,value)=>{res.statusCode=status;res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify(value));};
   if(req.method!=='POST')return out(405,{error:'POST required'});
-  if(!authorized(req))return out(401,{error:'Operator key required'});
   try{
+    if(!await authorized(req))return out(401,{error:'Sign in to manage this dashboard.'});
     const input=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
+    if(['start_playbook_run','start_sequence_run'].includes(input.rpc)&&await require('./_messages.js').enabled())
+      return out(410,{error:'Start a message experiment from the Experiments page.'});
     if(input.retry_job){
       if(!String(input.note||'').trim())return out(422,{error:'Explain why this job is safe to retry'});
       const id=encodeURIComponent(input.retry_job);
@@ -46,8 +48,12 @@ module.exports=async(req,res)=>{
       if(requested.parent_confirmed_by){patch.parent_confirmed_by='operator';patch.parent_confirmed_at=at;}
       if(requested.send_cleared_at){patch.send_cleared_at=at;patch.pullback_requested_at=null;}
       if(!Object.keys(patch).length)return out(422,{error:'Unsupported draft change'});
-      const [d]=await sb('GET',`drafts?select=status&id=eq.${input.draft_id}`);
+      const [d]=await sb('GET',`drafts?select=status,origin_job_id,parent_url&id=eq.${input.draft_id}`);
       if(!d||!['pending','edited','approved'].includes(d.status))return out(409,{error:'Draft is no longer editable'});
+      if(Object.hasOwn(patch,'account_id')){
+        const play=await require('./_workflow.js').playbookContext(d.origin_job_id,patch.account_id,d.parent_url);
+        if(play.playbook&&!play.ready)return out(409,{error:play.reason});
+      }
       if(patch.send_cleared_at&&d.status!=='approved')return out(409,{error:'Approve this draft before releasing it'});
       return out(200,await sb('PATCH',`drafts?id=eq.${input.draft_id}&status=eq.${d.status}`,patch,'return=representation'));
     }

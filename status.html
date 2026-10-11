@@ -17,12 +17,12 @@
 <div class="page-head">
   <div>
     <h1>Status</h1>
-    <p class="lede">Everything we wrote and what became of it: posted, planned, waiting for review, rejected or ignored. Each row says whether it is a comment, a reply, a post, a script step or a follow-up, and how many people replied on Reddit.</p>
+    <p class="lede">Everything we wrote and what became of it: posted, planned, being prepared, rejected or ignored. Each row says whether it is a comment, a reply, a post, a script step or a follow-up, and how many people replied on Reddit.</p>
   </div>
   <div class="tools">
     <select class="field" id="show" aria-label="Show">
       <option value="">Show: everything</option><option value="posted">Posted</option><option value="planned">Planned</option>
-      <option value="review">Needs review</option><option value="rejected">Rejected</option><option value="ignored">Ignored</option>
+      <option value="review">Preparing / held</option><option value="rejected">Rejected</option><option value="ignored">Ignored</option>
     </select>
     <select class="field" id="type" aria-label="Type">
       <option value="">Any type</option><option value="comment">Comments</option><option value="reply">Replies</option>
@@ -34,7 +34,7 @@
 <div class="strip" id="strip" role="group" aria-label="Filter by outcome">
   <div data-b="posted" role="button" tabindex="0"><div class="v" id="s-posted">…</div><div class="l">posted</div></div>
   <div data-b="planned" role="button" tabindex="0"><div class="v" id="s-planned">…</div><div class="l">planned</div></div>
-  <div data-b="review" role="button" tabindex="0"><div class="v" id="s-review">…</div><div class="l">needs review</div></div>
+  <div data-b="review" role="button" tabindex="0"><div class="v" id="s-review">…</div><div class="l">preparing / held</div></div>
   <div data-b="rejected" role="button" tabindex="0"><div class="v" id="s-rejected">…</div><div class="l">rejected</div></div>
   <div data-b="ignored" role="button" tabindex="0"><div class="v" id="s-ignored">…</div><div class="l">ignored or failed</div></div>
 </div>
@@ -47,7 +47,7 @@
 <script>
 (async () => {
   const $ = id => document.getElementById(id);
-  const BUCKET = { posted: ['ok', 'posted'], planned: ['info', 'planned'], review: ['warn', 'needs review'], rejected: ['bad', 'rejected'], ignored: ['', 'ignored'] };
+  const BUCKET = { posted: ['ok', 'posted'], planned: ['info', 'planned'], review: ['warn', 'preparing / held'], rejected: ['bad', 'rejected'], ignored: ['', 'ignored'] };
   const ORDER = { review: 0, planned: 1, posted: 2, rejected: 3, ignored: 4 };
   try {
     const rows = await sbAll('status_items', 'select=*&order=at.desc.nullslast');
@@ -93,7 +93,7 @@
               ${r.thread_url ? `<a href="${esc(r.thread_url)}" class="ext" target="_blank" rel="noopener">Thread</a>` : ''}
               ${r.parent_url && r.type !== 'comment' ? `<a href="${esc(r.parent_url)}" class="ext" target="_blank" rel="noopener">Comment we answer</a>` : ''}
               ${link ? `<a href="${link}">Open the script</a>` : ''}
-              ${r.bucket === 'review' ? '<a href="review">Go to Review</a>' : ''}
+              ${r.bucket === 'review' ? '<a href="review">Open Drafts</a>' : ''}
             </div>
           </div>
         </details>`;

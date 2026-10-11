@@ -9,7 +9,10 @@ const json=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'a
 function field(key){const [a,b]=key.split('->>');return ident(a)+(b?'->>'+quote(b):'');}
 function split(value){let depth=0,start=0,parts=[];for(let i=0;i<value.length;i++){if(value[i]==='(')depth++;if(value[i]===')')depth--;if(value[i]===','&&!depth){parts.push(value.slice(start,i));start=i+1;}}return [...parts,value.slice(start)];}
 function condition(key,value){
-  if(key==='or'||key==='and')return '('+split(value.slice(1,-1)).map(x=>{const p=x.indexOf('.');return condition(x.slice(0,p),x.slice(p+1));}).join(' '+key+' ')+')';
+  if(key==='or'||key==='and')return '('+split(value.slice(1,-1)).map(x=>{
+    const nested=x.match(/^(or|and)(\(.*\))$/);if(nested)return condition(nested[1],nested[2]);
+    const p=x.indexOf('.');return condition(x.slice(0,p),x.slice(p+1));
+  }).join(' '+key+' ')+')';
   if(value.startsWith('not.'))return 'NOT ('+condition(key,value.slice(4))+')';
   const dot=value.indexOf('.'),op=value.slice(0,dot),val=value.slice(dot+1),f=field(key);
   if(op==='is')return f+' IS '+(val==='null'?'NULL':val==='true'?'TRUE':'FALSE');
@@ -19,23 +22,28 @@ function condition(key,value){
 }
 class Harness{
   constructor(){this.db=new PGlite();this.vendor=[];this.reddit=new Map();this.vendorMode='normal';this.calls=[];this.project=false;this.ruleStatus=200;}
-  async init(){
+  async init(options={}){
     await this.db.exec(fs.readFileSync(path.join(__dirname,'fixtures/workflow-baseline.sql'),'utf8'));
     await this.db.exec(fs.readFileSync(path.join(__dirname,'fixtures/review-baseline.sql'),'utf8'));
-    for(const name of ['035-durable-workflow.sql','036-operator-review.sql','037-verified-status.sql'])await this.db.exec(fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8'));
-    // Legacy scenario policy is a separate pre-existing gate. Test ordinary queued work with no scenario association.
     await this.db.exec(`create function scenario_context(p_draft_id uuid,p_parent_url text default null) returns jsonb language sql as $$select '{"ready":true,"scenario":false,"self_reply":false}'::jsonb$$;
-      create function is_our_url(p_url text) returns boolean language sql as $$select exists(select 1 from engain_tasks where reddit_url=p_url)$$;
-      create view posting_queue as select d.id draft_id,d.*,t.url thread_url from drafts d left join threads t on t.id=d.thread_id
-        where d.status='approved' and d.gate_failed_at is null and d.pullback_requested_at is null and not exists(select 1 from engain_tasks e where e.draft_id=d.id);
-      grant select on accounts,threads,drafts,engain_tasks,sequence_runs,scenario_runs,scenario_acts to anon;
+      create function scenario_ready(p_draft_id uuid) returns boolean language sql as $$select true$$;
+      create function is_our_url(p_url text) returns boolean language sql as $$select exists(select 1 from engain_tasks where reddit_url=p_url)$$;`);
+    for(const name of ['035-durable-workflow.sql','036-operator-review.sql','037-verified-status.sql','038-account-playbooks.sql','039-automatic-publishing.sql','040-dashboard-sessions.sql','041-message-experiments.sql','042-queued-message-decisions.sql','043-message-decision-context.sql']){
+      if(name==='041-message-experiments.sql'&&options.beforeMessages)await options.beforeMessages(this);
+      if(name==='042-queued-message-decisions.sql'&&options.beforeQueueDecisions)await options.beforeQueueDecisions(this);
+      if(name==='043-message-decision-context.sql'&&options.beforeDecisionContext)await options.beforeDecisionContext(this);
+      await this.db.exec(fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8'));
+    }
+    await this.db.exec(`grant select on accounts,threads,drafts,engain_tasks,sequence_runs,scenario_runs,scenario_acts to anon;
       insert into accounts(id,label,reddit_username,active,usable,disclosed) values('test-account','Test account','geonode_test',true,true,true);
-      insert into queries(id,q,shape,intent) values('q1','proxy debugging','how','technical help');`);
+      insert into queries(id,q,shape,intent) values('q1','proxy debugging','how','technical help');
+      update workflow_state set value='{"automatic":false}' where key='publishing';
+      update workflow_state set value='{"enabled":false}' where key='message_workflow';`);
     Object.assign(process.env,{SUPABASE_URL:'https://db.test',SUPABASE_SERVICE_KEY:'test-service',ENGAIN_API_KEY:'test-vendor',AGENT_API_KEY:'test-agent',OPERATOR_API_KEY:'test-operator',CRON_SECRET:'test-cron'});
     for(const name of Object.keys(require.cache))if(name.startsWith(root+'/api/'))delete require.cache[name];
     this.originalFetch=global.fetch;global.fetch=this.fetch.bind(this);
     this.agent=require('../api/_agent.js');this.sender=require('../api/_send.js');this.monitor=require('../api/_monitor.js');this.workflow=require('../api/_workflow.js');
-    this.reader=require('../api/_reddit.js');this.engine=require('../api/_engine.js');this.operator=require('../api/operator.js');this.dispatch=require('../api/dispatch.js');
+    this.reader=require('../api/_reddit.js');this.engine=require('../api/_engine.js');this.operator=require('../api/operator.js');this.dispatch=require('../api/dispatch.js');this.session=require('../api/session.js');this.messages=require('../api/_messages.js');this.messagesHandler=require('../api/messages.js');
     return this;
   }
   async close(){global.fetch=this.originalFetch;await this.db.close();}
@@ -69,12 +77,13 @@ class Harness{
       }else if(method==='PATCH'){
         const keys=Object.keys(body),values=keys.map(k=>body[k]&&typeof body[k]==='object'&&!Array.isArray(body[k])?JSON.stringify(body[k]):body[k]);
         rows=await this.sql('UPDATE '+table+' SET '+keys.map((k,i)=>ident(k)+'=$'+(i+1)).join(',')+filter+' RETURNING *',values);
-      }else throw Error('Unsupported database method '+method);
+      }else if(method==='DELETE')rows=await this.sql('DELETE FROM '+table+filter+' RETURNING *');
+      else throw Error('Unsupported database method '+method);
       return json(rows);
     }catch(e){return new Response(JSON.stringify({message:e.message,code:e.code}),{status:400});}
   }
   async fetch(url,options={}){
-    const u=new URL(url);this.calls.push({url:String(url),method:options.method||'GET'});
+    const u=new URL(url);this.calls.push({url:String(url),method:options.method||'GET',body:options.body?JSON.parse(options.body):undefined});
     if(u.hostname==='db.test')return this.rest(u,options);
     if(u.hostname==='www.reddit.com'){
       const id=this.reader.identity(u.href.replace(/\.json(?=\?|$)/,'')),listing=this.reddit.get(id.thread_id);
@@ -83,19 +92,23 @@ class Harness{
     if(u.hostname!=='api.engain.io')throw Error('Network forbidden in tests: '+u.hostname);
     if(u.pathname==='/api/v1/me')return json({projects:this.project?[{id:'project-test',name:'geonode.com'}]:[]});
     if(u.pathname==='/api/v1/accounts-beta/accounts')return json({accounts:[{userAccountId:'test-account',profileUsername:'geonode_test',label:'Test account',usable:true}]});
-    if(u.pathname==='/api/v1/rule-check')return new Response(JSON.stringify({verdict:'pass',removalRisk:20}),{status:this.ruleStatus});
+    if(u.pathname==='/api/v1/rule-check')return new Response(JSON.stringify(this.ruleVerdict||{verdict:'pass',removalRisk:20}),{status:this.ruleStatus});
     if(u.pathname.endsWith('/cancel'))return json({status:'cancelled'});
+    if(u.pathname.startsWith('/api/v1/tasks/')&&(options.method||'GET')==='GET'){
+      const found=this.vendor.find(t=>t._id===u.pathname.split('/').pop());return new Response(JSON.stringify(found||{}),{status:found?200:404});
+    }
     const type=u.pathname.endsWith('/posts')?'post':'comment';
-    if((options.method||'GET')==='GET')return json({page:this.vendor.filter(v=>v.type===type),isDone:true});
-    const payload=JSON.parse(options.body),task={_id:'vendor-'+(this.vendor.length+1),status:'pending',type,...payload};
+    if((options.method||'GET')==='GET')return json({page:this.vendor.filter(v=>u.pathname==='/api/v1/tasks'||v.type===type),isDone:true});
+    const payload=JSON.parse(options.body),task={_id:'vendor-'+(this.vendor.length+1),status:u.pathname.startsWith('/api/v1/tasks/')?'in_review':'pending',type,creationDate:new Date().toISOString(),...payload,...(payload.url?{threadUrl:payload.url}:{})};
+    if(this.vendorMode==='rate-limit')return new Response(JSON.stringify({error:'Rate limited'}),{status:429});
     if(this.vendorMode==='reject')return new Response(JSON.stringify({error:'Not accepted'}),{status:422});
     this.vendor.push(task);
     if(this.vendorMode==='lost-response')throw Error('Connection lost after provider accepted');
     return json(task);
   }
-  async call(handler,url,body,method='POST',token='test-agent'){
-    let value;const res={statusCode:200,setHeader(){},end(raw){value=JSON.parse(raw);}};
-    await handler({url,method,body,headers:{authorization:token?'Bearer '+token:''}},res);return {status:res.statusCode,body:value};
+  async call(handler,url,body,method='POST',token='test-agent',headers={}){
+    let value;const responseHeaders={},res={statusCode:200,setHeader(k,v){responseHeaders[k.toLowerCase()]=v;},end(raw){value=JSON.parse(raw);}};
+    await handler({url,method,body,headers:{authorization:token?'Bearer '+token:'',...headers}},res);return {status:res.statusCode,body:value,headers:responseHeaders};
   }
   api(path,body,method=body===undefined?'GET':'POST'){return this.call(this.agent,'/api/agent'+path,body,method);}
   async thread(id='abc123',comments=[]){

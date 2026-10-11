@@ -7,12 +7,12 @@
  *
  * Step types (keep in step with sequence_steps_valid() and sequences.html):
  *   write          agent drafts {kind, brief}; the draft is HELD until a send step
- *   approve        a person approves that draft on /review
+ *   approve        automatic account, content and current-context checks
  *   send           releases the draft; done when Engain accepted it
- *   wait_live      done when Engain reports it live (a URL); fails if it failed
+ *   wait_live      done when the exact comment is verified live on Reddit
  *   wait           {minutes}
  *   check_replies  reads replies under our comment on Reddit (read-only)
- *   answer_replies one draft_followup job per new real reply; replies send on approval
+ *   answer_replies one draft_followup job per new real reply; replies pass automatic checks
  *   agent_task     {instruction} for the agent
  * Nothing here sends: the sender (_send.js) does, with all its gates.
  */
@@ -39,12 +39,24 @@ async function addJob(row) {
 const STEPS = {
   async write(run, i, s, ctx) {
     const key = `seq:${run.id}:${i}`;
-    if (ctx.enter) {
-      const target = s.kind === "reply" ? s.target_url : s.kind === "post" ? null : run.thread_url;
-      await addJob({ kind: "write", sequence_run_id: run.id, step: i, account_id: run.account_id, thread_id: run.thread_id,
+    const accountId = run.playbook ? s.account_id : run.account_id;
+    let target = s.kind === "reply" ? s.target_url : s.kind === "post" ? null : run.thread_url;
+    if (s.target === 'previous_comment') {
+      const taskId = lastOut(run, i, 'task_id');
+      const [parent] = taskId ? await sb('GET', `engain_tasks?select=status,visibility,reddit_url,user_account_id,cancel_requested_at&id=eq.${enc(taskId)}`) : [];
+      if (!parent || DEAD.includes(String(parent.status || '').toLowerCase()) || ['removed','deleted'].includes(parent.visibility) || parent.cancel_requested_at)
+        return { fail: 'The preceding comment is unavailable; the reply cannot proceed' };
+      if (parent.visibility !== 'visible' || !parent.reddit_url) return { note: 'Waiting for the preceding comment to be verified on Reddit' };
+      if (!run.playbook || parent.user_account_id === accountId) return { fail: 'The playbook reply must use a different account' };
+      target = parent.reddit_url;
+    }
+    // Idempotent creation also recovers a tick interrupted before saving state.
+    {
+      await addJob({ kind: "write", sequence_run_id: run.id, step: i, account_id: accountId, thread_id: run.thread_id,
         target_url: target, title: `Write a ${s.kind}${s.brief ? ": " + String(s.brief).slice(0, 120) : ""}`, created_by: "engine",
         dedupe_key: key, payload: { kind: s.kind, brief: s.brief || "", subreddit: s.subreddit || run.subreddit, title: s.title || null,
-          disclosure_line: ctx.account && ctx.account.disclosure_line, sequence: run.name, step: i + 1 } });
+          disclosure_line: ctx.accounts[accountId]?.disclosure_line, sequence: run.name, step: i + 1,
+          ...(run.playbook ? { playbook: true, role: s.role, ...(s.target === 'previous_comment' ? { our_comment_url: target } : {}) } : {}) } });
     }
     const j = await job(key);
     if (!j) return { note: "queueing the write job" };
@@ -56,6 +68,11 @@ const STEPS = {
   async approve(run, i) {
     const id = lastOut(run, i, "draft_id");
     if (!id) return { fail: "nothing to approve: no write step before this one" };
+    const automatic = require('./_automatic.js');
+    if (await automatic.enabled()) {
+      const prepared = await automatic.prepareDraft(id);
+      if (!prepared.ready) return { note: prepared.reason };
+    }
     const [d] = await sb("GET", `drafts?select=status,send_cleared_at,redirect_pending&id=eq.${enc(id)}`);
     if (!d) return { fail: "the draft is gone" };
     if (d.status === "rejected") return { fail: "the draft was rejected on Review" };
@@ -66,7 +83,7 @@ const STEPS = {
   async send(run, i, s, ctx) {
     const id = lastOut(run, i, "draft_id");
     if (!id) return { fail: "nothing to send: no write step before this one" };
-    if (ctx.enter) await sb("PATCH", `drafts?id=eq.${enc(id)}`, { sequence_hold: false }, "return=minimal");
+    await sb("PATCH", `drafts?id=eq.${enc(id)}`, { sequence_hold: false }, "return=minimal");
     const [t] = await sb("GET", `engain_tasks?select=id,status&draft_id=eq.${enc(id)}&limit=1`);
     if (t) return { done: true, out: { task_id: t.id } };
     const [attempt]=await sb('GET',`publication_attempts?select=state,reason&draft_id=eq.${enc(id)}`);
@@ -156,12 +173,12 @@ async function advance(run, ctx) {
 async function runEngine(deadline=Infinity) {
   const runs = await sb("GET", `sequence_runs?select=*&status=eq.open&next_at=lte.${enc(nowIso())}&order=next_at.asc&limit=25`);
   if (!runs.length) return { runs: 0 };
-  const ours = new Set((await sb("GET", "accounts?select=reddit_username&reddit_username=not.is.null")).map(a => a.reddit_username.toLowerCase()));
+  const ours = new Set((await sb("GET", "accounts?select=reddit_username&reddit_username=not.is.null")).map(a => a.reddit_username.trim().toLowerCase().replace(/^u\//,'')));
   const accounts = Object.fromEntries((await sb("GET", "accounts?select=id,disclosure_line")).map(a => [a.id, a]));
   const results = [];
   for (const run of runs) {
     if(Date.now()>=deadline)break;
-    try { results.push(await advance(run, { ours, account: accounts[run.account_id] })); }
+    try { results.push(await advance(run, { ours, accounts, account: accounts[run.account_id] })); }
     catch (e) { results.push({ run: run.id, error: String(e.message).slice(0, 200) }); }
   }
   return { runs: runs.length, results };

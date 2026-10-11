@@ -1,10 +1,13 @@
-/* The public read key cannot approve work. Keep the operator key in this tab only. */
+/* Browser writes use the same remembered session as dashboard sign-in. */
+try{sessionStorage.removeItem('operator-key');}catch{}
 window.operatorCall=async(path,body)=>{
-  let key=sessionStorage.getItem('operator-key');
-  if(!key){key=prompt('Operator API key (saved for this tab only):');if(!key)throw Error('Operator key required');sessionStorage.setItem('operator-key',key);}
-  const response=await fetch(path,{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  if(window.adminReady&&!await window.adminReady)throw Error('Sign in to continue.');
+  const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
   const result=await response.json();
-  if(response.status===401)sessionStorage.removeItem('operator-key');
+  if(response.status===401){
+    location.assign('/login?next='+encodeURIComponent(location.pathname+location.search+location.hash));
+    throw Error('Your session expired. Sign in again.');
+  }
   if(!response.ok)throw Error(result.error||result.message||response.status);
   return result;
 };

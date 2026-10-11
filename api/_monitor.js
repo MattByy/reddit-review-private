@@ -98,15 +98,15 @@ async function planReplies({replies,url,thread_id,account_id,our_body,sequence_r
   }
   return jobs;
 }
-async function verifyRecent(deadline=Infinity){
+async function verifyRecent(deadline=Infinity,followups=true){
   const cutoff=new Date(Date.now()-7*86400000).toISOString();
   const tasks=await sb('GET',`engain_tasks?select=*&project_id=eq.accounts-beta&reddit_url=not.is.null&status=not.in.(failed,cancelled,canceled,rejected,error,removed,deleted)&submitted_at=gte.${enc(cutoff)}&or=(next_check_at.is.null,next_check_at.lte.${enc(now())})&order=next_check_at.asc.nullsfirst&limit=5`);
-  const accounts=await sb('GET','accounts?select=id,reddit_username');const ours=new Set(accounts.map(a=>a.reddit_username?.toLowerCase()).filter(Boolean));
+  const accounts=await sb('GET','accounts?select=id,reddit_username');const ours=new Set(accounts.map(a=>a.reddit_username?.trim().toLowerCase().replace(/^u\//,'')).filter(Boolean));
   const results=[];
   for(const t of tasks){
     if(Date.now()>=deadline)break;
     if(DEAD.has(String(t.status).toLowerCase()))continue;
-    const observed=await conversation(t.reddit_url),expectedAuthor=accounts.find(a=>a.id===t.user_account_id)?.reddit_username?.toLowerCase();
+    const observed=await conversation(t.reddit_url),expectedAuthor=accounts.find(a=>a.id===t.user_account_id)?.reddit_username?.trim().toLowerCase().replace(/^u\//,'');
     let visibility=observed.visibility,reason=observed.reason||null;
     const [d]=t.draft_id?await sb('GET',`drafts?select=*&id=eq.${enc(t.draft_id)}`):[];
     if(observed.ok&&visibility==='visible'){
@@ -129,10 +129,10 @@ async function verifyRecent(deadline=Infinity){
       ...(visibility==='visible'?{verified_at:at,published_at:published,thread_id:threadId,reddit_comment_id:observed.target?.id||null,parent_fullname:observed.target?.parent_id||null,reply_depth:observed.target?.depth??null}: {})},'return=minimal');
     if(visibility==='visible'){
       if(t.draft_id)await sb('PATCH',`drafts?id=eq.${enc(t.draft_id)}&status=neq.rejected`,{status:'posted',posted_url:t.reddit_url,posted_at:published,engain_status:t.status,engain_seen_at:at},'return=minimal');
-      await sb('PATCH',`scenario_acts?task_id=eq.${enc(t.id)}&status=neq.rejected`,{status:'published',url:t.reddit_url,published_at:published},'return=minimal');
+      if(followups)await sb('PATCH',`scenario_acts?task_id=eq.${enc(t.id)}&status=neq.rejected`,{status:'published',url:t.reddit_url,published_at:published},'return=minimal');
       const parent=observed.target?.fullname||`t3_${threadId}`;
       const replies=observed.comments.filter(r=>r.parent_id===parent&&r.visibility==='visible'&&r.author&&r.author!=='[deleted]'&&r.author.toLowerCase()!=='automoderator'&&!ours.has(r.author.toLowerCase()));
-      if(!observed.thread.locked&&!observed.thread.archived&&!observed.thread.removed)await planReplies({replies,url:t.reddit_url,thread_id:threadId,account_id:t.user_account_id,our_body:t.content,experiment:experiment(d?.thread_context?.experiment)});
+      if(followups&&!observed.thread.locked&&!observed.thread.archived&&!observed.thread.removed)await planReplies({replies,url:t.reddit_url,thread_id:threadId,account_id:t.user_account_id,our_body:t.content,experiment:experiment(d?.thread_context?.experiment)});
     }else if(['removed','deleted'].includes(visibility)){
       if(t.draft_id)await sb('PATCH',`drafts?id=eq.${enc(t.draft_id)}&status=neq.rejected`,{status:'removed'},'return=minimal');
       await blockBranch(t.reddit_url,'The watched parent is '+visibility);
@@ -144,7 +144,7 @@ async function verifyRecent(deadline=Infinity){
 }
 async function checkJobs(deadline=Infinity){
   const actor='cron/tick',jobs=await sb('POST','rpc/claim_jobs',{p_agent:actor,p_kinds:['check_replies'],p_limit:3});
-  const ours=new Set((await sb('GET','accounts?select=reddit_username')).map(a=>a.reddit_username?.toLowerCase()).filter(Boolean));
+  const ours=new Set((await sb('GET','accounts?select=reddit_username')).map(a=>a.reddit_username?.trim().toLowerCase().replace(/^u\//,'')).filter(Boolean));
   const results=[];
   for(const j of jobs){
     const done=(status,result,retry)=>sb('POST','rpc/complete_job',{p_id:j.id,p_agent:actor,p_token:j.claim_token,p_status:status,p_result:result,p_retry_minutes:retry??null});

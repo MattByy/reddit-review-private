@@ -1,114 +1,99 @@
-# Geonode Reddit workflow
+# Geonode Reddit message experiments
 
-A durable queue for thread discovery, reviewed drafts, Engain submission and Reddit reply monitoring. Agents start each session from the database; conversation memory is not required. Participation uses attributed accounts, one account per thread, and answers real readers.
+Production: https://site-phi-two-38.vercel.app/plan
 
-Production site: https://site-phi-two-38.vercel.app/review
+## Documentation
 
-## Three schedules
+| Document | Purpose |
+| --- | --- |
+| [System reference](docs/message-system.md) | Architecture, queues, states, script ownership, delivery and implementation gaps |
+| [Daily agent runbook](docs/agent-runbook.md) | Fresh-start prompt, decision procedure, exact API fields, checkpoints and recovery |
+| [Tracking specification](docs/message-tracking.md) | Planned append-only history, complete failed paths, immediate publication goal and separate monitoring |
+| [Agent skill](skills/reddit-agent/SKILL.md) | Short entrypoint for each writing invocation |
+| [Engain contract](docs/engain-messages.md) | Provider payloads, statuses and source references |
 
-| Job | Schedule | Work |
-|---|---|---|
-| `/api/cron/tick` | Every 15 minutes | Sync accounts, reconcile submissions, poll comments **and posts**, verify Reddit visibility, queue reader replies, advance sequences, ensure a discovery job and submit approved work. |
-| External writing/finder agent | Hourly | Read bootstrap and lessons, revise returned drafts, claim jobs, find relevant threads or draft an answer, checkpoint and file/complete. |
-| `/api/cron/pullback` | Hourly | Request cancellation of withdrawn work; retain vendor confirmation or the unresolved result. |
+The operational overview below describes protocol 5 through migration 043. The new documentation distinguishes this implementation from the requested tracking changes: immediate publication success, append-only message events and complete failed-path reports are **not implemented yet**. Current `success_at` and success charts still use the seven-day criterion. The queue-allocation simulation is a proposal, and a daily AI runner must be configured separately.
 
-The two server schedules are in `vercel.json`. Configure the external agent with [the worker instructions](skills/reddit-agent/SKILL.md), its authorized search tool and `AGENT_API_KEY`. A database job does not itself run an LLM or provide a search subscription. No fourth cron is needed for thread discovery: `agent_task` jobs with `payload.task=find_threads` use the same worker.
+These worker instructions cover disclosed Geonode participation that follows community rules. Public attribution must be established before filing; the current message workflow does not provide a dedicated server disclosure gate for pooled delivery identities. Do not use multiple accounts to manufacture independent agreement or use removals to choose alternate promotional branches.
 
-## Agent API, protocol 2
+## Operational overview
 
-All calls use `Authorization: Bearer $AGENT_API_KEY`. `GET /api/agent` lists routes.
+The unit of work is a message. Queue a Reddit thread, choose an opening strategy (or balance automatically), and prepare only its next message. Account allocation belongs to delivery; the dashboard has no account picker, playbook builder, or approval step.
 
-| Call | Purpose |
-|---|---|
-| `GET /api/agent/bootstrap` | Eligible accounts, unfinished jobs, saved progress, returned drafts, recent outcomes, uncertain submissions and finder queries. |
-| `POST /api/agent/threads` | Register a canonical Reddit thread and its discovery evidence. |
-| `POST /api/agent/threads/:id/queue` | Queue one initial answer per thread. Requires `account_id` and `intent_evidence`; accepts `brief` and `experiment`. |
-| `POST /api/agent/jobs/claim` | `{agent, limit:3}` → leased jobs with tokens, current Reddit context, previous decisions, account and checkpoint. |
-| `POST /api/agent/jobs/:id/context` | `{agent, claim_token}` → refresh a claimed job. |
-| `POST /api/agent/jobs/:id/checkpoint` | `{agent, claim_token, checkpoint}` → persist progress and renew the 30-minute lease. |
-| `POST /api/agent/drafts` | `{job_id, agent, claim_token, kind, body, thread_context}` → file one draft **and finish its job in the same transaction**. |
-| `POST /api/agent/jobs/:id/complete` | `{agent, claim_token, status, result}` → finish research, skip, fail or block. `blocked` plus `retry_after_minutes` defers transient failures. |
-| `POST /api/agent/threads/:id/context` | `{target_url?}` → current context for discovery or revising a returned draft. |
-| `PATCH /api/agent/drafts/:id` | Revise pending work; replies include the current `thread_context.parent`. |
-| `GET /api/agent/outcomes?group_by=topic` | Latest outcomes within the returned event window, grouped by `topic`, `variant` or `subreddit`. Optional `experiment=<id>`. |
+## Queue sequence
 
-Example filing after a claim:
+1. Queue any number of threads. Each starts with exactly one opening message and one of five opening strategies. Only the direct strategy names Geonode in the opening.
+2. A writing worker claims a due message and reads fresh thread context. The dashboard also supports entering the current message directly.
+3. The server checks, reserves and submits the exact text to Engain, saves its task ID, then saves the Reddit URL returned on publication. Engain status and verified Reddit visibility are separate facts.
+4. A verified unbranded message returns to the writing queue with its ID, URL and next due time. No other future messages exist. The first follow-up must reply to the opening. After that, the worker explicitly selects **chain** (reply to the latest publication) or **sibling** (reply to that publication's parent), then decides whether to mention Geonode.
+5. A verified Geonode mention stops further writing and enters **monitoring**. A fresh visibility check at or after seven days from first verification, with no observed removal, confirms **success**. Missing checks stay unconfirmed.
+6. Removal stops the experiment and local pending work. New experiments default to 6 total messages and 4 levels. At the depth ceiling, only a sibling can continue; at the message ceiling, writing stops even without a brand mention. The scheduler handles due times and transient failures; `wait` is not a conversation action.
 
-```json
-{
-  "job_id": "<claimed job UUID>",
-  "agent": "reddit-worker/session-2026-10-06-12",
-  "claim_token": "<returned token>",
-  "kind": "reply",
-  "body": "<useful answer with the account's disclosure line>",
-  "thread_context": {
-    "parent": {"body": "<current reader comment>"}
-  }
-}
-```
+A message stores both its chronological posting number and tree depth, the publication that triggered its queue turn (`previous_message_id`), its chosen reply parent, reply mode, decision reason, provider task ID and Reddit permalink. A six-message test can form levels `1,2,2,3,3,4`. Shapes emerge from successive decisions; they are not scripted in advance.
 
-The job supplies the account, thread and reply target. Repeating the same filing returns the existing draft. A standalone draft instead requires a stable `request_id`; queueing a separate agent task also requires `request_id`. Do not invent a new key after a timeout.
+Success rates use completed tests (seven-day success, removal, or exhausted depth). Pending writing/monitoring, manually stopped, and delivery-blocked tests are excluded. The dashboard separates first verified brand mentions from seven-day successes, shows posting count and observed depth/parent sequences, and labels observational comparisons. Imported messages retain their wording and are excluded from trial statistics.
 
-Attach `experiment: {id, topic, variant}` when queueing a thread, or `thread_context.experiment` when filing a standalone draft. Follow-ups inherit the experiment tag and retain their own draft/task evidence. Outcome counts are operational observations, not a causal claim about which wording or topic made Reddit remove something. If Engain supplies no reason, the report says so.
+Writers follow community rules and required attribution. Do not fabricate personal experience, independent customers or endorsements. Risk scores and observed removals do not establish why content was removed. Intermittent checks establish observed visibility, not proof of uninterrupted availability.
 
-Legacy agent `POST /runs` and `POST /sequences/:id/runs` return `410`: they created runs without a durable retry key. Existing runs remain readable; operators can still start sequences on `/sequences`. The normal worker path uses the job queue.
+## Agent decision context
 
-## Recovery and evidence
+Each due job returns `decision_context`: limits and remaining messages, the five content actions with 20% targets, a persisted balanced suggestion, assignment counts per stage, brand constraints, current parent options and considerations. The worker uses this alongside its own prompt. Opening strategies remain fixed; first and later replies receive least-assigned suggestions with random tie-breaking. The agent selects chain/sibling for relevance, chooses its content action, and records a reason when overriding the suggestion. Follow-up brand relevance is independent of those choices. No future conversation is generated.
 
-- Claims expire after 30 minutes. A new session receives a new token and the saved checkpoint; the old token cannot file, renew or finish the job. Five exhausted attempts block for operator review.
-- A publication reservation is committed **before** calling Engain. Concurrent senders cannot create a second attempt. Global, subreddit and daily pacing apply to all sends.
-- Lost provider responses become `unknown`, visible in bootstrap. They never automatically resubmit. A known task ID can be reconciled without another vendor write.
-- Vendor task status and Reddit `visibility` are separate. A URL alone is not publication. Verification compares thread, parent, author and approved body; 403, missing context or mismatched content means unknown.
-- Reply depth is an integer separate from status: top-level comment `0`, its reply `1`, the next reply `2`. Partial Reddit trees may have unknown depth. `parent_fullname` identifies the actual parent.
-- Monitor and sequence reply discovery share `followup:<Reddit comment ID>` deduplication. An edited reader comment invalidates the old claim or approval. A removed/cancelled parent blocks descendants and requests cancellation of unpublished dependent tasks.
-- Definitive vendor refusal remains failed. Rewrite and review a new draft only after confirming the original was not accepted. Uncertain submissions remain held until reconciled.
-- Monitoring is bounded: two vendor pages per endpoint per tick, the latest 1,000 local tasks, five due Reddit verifications per tick, and seven days of ongoing verification. These are explicit MVP limits, not complete Reddit history. Reddit's returned comment tree is also partial.
+The Results tab compares suggested and chosen actions separately for openings, first replies and later replies. It shows sample counts, verified publications, pending work, removals and overrides. Published/written percentages include pending messages and are provisional; assignment shares are not success shares. Existing unlabeled text is not retroactively classified.
 
-## Operator controls
+Humanizing belongs to the writing agent: draft, call its configured humanizer, check meaning/facts/attribution/brand presence, then file final text. Optional `draft_body` and `humanization: {tool, meaning_preserved: true}` record agent-reported provenance. Brand presence must be preserved. No humanizer service is configured in this server; the agent needs its actual tool setup. Missing metadata is never represented as a successful tool run.
 
-The browser uses the public Supabase key for reads. Mutations go through `/api/operator` with a separate `OPERATOR_API_KEY`, entered once per browser tab. The agent key cannot approve or dispatch. `/api/dispatch` also requires the operator key. The visual page passcode is not an authorization boundary.
+## Delivery and API contract
 
-Manual recovery calls, with the operator key:
+See [the Engain contract notes](docs/engain-messages.md), checked against the official OpenAPI on 2026-10-11. `ENGAIN_DELIVERY=auto` uses a configured/accessible project for pooled tasks, or the existing private-account integration when there is no project. Provider account availability is checked automatically; old account approval flags do not govern new messages.
 
-```json
-{"reconcile_attempt":"<attempt UUID>","task_id":"<confirmed Engain task ID>"}
-```
+Delivery preserves existing pacing: 45 minutes overall, 24 hours per subreddit, 20 per UTC day. One database reservation prevents concurrent senders and browser edits from duplicating a task. A definite HTTP 429 schedules a retry. A timeout or ambiguous response is reconciled against provider tasks before proceeding and never blindly resubmitted. If no unique task can be identified, its state remains `unknown`.
 
-The server looks up the vendor task and compares its account, body and target before attaching it. A task absent from the inspected pages stays unresolved.
+Stopping an experiment stops its local queue immediately. Engain restricts cancellation of already submitted tasks (including its 24-hour eligibility window and work already started); the queue reports whether cancellation was accepted. Stopping cannot guarantee removal of a message already being posted.
 
-```json
-{"retry_job":"<blocked or failed job UUID>","note":"<what was fixed>"}
-```
+## Workers and endpoints
 
-Retry only applies to jobs without a filed draft. Existing drafts go through revision/review.
+The server clock observes outcomes and delivers queued text every 15 minutes. It does **not** generate prose by itself. A writing agent uses [skills/reddit-agent/SKILL.md](skills/reddit-agent/SKILL.md), or a signed-in user writes the current message in the queue. Existing scheduled worker sessions must read the updated protocol-5 bootstrap/skill.
 
-Pages: `/review` approves work; `/plan` shows jobs, runs and account eligibility; `/status` distinguishes verified publication from vendor reports; `/sequences` remains the optional workflow editor.
+Agents use `Authorization: Bearer $AGENT_API_KEY`:
 
-## Configuration and rollout
+- `GET /api/agent/bootstrap`: workflow version, unfinished work, discovery queries, instructions.
+- `POST /api/agent/jobs/claim {agent,kinds:["write","agent_task"],limit:3}`: claim durable work and fresh context.
+- `POST /api/agent/threads`: register a discovered thread.
+- `POST /api/agent/threads/:id/queue {request_id,strategy?,max_messages?,max_depth?}`: start an experiment with a stable UUID; retrying returns the same experiment.
+- `POST /api/agent/messages/:id {agent,claim_token,reply_mode,content_action,action_override_reason?,body,rationale,draft_body?,humanization?}`: file the current message and complete its job atomically. The initial brand condition is enforced.
+- `POST /api/agent/jobs/:id/context`, `/checkpoint`, `/complete`: refresh context, preserve work, defer or skip with a reason. Lease tokens fence stale workers.
+- `GET /api/agent/experiments`: queue and full-history strategy/depth results.
+- `GET /api/agent/delivery`: read-only provider capability check.
 
-Server environment: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ENGAIN_API_KEY`, `AGENT_API_KEY`, `OPERATOR_API_KEY`, `CRON_SECRET`. Browser build environment: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Secrets never belong in committed files. Keep the operator and agent keys distinct.
+The dashboard uses `GET /api/messages` and session-authenticated `POST /api/messages` with `action=start|edit|stop`. It has no operator-key prompt. Sign in once with the dashboard password; an opaque Secure/HttpOnly/SameSite=Strict cookie lasts 30 days. Mutations require same-origin requests. Operator bearer authentication remains available to existing automation, but is not needed by dashboard users.
 
-This change needs migrations **035, 036 and 037**, in order, on the existing schema through 034. It changes worker completion and approval authorization. Pause old workers and server schedules for the coordinated rollout, set the operator key, apply migrations, deploy the matching API/UI, install protocol-2 worker instructions, then resume schedules. Do not run an old worker against the new completion RPC. Existing drafts and vendor tasks are preserved. Never roll back only the code after changing these RPCs.
+Legacy records remain in Archive. Legacy account/playbook routes cannot start new runs when message workflow is enabled; old submission and reader-followup engines are bypassed. Already submitted legacy tasks continue to be monitored without generating new reply jobs.
 
-Before live publication, choose an account whose attribution is true and verify it on Plan → Accounts. Use a controlled or moderator-approved test destination. The inspected live environment on 2026-10-06 had no eligible attributed account and no Engain scoring project. Skipped scoring is displayed explicitly for human review. No production migrations or public test posts were performed by the local regression suite.
+## Migrations and deployment
 
-## Verification
+Apply migrations in order through **043-message-decision-context.sql** to project **wtdmwwiwnphqmkisfyrm** before deploying this version. Migration 040 provides dashboard password sessions; 041 creates message experiments, imports the latest eligible unsent standalone comment per thread without rewriting it, holds messages already needing correction, retires unfinished legacy writing jobs/runs, and enables the new engine. Older drafts and preplanned scenario messages remain in the archive. Migration 042 adds publication-triggered queue turns, explicit chain/sibling parent selection, due-time scheduling and seven-day confirmation. Existing immediate successes enter monitoring and require a fresh final check; existing bodies, provider IDs and parent links are preserved. Migration 043 adds configurable depth limits, balanced per-turn content suggestions, decision context, action metrics and text provenance; it preserves existing copy and message limits.
+
+The new tables, results views, and mutation functions are service-role only. Browser reads go through the authenticated messages API. Never apply this migration to a different connected Supabase project.
+
+Required server environment: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_ANON_KEY` (build), `ENGAIN_API_KEY`, `AGENT_API_KEY`, `CRON_SECRET`. Optional delivery configuration: `ENGAIN_PROJECT_ID`, `ENGAIN_DELIVERY=auto|pool|private`, `ENGAIN_PRIVATE_ACCOUNT_ID`. Keep service/provider keys on the server. Existing dashboard passwords and sessions survive this migration.
+
+Validate locally:
 
 ```sh
-npm ci --ignore-scripts
 npm test
-npm run simulate
-node simulation/preview.cjs
+npm run test:browser
+node build.js
 ```
 
-The simulator runs the current handlers and PostgreSQL migrations against PGlite, with invented vendor/Reddit responses and no network fallback. The report is `reports/reddit-simulation/index.html` and is served at `http://127.0.0.1:4186`. PGlite checks SQL/transactions but does not replace production multi-connection load testing. It does not test autonomous LLM judgment or live moderation.
+The browser test needs local Chrome and `playwright-core` (or `SIMULATION_PLAYWRIGHT_PATH`). Tests use real migrations and handlers with local PGlite and simulated provider/Reddit responses; they never publish to Reddit. Production deployment uses `vercel deploy --prod --yes --scope geonodebot` after the correct database migration.
 
-`node simulation/check-report.cjs` checks the report in Chrome (requires an installed `playwright-core`). `node tests/review-browser.cjs` checks the actual review UI with intercepted I/O and the same Chrome dependency.
+## Interactive simulation
 
-For a separate **read-only** live Engain contract check:
+For the simple queue view, run `npm run simulate:queue` and open `reports/reddit-simulation/queue.html`. It shows 50 fictional threads, publication outcomes, returning reply/branch decisions and immediate brand badges. Its adaptive allocation of new threads and follow-ups is an illustrative scheduling proposal, not a change to the deployed claim scheduler.
 
-```sh
-node scripts/engain-read-check.cjs /path/to/private/engain.env
-```
+Run `npm run simulate`, then open `reports/reddit-simulation/index.html`, or use `npm run simulate:preview` at `http://127.0.0.1:4186`. `npm run simulate:check` checks the report in Chrome. The standalone report embeds its evidence and needs no API connection.
 
-This reads `.env.local` and the supplied private environment file, issues four GET requests, and prints statuses/schema summaries without API keys or comment text.
+Thirteen executable scenarios show fresh writer wake-ups, received context, example decisions and text, exact mocked Engain requests/responses, publication verification, branching, removal, limits, rate limiting, uncertain submission recovery, unreadable Reddit, private delivery, missing humanizer, lease recovery and balanced opening allocation. Each scenario runs the production handlers and migrations in a new local PGlite database. Provider/Reddit responses and writer/humanizer choices are fixtures; long intervals age local timestamps rather than waiting in real time. No live API, production database or real posting is used.
+
+The report preserves current limitations: Engain rule-check failures hold text without creating an automatic rewrite job; the humanizer needs configuration; unknown Reddit visibility cannot advance the queue. Passing replay assertions verify these behaviors, not that every scenario succeeds or that live delivery is working.

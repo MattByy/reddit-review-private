@@ -5,7 +5,7 @@
  * 1. Writes assets/config.js from environment variables so the anon key is
  *    never committed to git. Fails the build loudly if the env is missing — a
  *    site that silently renders zero rows is worse than one that doesn't deploy.
- * 2. Injects the passcode gate into every page. Doing it here rather than by
+ * 2. Injects the session check into every dashboard page. Doing it here rather than by
  *    hand means a NEW page cannot be added ungated by someone who forgot the
  *    script tag — the build is the enforcement.
  */
@@ -32,12 +32,8 @@ console.log("wrote assets/config.js for", url);
 // ── gate every page ────────────────────────────────────────────────────────
 // The gate must load BEFORE config.js and app.js so nothing renders behind it.
 //
-// UNGATED is a deliberate list, not an oversight. review.html is the page
-// Swello opens from a phone to approve or reject a comment, and the founders'
-// call (2026-09-03) is that nothing — no gate, no login — stands between the
-// link and that decision. The gate never protected data anyway: the anon key
-// ships in config.js, and migration 008 lets that key read and review drafts.
-const UNGATED = new Set(["review.html"]);
+// The sign-in page must remain accessible without a session.
+const UNGATED = new Set(["login.html"]);
 const GATE = '<script src="assets/gate.js"></script>';
 let gated = 0, already = 0, skipped = 0;
 for (const f of fs.readdirSync(".").filter(f => f.endsWith(".html"))) {
@@ -58,4 +54,4 @@ for (const f of fs.readdirSync(".").filter(f => f.endsWith(".html"))) {
   fs.writeFileSync(f, src.replace('<script src="assets/config.js"></script>', GATE + '\n' + '<script src="assets/config.js"></script>'));
   gated++;
 }
-console.log(`passcode gate: ${gated} injected, ${already} already had it, ${skipped} deliberately ungated`);
+console.log(`session check: ${gated} injected, ${already} already had it, ${skipped} sign-in page`);

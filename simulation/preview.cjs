@@ -5,6 +5,8 @@ const path=require('node:path');
 const root=path.resolve(__dirname,'../reports/reddit-simulation');
 const port=Number(process.env.SIMULATION_PORT||4186);
 const files={'/':['index.html','text/html; charset=utf-8'],'/index.html':['index.html','text/html; charset=utf-8'],'/results.json':['results.json','application/json; charset=utf-8']};
+files['/queue.html']=['queue.html','text/html; charset=utf-8'];
+files['/queue.json']=['queue.json','application/json; charset=utf-8'];
 const server=http.createServer((req,res)=>{
   if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{Allow:'GET, HEAD'});res.end();return;}
   const file=files[new URL(req.url,'http://localhost').pathname];

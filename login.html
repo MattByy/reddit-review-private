@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>Sign in · Reddit GEO Ops</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  body{min-height:100vh;display:grid;place-items:center;padding:24px}main{width:100%;max-width:420px;margin:0;padding:0}.login-card{padding:30px;background:var(--surface);border:1px solid var(--line);border-radius:12px}.login-card h1{font-size:24px;margin:18px 0 8px}.login-card p{color:var(--muted);font-size:14px;line-height:1.6}.login-card label{display:block;font-size:14px;margin:18px 0 7px}.login-card .field{width:100%}.login-card .btn{width:100%;margin-top:22px}.login-card .error{min-height:24px;color:var(--bad);font-size:13px;margin-top:12px}.login-card .remember{font-size:12px;margin-bottom:0}.login-card .brand{font-size:13px}
+</style><script src="assets/login.js" defer></script></head><body><main><div class="login-card">
+<span class="brand">Reddit GEO Ops</span><h1 id="heading">Sign in</h1><p id="description">Use your dashboard password. You’ll stay signed in on this browser for 30 days.</p>
+<form id="login-form"><input name="username" value="admin" autocomplete="username" hidden>
+<label for="password">Password</label><input class="field" id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required autofocus>
+<div id="confirm-field" hidden><label for="confirm">Confirm password</label><input class="field" id="confirm" name="confirm" type="password" autocomplete="new-password" maxlength="256"></div>
+<button class="btn primary" id="submit">Sign in</button><div class="error" id="error" role="status" aria-live="polite"></div>
+</form><p class="remember">Sign out when you’re finished on a shared device.</p>
+</div></main></body></html>

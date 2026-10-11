@@ -1,18 +1,5 @@
-/* api/cron/tick.js — the planner's clock, every 15 minutes (vercel.json).
- *
- * Replaces the laptop loop (scenario-dispatch.py poll + link). Each pass:
- *   1. accounts: sync the Engain accounts-beta roster into `accounts`. Never
- *      touches `disclosed`, which only a human sets on /plan.
- *   2. poll: read what Engain published, failed or cancelled, and write it on
- *      engain_tasks, drafts and scenario_acts. An act turning `published` fires
- *      the plan_watch_jobs trigger (027), which plans its reply checks.
- *   3. check_replies: for each due check, read our comment on Reddit. Every
- *      reply from someone who is not us becomes a `draft_followup` job for the
- *      agent. Nothing is written to Reddit here.
- *   4. sequences: advance every open sequence run (_engine.js, migration 029).
- *   5. send: runQueue(), the same sender as /api/dispatch.
- * Every outcome is in the JSON it returns and in activity_log (actor cron/tick).
- */
+// Every 15 minutes: observe message outcomes, advance verified experiments,
+// dispatch queued text, and keep the discovery worker supplied with durable jobs.
 const { runQueue, sb, engain, logger } = require("../_send.js");
 const {randomUUID}=require("crypto");
 const { runEngine } = require("../_engine.js");
@@ -26,7 +13,7 @@ async function syncAccounts() {
   const { status, json } = await engain("GET", "/api/v1/accounts-beta/accounts");
   if (status >= 300) return { ok: false, status };
   const rows = (json.accounts || []).map(a => ({ id: a.userAccountId, label: a.label || a.displayName || null,
-    reddit_username: a.profileUsername || null, niche: a.niche || null, lifecycle: a.lifecycleStatus || null,
+    reddit_username: a.profileUsername?.trim().replace(/^u\//i,'') || null, niche: a.niche || null, lifecycle: a.lifecycleStatus || null,
     usable: a.usable ?? null, synced_at: now() }));
   if (rows.length) await sb("POST", "accounts?on_conflict=id", rows, "resolution=merge-duplicates,return=minimal");
   return { ok: true, synced: rows.length };
@@ -40,6 +27,17 @@ module.exports = async function handler(req, res) {
   const token=randomUUID();
   if(!await sb('POST','rpc/acquire_workflow_clock',{p_token:token}))return out(200,{ok:true,deferred:'Another tick owns the lease'});
   const report = {}, deadline=Date.now()+45000;
+  const messages=require('../_messages.js');
+  if(await messages.enabled()){
+    try{
+      const result=await messages.tick(deadline);
+      // Previously submitted work remains observable without creating legacy replies.
+      if(Date.now()<deadline){await monitor.reconcile();result.archive=await monitor.poll(deadline);await monitor.verifyRecent(deadline,false);}
+      await sb('POST','rpc/ensure_finder_job',{});
+      await log('message_tick',result);return out(200,{ok:true,workflow:'message_experiments',...result});
+    }catch(e){return out(500,{error:e.message});}
+    finally{await sb('POST','rpc/release_workflow_clock',{p_token:token});}
+  }
   const phases=[['accounts',syncAccounts],['reconcile',monitor.reconcile],['poll',()=>monitor.poll(deadline)],
     ['verify',()=>monitor.verifyRecent(deadline)],['check_replies',()=>monitor.checkJobs(deadline)],
     ['sequences',()=>runEngine(deadline)],['finder',()=>sb('POST','rpc/ensure_finder_job',{})],

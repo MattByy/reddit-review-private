@@ -1,9 +1,7 @@
-.mcp.json
-.agents/
-.codex/
 .env*
-tests/
-reports/
-simulation/
-scripts/
-node_modules/
+.git
+node_modules
+tests
+supabase
+skills
+simulation
