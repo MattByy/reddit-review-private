@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "node checkrules.js && node checkpages.js && node --test tests/workflow.test.cjs tests/playbooks.test.cjs tests/automatic.test.cjs tests/session.test.cjs tests/messages.test.cjs tests/queued-decisions.test.cjs",
+    "test": "node checkrules.js && node checkpages.js && node --test tests/workflow.test.cjs tests/playbooks.test.cjs tests/automatic.test.cjs tests/session.test.cjs tests/messages.test.cjs tests/queued-decisions.test.cjs tests/pool-check.test.cjs tests/pooled-smoke.test.cjs",
+    "pool:test": "node --test tests/pool-check.test.cjs tests/pooled-smoke.test.cjs",
+    "pool:check": "node scripts/pool-check.cjs",
     "simulate": "node simulation/run.cjs",
     "simulate:queue": "node simulation/queue.cjs",
     "simulate:check": "node simulation/check-report.cjs",

@@ -1,11 +1,16 @@
 # Geonode Reddit message experiments
 
+**New agent? Read [START_HERE.md](START_HERE.md) first. Current phase: pooled delivery only. Accounts Beta is deferred.**
+
 Production: https://site-phi-two-38.vercel.app/plan
 
 ## Documentation
 
 | Document | Purpose |
 | --- | --- |
+| [Start here](START_HERE.md) | Exact entrypoint and reading order for a fresh agent |
+| [Pooled accounts — active](docs/pooled-accounts.md) | Setup, read-only connection check and isolated one-message test |
+| [Accounts Beta — deferred](docs/accounts-beta.md) | Separate private-account reference; not part of the pooled trial |
 | [System reference](docs/message-system.md) | Architecture, queues, states, script ownership, delivery and implementation gaps |
 | [Daily agent runbook](docs/agent-runbook.md) | Fresh-start prompt, decision procedure, exact API fields, checkpoints and recovery |
 | [Tracking specification](docs/message-tracking.md) | Planned append-only history, complete failed paths, immediate publication goal and separate monitoring |
@@ -45,7 +50,9 @@ Humanizing belongs to the writing agent: draft, call its configured humanizer, c
 
 ## Delivery and API contract
 
-See [the Engain contract notes](docs/engain-messages.md), checked against the official OpenAPI on 2026-10-11. `ENGAIN_DELIVERY=auto` uses a configured/accessible project for pooled tasks, or the existing private-account integration when there is no project. Provider account availability is checked automatically; old account approval flags do not govern new messages.
+Use `ENGAIN_DELIVERY=pool` on the server for the current pooled-only phase, with an accessible project. The writer does not choose accounts. `npm run pool:test` exercises an isolated local flow with simulated external services; `npm run pool:check` only reads our live bootstrap and delivery capability using the agent key. See [the pooled guide](docs/pooled-accounts.md) for exactly what each check establishes.
+
+The adapter also supports `ENGAIN_DELIVERY=auto`, which can fall back to private-account delivery without a selected project; do not use that setting for a deliberately pooled-only deployment. [The Engain contract notes](docs/engain-messages.md) distinguish the two payloads. Changing docs does not set the deployed environment, and current `/delivery` does not expose that environment setting.
 
 Delivery preserves existing pacing: 45 minutes overall, 24 hours per subreddit, 20 per UTC day. One database reservation prevents concurrent senders and browser edits from duplicating a task. A definite HTTP 429 schedules a retry. A timeout or ambiguous response is reconciled against provider tasks before proceeding and never blindly resubmitted. If no unique task can be identified, its state remains `unknown`.
 

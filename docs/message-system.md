@@ -2,6 +2,8 @@
 
 Documentation revision: 2026-10-11. Implementation reference: agent protocol 5, migrations through `043-message-decision-context.sql`.
 
+For the operational entrypoint, read [START_HERE.md](../START_HERE.md). The active phase is [pooled delivery](pooled-accounts.md); [Accounts Beta](accounts-beta.md) is a separate deferred reference. This longer document describes the full system, not additional setup steps the pooled writer must perform.
+
 The agent decides what useful message to write and which permitted parent it answers. Server code owns publishing, provider status, Reddit verification, scheduling and reporting. Every invocation can start with no conversational memory: durable jobs and saved context carry the work forward.
 
 This system is for disclosed Geonode participation that follows community rules. A follow-up must have a useful purpose of its own. Do not use multiple delivery accounts to portray independent customers, manufacture agreement or conceal promotion. Confirmed removals stop the flow; they are not instructions to try another branch.

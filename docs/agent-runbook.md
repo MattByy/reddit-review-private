@@ -2,6 +2,8 @@
 
 Revision: 2026-10-11. Supported API: protocol 5, `workflow: message_experiments`.
 
+**First visit? Begin at [START_HERE.md](../START_HERE.md), then [pooled setup](pooled-accounts.md). Pooled delivery is the active phase; Accounts Beta is deferred.** This document supplies the shared writing procedure after that setup.
+
 Use this runbook when a scheduled agent starts with no memory. The agent prepares one useful, disclosed contribution for each claimed queue turn. The server publishes it and records delivery evidence. The agent does not call Engain, poll publication, create future replies or calculate success.
 
 The [system reference](message-system.md) explains architecture and current limitations. The [tracking specification](message-tracking.md) defines planned audit and outcome changes. Those proposed fields and events are not API parameters today.
@@ -29,9 +31,11 @@ Install this prompt in the external daily runner, along with access to this runb
 You prepare useful, openly affiliated Geonode contributions for a durable
 message queue. You have no reliable memory from previous invocations.
 
-Read docs/agent-runbook.md. Start by calling GET /bootstrap on the configured
-agent API. Require protocol_version=5 and workflow=message_experiments.
-Use the unique agent label supplied for this invocation.
+Read START_HERE.md and docs/pooled-accounts.md, then this runbook for writing.
+Call GET /bootstrap and GET /delivery on our configured agent API, or use
+npm run pool:check. Require protocol_version=5, workflow=message_experiments,
+available=true, mode=pool and has_project=true. Accounts Beta is deferred;
+do not switch to it if a check fails. Use this invocation's unique agent label.
 
 Claim one due writing job with POST /jobs/claim. Read its checkpoint, message,
 experiment, history, source_message, parent_options, context and
@@ -95,6 +99,8 @@ GET /bootstrap
 Check `protocol_version` and `workflow`. Read `capabilities`, `rules`, `next`, and `unfinished`. Bootstrap unfinished items are a bounded summary, not ownership and not an exhaustive queue. Do not use an old token from a previous day's session.
 
 Protocol 5 currently says success requires seven-day verification. The requested immediate-publication metric is specified separately and is not implemented yet. Do not alter backend state to make it match the new specification.
+
+Before claiming, also read `GET /delivery` and require `available: true`, `mode: "pool"`, `has_project: true`. `npm run pool:check` performs both reads. The pooled guide explains the server setting needed to disable private fallback; the current capability response does not prove that setting.
 
 ### 2. Claim a due writing job
 

@@ -1,11 +1,11 @@
 ---
 name: reddit-agent
-description: Prepare one useful, disclosed Geonode contribution per durable message job using protocol 5. Use for fresh daily writing sessions; server scripts own publishing and tracking.
+description: Start a fresh Geonode protocol-5 writing session through the active pooled-delivery guide, then prepare one disclosed contribution per durable job. Server scripts own publishing and tracking; Accounts Beta is deferred.
 ---
 
 # Daily Reddit message writer
 
-Read [the agent runbook](../../docs/agent-runbook.md) at the start of every invocation. It contains the startup prompt, actual API request shapes, decision criteria, checkpoints and error recovery. Do not depend on memory from an earlier session.
+Read [START_HERE.md](../../START_HERE.md) first, then [the active pooled guide](../../docs/pooled-accounts.md). Accounts Beta is a separate deferred path; do not configure private accounts. Use [the agent runbook](../../docs/agent-runbook.md) for actual writing turns: it contains the startup prompt, API request shapes, decision criteria, checkpoints and recovery. Do not depend on memory from an earlier session.
 
 Base: https://site-phi-two-38.vercel.app/api/agent. Use the configured AGENT_API_KEY as a bearer credential. The server owns Engain authentication and delivery; never submit to Engain separately.
 
@@ -17,7 +17,7 @@ Do not stage conversations between accounts as independent customers, invent exp
 
 ## Fresh invocation
 
-1. GET /bootstrap. Require protocol_version=5 and workflow=message_experiments. Use a unique agent label for this invocation.
+1. GET /bootstrap and GET /delivery, or run npm run pool:check. Require protocol_version=5, workflow=message_experiments, available=true, mode=pool and has_project=true. The check is read-only and does not prove a comment can publish. Use a unique agent label for this invocation.
 2. POST /jobs/claim with agent, kinds:["write"], limit:1. An empty result ends this invocation. Claim discovery work only when the launcher assigns that role.
 3. Read the checkpoint and complete enriched job: message, experiment, history, source_message, parent_options, context, decision_context and lease. Work only on an owned, unexpired, actionable job.
 4. Decide whether a useful permitted contribution exists. Choose an available parent option, then content action and brand relevance. Prepare only this message.

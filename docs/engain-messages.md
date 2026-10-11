@@ -1,8 +1,10 @@
 # Engain message delivery contract
 
+**New writing agent: start at [START_HERE.md](../START_HERE.md) and [the pooled guide](pooled-accounts.md).** This page is a server-adapter reference. The agent files text through our API; these provider POST routes are called by our scripts.
+
 Reviewed 2026-10-11 against [Engain's API reference](https://docs.engain.io/) and its [OpenAPI document](https://docs.engain.io/api/openapi.json). Server: `https://api.engain.io`; authentication: `X-API-Key`. General limit: 30 requests/minute; rule checking has a separate 5/minute limit.
 
-## Pooled delivery
+## Pooled delivery — active phase
 
 `GET /api/v1/me` returns accessible `projects`. The API requires a project for tasks and rule checking.
 
@@ -34,13 +36,8 @@ Provider states are distinct:
 
 Cancellation is limited to eligible tasks stuck in `in_review` for more than 24 hours. Engain may reject cancellation once work has started (`409`). The application stops future messages immediately and shows cancellation as pending when the provider cannot confirm it.
 
-## Existing private integration
+## Accounts Beta — deferred phase
 
-The current public OpenAPI does **not** document `accounts-beta`. The private fallback therefore preserves this repository's established integration rather than inventing a pooled/private shared payload:
+The separate [Accounts Beta reference](accounts-beta.md) documents the existing private adapter. Its payload and task feed differ from pooled delivery. The current public OpenAPI does **not** document that beta API. It is not a fallback the writing agent should set up during the pooled trial.
 
-- `GET /api/v1/accounts-beta/accounts`: `accounts` with `userAccountId`, `profileUsername`, `usable`.
-- `POST /api/v1/accounts-beta/comments`: `{userAccountId,targetUrl,body}` for both top-level comments and replies.
-- `GET /api/v1/accounts-beta/comments`: paginated `page`, `isDone`, `continueCursor`, task `_id`, `status`, `resultUrl`.
-- `POST /api/v1/accounts-beta/comments/{id}/cancel`: cancellation request.
-
-An eligible provider account is selected automatically, avoiding the previous private account when alternatives exist. No UI selection or approval is required. Without an accessible project, rule checking is explicitly recorded as unavailable for this integration (`skipped`, `source=no_project`), while fresh Reddit target checks and publication verification still run. Ambiguous private submissions require an exact account/body/target match and a compatible provider creation timestamp before recovery; missing evidence leaves them uncertain.
+For a deliberately pooled-only deployment, configure server `ENGAIN_DELIVERY=pool`. Provider task account allocation then belongs to Engain; do not add `userAccountId` or a private-account selection step to the pooled path.
