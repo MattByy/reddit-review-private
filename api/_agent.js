@@ -145,6 +145,10 @@ const HELP = {
   auth: "Authorization: Bearer <AGENT_API_KEY>",
   protocol_version: 5,
   routes: {
+    "POST /api/agent/work/next": "get one contextual writing task {agent}; automatically finds eligible threads through Engain when needed",
+    "POST /api/agent/work/:id": "submit {agent,lease_token,body,placement?,mode?,mode_reason?}, or skip/defer with {outcome,reason}; automatic approval and delivery",
+    "GET  /api/agent/work": "read the live comment queue, Engain checks and publication status",
+    "GET  /api/agent/writer": "writer startup prompt, enabled content modes, equal rotation and automatic approval contract",
     "GET  /api/agent/experiments": "message queue, observed outcomes and full-history strategy/depth statistics",
     "GET  /api/agent/delivery": "available Engain delivery capability; no account setup required",
     "GET  /api/agent/messages/:id": "one experiment message and its delivery/visibility evidence",
@@ -180,7 +184,7 @@ const HELP = {
     "POST /api/agent/jobs":                 "queue a task for later {request_id,title, due_at | delay_minutes, thread_id?, target_url?, account_id?, payload?}. It comes back from /jobs/due when due.",
     "(drafts) send_after | delay_minutes":  "on POST /api/agent/drafts: queue the send. Automatic checks still apply; the server sends it no earlier than that time.",
   },
-  not_here: "approve, clear-to-send, post, upvote and pull-back. The server automatically checks and sends eligible drafts; optional edits and stops are on /review.",
+  not_here: "Separate approve/send calls are unnecessary: filing a message automatically approves it and queues server-managed Engain delivery. Upvotes and pull-back are not writer actions; optional edits and stops are on /plan.",
   disclosure: "every draft carries the account's disclosure_line, e.g. '(Geonode team here)'. A draft without it is refused. Playbooks assign different accounts to the opening comment and its reply.",
   door: `a draft is filed only if Engain's rule-check scores it at or under ${RISK_CEILING} of 100 and not 'fail'. Above that it is refused with the vendor's reason and an outcome event records the refusal. With no Engain project, scoring is explicitly skipped; the remaining publication checks still apply.`,
   modes: "comment = top-level answer. reply = answer under a specific comment, including the previous playbook account's comment (parent_url, and send thread_context.parent so the reviewer sees it). sharpen = you ran a small model to simulate the sub's reaction and used it as PRIVATE context; put it in `sharpen`, never in the body. For account-to-account conversations, file only the assigned playbook jobs; the engine resolves the published parent.",
@@ -609,6 +613,10 @@ module.exports = async function handler(req, res) {
     else if (a === "threads" && !b && m === "GET")             out = await getThreads(sp);
     else if (a === "threads" && !b && m === "POST")            out = await postThread(await readBody(req));
     else if (a === "bootstrap" && !b && m === "GET")          out = await workflow.bootstrap();
+    else if (a === 'writer' && !b && m === 'GET') out = await require('./_writer.js').environment();
+    else if (a === 'work' && b === 'next' && m === 'POST') out = await require('./_work.js').next(await readBody(req));
+    else if (a === 'work' && b && m === 'POST') out = await require('./_work.js').submit(b,await readBody(req));
+    else if (a === 'work' && !b && m === 'GET') out = await require('./_work.js').queue(Object.fromEntries(sp));
     else if (a === 'messages' && b && m === 'GET') out = {message:await require('./_messages.js').getMessage(b)};
     else if (a === 'messages' && b && m === 'POST') out = {message:await require('./_messages.js').file(b,await readBody(req))};
     else if (a === 'experiments' && !b && m === 'GET') out = await require('./_messages.js').rows();
@@ -655,7 +663,7 @@ module.exports = async function handler(req, res) {
       const body=await readBody(req);out={job:await sb('POST','rpc/checkpoint_job',{p_id:b,p_agent:body.agent,p_token:body.claim_token,p_checkpoint:body.checkpoint||{}})};
     }
     else if (a === "jobs" && !b && m === "POST")               out = await postJob(await readBody(req));
-    else if (a === "queue" && !b && m === "GET")               out = await getQueue(sp);
+    else if (a === "queue" && !b && m === "GET")               out = await require('./_messages.js').enabled()?await require('./_work.js').queue(Object.fromEntries(sp)):await getQueue(sp);
     else if (a === "sequences" && !b && m === "GET")           out = { sequences: await sb("GET", "sequences?select=id,name,description,steps,enabled&enabled=eq.true&order=name.asc") };
     else if (a === 'sequences' && b && c === 'runs' && m === 'POST') bad(410,'Start sequences through the operator UI. Agents should claim queued jobs.');
     else if (a === "sequence-runs" && !b && m === "GET")       out = { runs: await sb("GET", `sequence_runs?select=*&order=created_at.desc&limit=${limitOf(sp)}${sp.get("status") ? "&status=eq." + enc(sp.get("status")) : ""}`) };

@@ -1,12 +1,22 @@
 # Message system: architecture, delivery and tracking
 
-Documentation revision: 2026-10-11. Implementation reference: agent protocol 5, migrations through `043-message-decision-context.sql`.
+Documentation revision: 2026-10-20. Implementation reference: agent protocol 5, migrations through `046-live-provider-work.sql`.
 
 For the operational entrypoint, read [START_HERE.md](../START_HERE.md). The active phase is [pooled delivery](pooled-accounts.md); [Accounts Beta](accounts-beta.md) is a separate deferred reference. This longer document describes the full system, not additional setup steps the pooled writer must perform.
 
 The agent decides what useful message to write and which permitted parent it answers. Server code owns publishing, provider status, Reddit verification, scheduling and reporting. Every invocation can start with no conversational memory: durable jobs and saved context carry the work forward.
 
 This system is for disclosed Geonode participation that follows community rules. A follow-up must have a useful purpose of its own. Do not use multiple delivery accounts to portray independent customers, manufacture agreement or conceal promotion. Confirmed removals stop the flow; they are not instructions to try another branch.
+
+## Production entrypoint and evidence
+
+The live agent uses `GET /writer`, `POST /work/next {agent}`, `POST /work/:id {agent,lease_token,body,placement?}` and `GET /work`. The next-task call automatically selects and refreshes an Engain opportunity when no writing job is due. The dashboard is a live message queue; historical internal experiment names and diagnostic tests remain compatibility details.
+
+Production context comes from `api/_context.js`: Engain opportunity snapshots plus saved, provider-confirmed parent text. A separate Reddit login is not required. Engain does not return a full comment tree. Snapshot limitations are returned explicitly; missing reader comments are never synthesized.
+
+Migration 046 records `provider_published_at` and `provider_evidence`. A matching provider publication can advance the next reply without setting independent `verified_at`. Provider task ID, body, target and same-thread comment URL must match. The new `finish_writing_task` RPC records skip/defer/block decisions and queue state atomically. The Activity UI counts both evidence sources and labels them separately on messages.
+
+Sections below describe the lower-level protocol and historical direct-reader diagnostics. References to a mandatory independent Reddit check apply only to `MESSAGE_CONTEXT_SOURCE=reddit`, not the default Engain flow. Old SQL results views count independent verification; the live Activity tab uses message records directly. For current operational instructions use [the runbook](agent-runbook.md).
 
 ## Read this first: implemented versus specified
 
@@ -15,14 +25,15 @@ This document describes both the current implementation and the requested tracki
 | Capability | Current implementation | Target / qualification |
 | --- | --- | --- |
 | One message decision at a time | Implemented | No advance conversation plan |
-| Automatic delivery and observation | Implemented in server cron | Requires working provider credentials and readable Reddit evidence |
+| Automatic delivery and observation | Implemented in server cron | Requires working Engain credentials and matching provider evidence |
 | Parent linkage, placement, text and brand flag | Implemented | Parent and brand flag are derived and validated by the server |
 | Durable writer leases and checkpoints | Implemented | A daily agent launcher is external to this repository |
 | Brand mention verified public | Recorded as `brand_visible_at`; writing stops | Requested primary success should be immediate |
 | `success_at`, `succeeded`, success charts | Currently require a fresh seven-day check | Must change or be renamed before displaying immediate publication success |
 | Full history of revisions, attempts and observations | Partial: current rows and selected logs | Append-only message events are **not implemented** |
 | Failed steps included in a complete flow report | Message rows retain failed work | Existing shape aggregate includes only previously verified messages |
-| Balanced content suggestions | Implemented, 20% target per action per stage | No learned policy or automatic performance-based reweighting |
+| Content mode rotation | Shuffled cycles across ordinary queue assignments; every enabled mode once per cycle (20% with five, 25% with four) | Fixed openings/tests and legacy assignments are outside rotation; overrides and delivery can change observed shares |
+| Writer environment and approval | `/writer` startup prompt, per-job mode prompt and assignment snapshot; filing records automatic approval | External launcher still supplies the agent runtime and credentials |
 | Mixing new threads and follow-ups | Jobs ordered by due time and ID | Reserved queue shares in the queue simulation are **a proposal** |
 | Humanizer | Optional provenance fields implemented | Agent clarity edit is the default; external editor optional |
 | Disclosure evidence before filing | Worker instruction in this documentation | No dedicated message-workflow disclosure field or server gate yet |
@@ -72,7 +83,7 @@ flowchart TD
     A[Registered thread] --> B[One awaiting_draft message and due writing job]
     B --> C[Agent claims job and reads fresh context]
     C --> D[Agent files one final message]
-    D --> E[queued: server checks and reserves delivery]
+    D --> E[Automatically approved and queued: server checks and reserves delivery]
     E --> F[Engain accepts task; task ID saved]
     F --> G[Provider reports URL; server verifies Reddit]
     G --> H{Exact message visible?}

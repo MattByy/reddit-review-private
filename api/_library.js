@@ -1,5 +1,6 @@
 const {sb,engain}=require('./_db.js');
-const {identity,conversation}=require('./_reddit.js');
+const {identity}=require('./_reddit.js');
+const {conversation,providerMode,fromOpportunity,readable}=require('./_context.js');
 const {randomUUID}=require('node:crypto');
 const enc=encodeURIComponent,now=()=>new Date().toISOString();
 const DEFAULTS={min_age_hours:6,max_age_days:60,min_comments:5,min_score:1,min_relevance:0.6,provider_fresh_hours:24,reddit_fresh_minutes:60};
@@ -33,13 +34,13 @@ function assess(row,config,observation=null,{includeExisting=false,at=Date.now()
   if(score==null)reasons.push('Score is unknown');else if(score<config.min_score)reasons.push('Below the minimum score');
   if(row.relevance==null||row.relevance<config.min_relevance)reasons.push('Below the minimum provider relevance or unscored');
   const candidate=reasons.length===0;
-  if(!includeExisting&&row.has_experiment)reasons.push('Already has an experiment; inspect existing work');
+  if(!includeExisting&&row.has_experiment)reasons.push('Already in the message queue; inspect existing work');
   if(!row.last_collected_at||at-Date.parse(row.last_collected_at)>config.provider_fresh_hours*3600000)reasons.push('Provider data needs refresh');
   if(!observation&&row.refresh_error)reasons.push(row.refresh_error);
   const checked=observation?.observed_at||row.reddit_checked_at;
-  if(!o?.ok||!checked||at-Date.parse(checked)>config.reddit_fresh_minutes*60000)reasons.push('Fresh Reddit context is required');
+  if(!o?.ok||!checked||at-Date.parse(checked)>config.reddit_fresh_minutes*60000)reasons.push(providerMode()?'Refresh the Engain thread context':'Fresh Reddit context is required');
   else{
-    if(o.visibility!=='visible'||t.removed||t.locked||t.archived)reasons.push('Thread is removed, locked or archived');
+    if(!readable(o))reasons.push('Thread is removed, locked or archived');
     if(t.over_18)reasons.push('Adult thread excluded');
     if(t.num_comments==null||t.score==null||t.created_utc==null)reasons.push('Fresh engagement or age data is incomplete');
   }
@@ -67,7 +68,7 @@ async function refresh(id){
     if(response.status>=300)throw Error('Engain opportunity refresh returned '+response.status);
     const current=normalize(response.json.opportunity||response.json,old.project_id);
     if(current.thread_id!==id)throw Error('Provider returned a different thread');
-    const observation=await conversation(current.url);
+    const observation=providerMode()?fromOpportunity(current):await conversation(current.url);
     await sb('POST','thread_library?on_conflict=thread_id',[{...current,reddit_observation:observation,reddit_checked_at:observation.ok?observation.observed_at:null,refresh_attempted_at:attempted,refresh_error:observation.ok?null:observation.reason}],'resolution=merge-duplicates,return=minimal');
   }catch(e){await sb('PATCH','thread_library?thread_id=eq.'+enc(id),{refresh_attempted_at:attempted,refresh_error:String(e.message).slice(0,300)},'return=minimal');}
   const r=await item(id);return {...r,selection:assess(r,await settings())};
