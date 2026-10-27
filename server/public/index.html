@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thread Collector</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--accent:#4f46e5;--good:#15803d;--warn:#b45309;--bad:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#0c0a09;--panel:#1c1917;--ink:#f5f5f4;--muted:#a8a29e;--line:#292524;--accent:#818cf8;--good:#4ade80;--warn:#fbbf24;--bad:#f87171}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+header{padding:16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+h1{font-size:18px;margin:0}.muted{color:var(--muted)}.pill{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
+main{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px}@media(max-width:900px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+label{display:block;margin:6px 0}textarea,input[type=text],input[type=number]{width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:8px 12px;font:inherit;cursor:pointer}button:disabled{opacity:.5}
+#progress{white-space:pre-wrap;font:12px ui-monospace,monospace;margin-top:10px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.filters input{width:auto;flex:1;min-width:140px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:500}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.score{font-weight:600}.hi{color:var(--good)}.mid{color:var(--warn)}.lo{color:var(--bad)}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.tags span{font-size:11px;margin-right:4px;padding:1px 6px;border-radius:4px;background:var(--line)}
+.flag{font-size:12px;color:var(--warn)}details{font-size:12px;color:var(--muted)}
+@media(max-width:700px){.hide-sm{display:none}}
+</style>
+</head>
+<body>
+<header><h1>Thread Collector</h1><span id="mode" class="pill"></span><span id="count" class="muted"></span></header>
+<main>
+<section>
+  <strong>Collect from Engain</strong>
+  <label><input type="checkbox" name="src" value="opportunities" checked> Opportunities (new + SEO)</label>
+  <label><input type="checkbox" name="src" value="mentions" checked> Brand mentions</label>
+  <label><input type="checkbox" name="src" value="smart_search"> Smart Search keywords</label>
+  <label>Keywords, one per line<textarea id="keywords" rows="4" placeholder="residential proxies&#10;web scraping proxy"></textarea></label>
+  <label><input type="checkbox" id="spend"> Spend Smart Search quota (1 keyword each) when no stored results exist</label>
+  <label>Pages per feed <input type="number" id="pages" value="3" min="1" max="20"></label>
+  <button id="go">Collect threads</button>
+  <div id="progress" class="muted"></div>
+</section>
+<section>
+  <div class="filters">
+    <input type="text" id="q" placeholder="Filter title / subreddit / keyword">
+    <input type="text" id="sub" placeholder="Subreddit">
+    <select id="source"><option value="">All sources</option><option>opportunities</option><option>mentions</option><option>smart_search</option></select>
+  </div>
+  <table><thead><tr><th>Score</th><th>Thread</th><th class="n hide-sm">Comments</th><th class="n hide-sm">Visits/mo</th><th class="n hide-sm">Age (d)</th></tr></thead><tbody id="rows"></tbody></table>
+</section>
+</main>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j;}
+async function status(){const s=await api('/api/status');$('#mode').textContent=s.mock?'mock data':'live Engain';if(!s.engain_key)$('#progress').textContent='ENGAIN_API_KEY missing: add it to .env.local or run npm run dev:mock';return s;}
+async function load(){
+  const p=new URLSearchParams({q:$('#q').value,subreddit:$('#sub').value,source:$('#source').value,limit:200});
+  const {total,items}=await api('/api/threads?'+p);$('#count').textContent=total+' threads';
+  $('#rows').innerHTML=items.map(t=>{const r=t.rank,c=r.score>=60?'hi':r.score>=35?'mid':'lo';return `<tr>
+    <td class="score ${c}">${r.score}</td>
+    <td><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.title||t.url)}</a><div class="muted">r/${esc(t.subreddit)}</div>
+      <div class="tags">${t.sources.map(s=>`<span>${esc(s)}</span>`).join('')}${t.keywords.map(k=>`<span>“${esc(k)}”</span>`).join('')}</div>
+      ${r.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}
+      <details><summary>Why this score</summary>${Object.entries(r.parts).map(([k,v])=>`${esc(k)}: ${v>0?'+':''}${v}`).join(' · ')}
+        ${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}${t.mentions.length?'<br>Mentions: '+t.mentions.map(m=>esc(m.brand+' ('+m.sentiment+')')).join(', '):''}</details></td>
+    <td class="n hide-sm">${t.num_comments??'–'}</td><td class="n hide-sm">${t.visits_per_month??'–'}</td><td class="n hide-sm">${r.age_days??'–'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="muted">No threads yet. Collect some.</td></tr>';
+}
+$('#go').onclick=async()=>{
+  const body={sources:[...document.querySelectorAll('[name=src]:checked')].map(x=>x.value),keywords:$('#keywords').value.split('\n'),spend_quota:$('#spend').checked,max_pages:Number($('#pages').value)};
+  $('#go').disabled=true;
+  try{
+    const {run_id}=await api('/api/collect',body);
+    for(;;){const r=await api('/api/runs/'+run_id),s=r.summary||r.progress||{};
+      $('#progress').textContent=(r.finished_at?'Done.':'Working: '+(s.step||''))+`\nadded ${s.added??0}, updated ${s.updated??0}`+(s.errors?.length?'\nErrors:\n'+s.errors.join('\n'):'')+(s.notes?.length?'\n'+s.notes.join('\n'):'');
+      await load();if(r.finished_at)break;await new Promise(x=>setTimeout(x,1500));}
+  }catch(e){$('#progress').textContent='Error: '+e.message;}
+  $('#go').disabled=false;
+};
+let t;for(const id of ['#q','#sub','#source'])$(id).addEventListener('input',()=>{clearTimeout(t);t=setTimeout(load,200);});
+status().then(load);
+</script>
+</body>
+</html>

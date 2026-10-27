@@ -4,3 +4,4 @@ assets/config.js
 node_modules/
 .mcp.json
 !.env.example
+.data/
