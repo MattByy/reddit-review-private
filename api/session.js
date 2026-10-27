@@ -33,5 +33,5 @@ module.exports=async(req,res)=>{
       if(!await auth.passwordMatches(password,admin.password_hash))return out(401,{error:'Incorrect password.'});
     }
     return out(200,await auth.issueSession(res));
-  }catch{return out(503,{error:'Sign-in is temporarily unavailable. Try again shortly.'});}
+  }catch(e){console.error('session failed:',e.status||'',e.code||'',e.message);return out(503,{error:'Sign-in is temporarily unavailable. Try again shortly.'});}
 };
