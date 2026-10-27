@@ -63,6 +63,14 @@ async function jobContext(j){
 }
 async function file(id,input){
   const m=await getMessage(id);validateBody(input.body);
+  
+  // TRANSPARENCY ENFORCEMENT: Pre-validate disclosure before filing
+  const transparency=require('./_transparency.js');
+  const disclosureCheck=transparency.validateDisclosure(input.body,'');
+  if(!disclosureCheck.ok){
+    error(422,'TRANSPARENCY VIOLATION: '+disclosureCheck.failures.join('; ')+' Every comment must include clear GeoNode affiliation disclosure.');
+  }
+  
   const [e]=await sb('GET','message_experiments?select=*&id=eq.'+enc(m.experiment_id));
   if(e.status!=='active')error(409,'This experiment has stopped writing.');
   const mode=decisions.mode(m,input.reply_mode);
@@ -165,7 +173,22 @@ async function sendOne(m,caps){
     }
     if(!readable(latest)||!sameBody(source.body,latest.target?.body)){await note(m,latest.reason||'Latest publication changed; refresh the reply.',{...(!latest.ok?{}:{status:'held'})});return {message:m.id,state:'waiting_context'};}
   }
-  const transport=await delivery.choose(caps,parent?.transport),check=await delivery.check(m,thread,o,caps.project_id);
+  const transport=await delivery.choose(caps,parent?.transport);
+  
+  // TRANSPARENCY ENFORCEMENT: Validate all transparency requirements
+  const transparency=require('./_transparency.js');
+  const [account]=await sb('GET',`accounts?select=*&id=eq.${enc(transport.account_id)}&limit=1`);
+  if(!account){await note(m,'Account not found for transparency validation.',{status:'held'});return {message:m.id,state:'blocked'};}
+  const transparencyCheck=await transparency.validateTransparency({body:m.body,accountId:transport.account_id,accountDisclosureLine:account.disclosure_line,subreddit:thread.subreddit,threadId:e.thread_id,parentUrl:m.kind==='reply'?m.target_url:null,kind:m.kind});
+  await sb('PATCH','experiment_messages?id=eq.'+enc(m.id)+'&status=eq.queued',{transparency_check:transparencyCheck},'return=minimal');
+  if(!transparencyCheck.ok){
+    const reason='TRANSPARENCY VIOLATION: '+transparencyCheck.failures.join('; ');
+    await sb('POST','rpc/log_transparency_check',[{message_id:m.id,check_type:'comprehensive',passed:false,details:transparencyCheck}],'return=minimal').catch(()=>{});
+    await note(m,reason,{status:'held'});return {message:m.id,state:'transparency_blocked',failures:transparencyCheck.failures};
+  }
+  await sb('POST','rpc/log_transparency_check',[{message_id:m.id,check_type:'comprehensive',passed:true,details:transparencyCheck}],'return=minimal').catch(()=>{});
+  
+  const check=await delivery.check(m,thread,o,caps.project_id);
   await sb('PATCH','experiment_messages?id=eq.'+enc(m.id)+'&status=eq.queued&body=eq.'+enc(m.body),{rule_check:check},'return=minimal');
   if(check.verdict==='unavailable'||!['pass','warn','skipped','fail'].includes(check.verdict)){await note(m,check.summary||'Engain check unavailable.');return {message:m.id,state:'waiting_check'};}
   if(check.verdict==='fail'){await note(m,check.summary||'Engain found a rule violation.',{status:'held'});return {message:m.id,state:'held'};}
