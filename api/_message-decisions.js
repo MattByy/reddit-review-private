@@ -14,19 +14,20 @@ function options(message,history,experiment={}){
 function mode(message,value){return value||({1:'opening',2:'reply'})[message.step]||null;}
 function context(message,experiment,history,strategies,results){
   const stage=message.step===1?'opening':message.step===2?'first_reply':'later_reply';
-  const choices=strategies.map(s=>({id:s.id,name:s.action_name,brief:message.step===1?s.brief:s.followup_brief,target_percent:20,
+  const assignment=message.writer_assignment;
+  const choices=strategies.map(s=>({id:s.id,name:s.action_name,brief:message.step===1?s.brief:s.followup_brief,target_percent:assignment?.source==='rotation'?(assignment.enabled_actions.includes(s.id)?assignment.target_percent:0):null,
     suggested_count:results.find(r=>r.stage===stage&&r.basis==='suggested'&&r.action===s.id)?.assigned||0}));
-  return {stage,limits:{max_messages:experiment.max_messages,max_depth:experiment.max_depth,messages_already_published:history.filter(m=>m.verified_at).length,
+  return {stage,limits:{max_messages:experiment.max_messages,max_depth:experiment.max_depth,messages_already_published:history.filter(m=>m.verified_at||m.provider_published_at).length,
     current_message:message.step,messages_remaining_including_this:Math.max(0,experiment.max_messages-message.step+1),last_message:message.step===experiment.max_messages},
-    content_actions:choices,suggested_action:message.suggested_action,allocation:{target:'20% per content action within each stage',method:'Least-assigned suggestion; random ties for replies',override:'Choose a more relevant action with action_override_reason. Opening strategy remains fixed.',scope:'Suggestions are balanced; actual choices and publication outcomes can differ.'},
+    content_actions:choices,suggested_action:message.suggested_action,allocation:{assignment:assignment||null,target:assignment?.source==='rotation'?assignment.target_percent+'% per enabled mode per complete cycle':'Fixed or legacy assignment; outside the current rotation',method:'Shuffled cycle without replacement across queue assignments',override:'Choose a more relevant action with action_override_reason. Opening strategy remains fixed.',scope:'Assignments are balanced across stages; actual choices, execution order and publication outcomes can differ.'},
     brand:{opening_required:message.step===1?strategies.find(s=>s.id===experiment.strategy_id)?.opening_mentions_brand:null,independent_of_reply_action:true,stop_on_verified_mention:true},
     considerations:['Chain when answering the latest message; sibling when contributing a distinct point to its parent. Use only returned parent options.',
       'Check the original question, current discussion, community requirements and prior messages. Add useful information without repetition.',
       'Choose brand relevance separately from placement and content action. Never force a mention on the final turn; the limit can end without one.',
       'A depth limit excludes chain. The total message limit also counts siblings. No future message is prewritten.',
       'Preserve facts and required attribution. Do not invent personal experience or independent endorsements.'],
-    text_workflow:{steps:['choose parent and content action','write one draft','run the agent\'s configured humanizer','check meaning, facts, attribution and brand decision','file final body with draft_body and humanization metadata'],
-      humanizer:{execution:'agent tool',server_integration:false,missing_tool:'Report the missing tool; never claim humanization ran.'}},
+    text_workflow:{steps:['choose parent and content action','write one draft','perform a separate clarity edit','check meaning, facts, attribution and brand decision','file final body with draft_body and humanization metadata for automatic approval'],
+      humanizer:{execution:'agent:self-edit by default; optional configured external editor',server_integration:false,missing_tool:'An external editor is optional. Record only editing actually performed.'}},
     automatic_tasks:['submit saved final text','poll Engain status','save task ID and comment URL','verify publication and removal','requeue an eligible unbranded publication','monitor the brand mention for seven days']};
 }
 module.exports={options,mode,context};

@@ -76,6 +76,8 @@ const root=path.resolve(__dirname,'..');
     await page.locator('.message-editor summary').click();await page.locator('.message-editor textarea').fill('Which response fields do you need?');await page.locator('[data-edit]').click();
     await page.waitForFunction(()=>document.querySelector('.message .message-body').textContent==='Which response fields do you need?');
     assert.match(await page.locator('.message').innerText(),/No brand mention/);
+    assert.match(await page.locator('.message').innerText(),/Mode: Ask a question/);
+    assert.match(await page.locator('.message').innerText(),/Automatically approved/);
     // Drive two publications through the real handlers; the third turn must offer placement.
     const finishCurrent=async()=>{
       await h.db.exec("update message_publications set created_at=now()-interval '2 days'; update experiment_messages set decision_due_at=now(),next_check_at=null;");
@@ -104,6 +106,10 @@ const root=path.resolve(__dirname,'..');
     await finishCurrent();await page.waitForFunction(()=>document.querySelector('.experiment-head').textContent.includes('Monitoring for 7 days'));
     assert.equal(await page.locator('.message').count(),3);assert.equal(await page.locator('.message-editor').count(),0);
     await page.locator('#tab-strategies').click();assert.equal(await page.locator('#strategies .card').count(),5);
+    await page.locator('[name=writer-mode][value=direct]').uncheck();await page.locator('#save-writer').click();
+    await page.waitForFunction(()=>document.querySelector('#writer-status').textContent.startsWith('Saved.'));
+    assert.match(await page.locator('#rotation-summary').innerText(),/4 modes · 25% each/);
+    assert.equal((await h.api('/writer')).body.rotation.cycle_size,4);
     await page.locator('#tab-results').click();assert.match(await page.locator('#panel-results').innerText(),/Pending, stopped and delivery-blocked/);
     assert.equal(await page.locator('#action-results tr').count(),3);await page.locator('#action-basis').selectOption('chosen');assert.equal(await page.locator('#action-results tr').count(),3);
     await page.locator('#tab-queue').click();await page.screenshot({path:'/tmp/reddit-experiments-desktop.png',fullPage:true});
@@ -112,20 +118,21 @@ const root=path.resolve(__dirname,'..');
     await page.locator('[data-stop]').click();await page.locator('.experiment-card').waitFor({state:'detached'});await page.locator('#filter').selectOption('stopped');await page.locator('.experiment-card').waitFor();
     assert.match(await page.locator('.experiment-card').innerText(),/Stopped in dashboard/);
     await page.goto('https://fixture.test/review.html');await page.waitForURL('**/plan#queue');await page.locator('#start-experiment').waitFor();
-    // Discovery is separate from writing; the dashboard can refresh and queue one isolated test.
+    // An Engain candidate is refreshed and added to the ordinary live queue.
     h.project=true;const libraryThread=await h.thread('lib123'),createdUtc=Math.floor(Date.now()/1000)-86400*7;
     Object.assign(h.reddit.get('lib123')[0].data.children[0].data,{score:20,num_comments:12,created_utc:createdUtc,over_18:false});
     h.opportunities=[{id:'opp-lib123',type:'new_opportunities',redditPostId:'lib123',relevance:.9,reasons:['Relevant'],postContent:{url:libraryThread.url,title:'Compare proxy parsing',content:'A useful question',createdUtc,score:20,numComments:12}}];
     await page.goto('https://fixture.test/library.html');await page.locator('#collect-library').click();await page.locator('[data-thread="lib123"]').waitFor();
-    assert.equal(await page.locator('[data-queue="test"]').isDisabled(),true);
-    await page.locator('[data-refresh="lib123"]').click();await page.waitForFunction(()=>!document.querySelector('[data-queue="test"]')?.disabled);
+    assert.equal(await page.locator('[data-queue="work"]').isDisabled(),true);
+    await page.locator('[data-refresh="lib123"]').click();await page.waitForFunction(()=>!document.querySelector('[data-queue="work"]')?.disabled);
     await page.screenshot({path:'/tmp/reddit-library-mobile.png',fullPage:true});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
-    await page.locator('[data-queue="test"]').click();await page.waitForFunction(()=>document.querySelector('#library-status').textContent.startsWith('Queued test experiment'));
+    await page.locator('[data-queue="work"]').click();await page.waitForFunction(()=>document.querySelector('#library-status').textContent.startsWith('Queued thread'));
+    await page.locator('[data-thread="lib123"]').waitFor({state:'detached'});
     assert.equal(await page.locator('[data-thread="lib123"]').count(),0,'Used targets leave the candidates view');
     await page.locator('#library-scope').selectOption('all');await page.locator('[data-thread="lib123"]').waitFor();assert.match(await page.locator('[data-thread="lib123"]').innerText(),/already used/);
-    await page.goto('https://fixture.test/plan.html');await page.locator('#filter').selectOption('test');await page.locator('.experiment-card').waitFor();assert.equal(await page.locator('.experiment-card').count(),1);assert.match(await page.locator('.experiment-card').innerText(),/isolated test/);
-    await page.locator('#filter').selectOption('active');assert.equal(await page.locator('.experiment-card').count(),0);
+    await page.goto('https://fixture.test/plan.html');await page.locator('.experiment-card').waitFor();assert.equal(await page.locator('.experiment-card').count(),1);
+    await page.locator('#tab-agent').click();assert.match(await page.locator('#agent-prompt').inputValue(),/POST \/work\/next/);await page.locator('#tab-queue').click();
     assert.equal(dispatches,0,'No browser approval or manual publication step');
     const saved=await page.context().storageState(),restored=await browser.newContext({storageState:saved}),tab=await restored.newPage();
     await tab.route('**/*',handle);await tab.goto('https://fixture.test/plan');await tab.locator('#start-experiment').waitFor();
@@ -136,6 +143,6 @@ const root=path.resolve(__dirname,'..');
     await page.locator('#password').fill(password);await page.locator('#submit').click();await page.waitForURL(/\/plan(?:\.html)?(?:#queue)?$/);
     await restored.close();
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({password_setup:true,remembered_session:true,logout_revoked_other_tabs:true,no_api_key_prompt:true,no_account_selectors:true,retry_same_experiment:true,one_message_at_a_time:true,mobile_overflow:false,no_approval_buttons:true,edit_and_stop:true,legacy_review_redirect:true,first_reply_forced:true,sibling_parent_saved:true,brand_stops_writing:true,seven_day_monitoring:true,library_refresh_and_test_queue:true,isolated_test_view:true,page_errors:0}));
+    console.log(JSON.stringify({password_setup:true,remembered_session:true,logout_revoked_other_tabs:true,no_api_key_prompt:true,no_account_selectors:true,retry_same_experiment:true,one_message_at_a_time:true,mobile_overflow:false,no_approval_buttons:true,edit_and_stop:true,legacy_review_redirect:true,first_reply_forced:true,sibling_parent_saved:true,brand_stops_writing:true,seven_day_monitoring:true,library_refresh_and_work_queue:true,agent_setup_prompt:true,page_errors:0}));
   }finally{await browser.close();await h.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

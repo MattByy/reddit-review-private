@@ -40,12 +40,13 @@ test('one adaptive ladder, correct pool contracts, verified success, later remov
   assert.equal((await h.messages.rows()).depths.find(d=>d.step===2).successes,1);
 });
 test('start is idempotent, strategies balance, opening condition and leases are enforced',async t=>{
-  const h=await setup(t),request=randomUUID(),e=await start(h,null,5,'abc123',request);assert.equal(e.strategy_id,'direct');assert.equal((await start(h,null,5,'abc123',request)).id,e.id);
-  await h.thread('def456');assert.equal((await start(h,null,5,'def456')).strategy_id,'question');
+  const h=await setup(t),request=randomUUID(),e=await start(h,null,5,'abc123',request);assert.ok(['direct','question','context','help','method'].includes(e.strategy_id));assert.equal((await start(h,null,5,'abc123',request)).id,e.id);
+  await h.thread('def456');assert.notEqual((await start(h,null,5,'def456')).strategy_id,e.strategy_id);
   const c=await h.api('/jobs/claim',{agent:'writer',kinds:['write'],limit:5}),j=c.body.jobs.find(j=>j.payload.experiment_id===e.id),mid=j.payload.message_id;
-  assert.equal((await h.api('/messages/'+mid,{agent:'writer',claim_token:j.claim_token,body:'No brand here.'})).status,400);
+  const branded=e.strategy_id==='direct';
+  assert.equal((await h.api('/messages/'+mid,{agent:'writer',claim_token:j.claim_token,body:branded?'No brand here.':'Geonode team here.'})).status,400);
   assert.equal((await h.api('/messages/'+mid,{agent:'writer',claim_token:randomUUID(),body:'Geonode team here.'})).status,409);
-  const good={agent:'writer',claim_token:j.claim_token,body:'Geonode team here: what response format do you need?'};
+  const good={agent:'writer',claim_token:j.claim_token,body:(branded?'Geonode team here: ':'')+'What response format do you need?'};
   assert.equal((await h.api('/messages/'+mid,good)).status,200);assert.equal((await h.api('/messages/'+mid,good)).status,200);
   assert.equal((await h.sql('select count(*)::int n from experiment_messages'))[0].n,2);
 });

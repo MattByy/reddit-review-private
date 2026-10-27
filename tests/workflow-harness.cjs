@@ -29,10 +29,11 @@ class Harness{
     await this.db.exec(`create function scenario_context(p_draft_id uuid,p_parent_url text default null) returns jsonb language sql as $$select '{"ready":true,"scenario":false,"self_reply":false}'::jsonb$$;
       create function scenario_ready(p_draft_id uuid) returns boolean language sql as $$select true$$;
       create function is_our_url(p_url text) returns boolean language sql as $$select exists(select 1 from engain_tasks where reddit_url=p_url)$$;`);
-    for(const name of ['035-durable-workflow.sql','036-operator-review.sql','037-verified-status.sql','038-account-playbooks.sql','039-automatic-publishing.sql','040-dashboard-sessions.sql','041-message-experiments.sql','042-queued-message-decisions.sql','043-message-decision-context.sql','044-thread-library.sql']){
+    for(const name of ['035-durable-workflow.sql','036-operator-review.sql','037-verified-status.sql','038-account-playbooks.sql','039-automatic-publishing.sql','040-dashboard-sessions.sql','041-message-experiments.sql','042-queued-message-decisions.sql','043-message-decision-context.sql','044-thread-library.sql','045-writer-rotation.sql','046-live-provider-work.sql']){
       if(name==='041-message-experiments.sql'&&options.beforeMessages)await options.beforeMessages(this);
       if(name==='042-queued-message-decisions.sql'&&options.beforeQueueDecisions)await options.beforeQueueDecisions(this);
       if(name==='043-message-decision-context.sql'&&options.beforeDecisionContext)await options.beforeDecisionContext(this);
+      if(name==='045-writer-rotation.sql'&&options.beforeWriterRotation)await options.beforeWriterRotation(this);
       await this.db.exec(fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8'));
     }
     await this.db.exec(`grant select on accounts,threads,drafts,engain_tasks,sequence_runs,scenario_runs,scenario_acts to anon;
@@ -40,7 +41,7 @@ class Harness{
       insert into queries(id,q,shape,intent) values('q1','proxy debugging','how','technical help');
       update workflow_state set value='{"automatic":false}' where key='publishing';
       update workflow_state set value='{"enabled":false}' where key='message_workflow';`);
-    Object.assign(process.env,{SUPABASE_URL:'https://db.test',SUPABASE_SERVICE_KEY:'test-service',ENGAIN_API_KEY:'test-vendor',AGENT_API_KEY:'test-agent',OPERATOR_API_KEY:'test-operator',CRON_SECRET:'test-cron'});
+    Object.assign(process.env,{MESSAGE_CONTEXT_SOURCE:options.contextSource||'reddit',SUPABASE_URL:'https://db.test',SUPABASE_SERVICE_KEY:'test-service',ENGAIN_API_KEY:'test-vendor',AGENT_API_KEY:'test-agent',OPERATOR_API_KEY:'test-operator',CRON_SECRET:'test-cron'});
     for(const name of Object.keys(require.cache))if(name.startsWith(root+'/api/'))delete require.cache[name];
     this.originalFetch=global.fetch;global.fetch=this.fetch.bind(this);
     this.agent=require('../api/_agent.js');this.sender=require('../api/_send.js');this.monitor=require('../api/_monitor.js');this.workflow=require('../api/_workflow.js');

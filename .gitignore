@@ -3,3 +3,4 @@ assets/config.js
 .env*
 node_modules/
 .mcp.json
+!.env.example

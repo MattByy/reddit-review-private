@@ -1,47 +1,22 @@
-# Start here: pooled delivery first
+# Live message writer
 
-**Current phase: use Engain's pooled accounts. Accounts Beta is deferred.**
+Production: https://site-phi-two-38.vercel.app/plan#agent
 
-The agent writes one message and files it with our API. Our scripts submit it to Engain, save the task ID and comment URL, and check publication. Engain chooses the posting account. You do not connect, choose, rotate or approve our own Reddit accounts.
+Give the agent `AGENT_BASE_URL=https://site-phi-two-38.vercel.app/api/agent` and the existing `AGENT_API_KEY` through its secret configuration. The dashboard's **Agent setup** tab contains the current startup prompt. No repository setup, transport test or Reddit login is required to write.
 
-## 1. Choose the correct section
+1. `GET /writer` reads the instructions and enabled strategies.
+2. `POST /work/next {"agent":"your-stable-writer-name"}` returns one task. It resumes owned work, claims due work, or finds and refreshes a thread through Engain.
+3. Read `task.prompt`, `context`, `history`, `targets`, `brand` and `limits`. Write with `task.mode`. Submit `POST /work/:task.id` with `agent`, `lease_token`, `body` and `placement` when choosing between targets.
+4. Request the next task within the runner's budget. `GET /work` shows comments, approval, mode, Engain checks and delivery status.
 
-| Section | Use now? | Start point |
-| --- | --- | --- |
-| **Pooled accounts** | **Yes** | [Pooled setup and first test](docs/pooled-accounts.md) |
-| Accounts Beta / our private accounts | No; deferred | [Separate reference](docs/accounts-beta.md) |
+All calls use `Authorization: Bearer <AGENT_API_KEY>` and JSON. Paths above are relative to `AGENT_BASE_URL`. Never put secrets in comment text or logs.
 
-## 2. Follow this order
+Submission automatically approves and queues the exact text. Server checks and delivery run every 15 minutes; existing pacing limits still apply. Engain chooses the posting account. Published comments can queue the next eligible reply with the saved parent text. The writer does not wait for approval or poll Engain itself.
 
-1. Read [Pooled setup and first test](docs/pooled-accounts.md). It distinguishes the agent's API from Engain's API and lists the required settings.
-2. Run `npm ci`, then `npm run pool:test`. This is a local test with simulated external services; it never posts to Reddit.
-3. With `AGENT_API_KEY` supplied by the runner or an ignored `.env.local`, run `npm run pool:check`. It only reads `/bootstrap` and `/delivery`. Require `ok: true` before continuing; this proves current API connectivity, not that a comment has published.
-4. For the first live test, follow the pooled guide's **one-message test** by choosing and refreshing a permitted candidate from the [thread library](docs/thread-library.md). Use `queue_lane: "test"` and claim its exact experiment ID. Do not send arbitrary fixture text or claim unrelated queued work.
-5. For each actual writing turn, use [the daily agent runbook](docs/agent-runbook.md). It contains the prompt, exact fields, decision criteria and recovery instructions.
+Five enabled modes receive one assignment each per shuffled cycle (20% each); four receive 25% each. Assignments survive retries. The queue records the submitted mode and any justified follow-up override.
 
-There is no new publishing approval step. Filing a final message queues automatic delivery. An unfinished draft belongs in a job checkpoint, not in the filing endpoint.
+Engain supplies thread snapshots, not a complete comment tree. Reply tasks include our saved parent's text and Engain publication evidence. The agent must not invent missing replies or personal experiences. Public contributions must follow community rules and attribution requirements. Skip work when no useful permitted contribution exists.
 
-## 3. Give a fresh agent this instruction
+The server distinguishes **published by Engain** from **independently verified on Reddit**. It does not need direct Reddit access to advance the Engain workflow.
 
-```text
-Read START_HERE.md, then docs/pooled-accounts.md.
-We are using pooled delivery only; Accounts Beta is deferred.
-Run the read-only pooled connection check before claiming work.
-Use docs/thread-library.md to select a first-test thread if none was supplied.
-Claim only that test experiment in the test lane; ordinary jobs use work.
-Use docs/agent-runbook.md for each writing job.
-Polish your draft with a separate agent:self-edit pass; no external humanizer
-is required unless the launcher explicitly configures one.
-File one relevant, clearly attributed message through our agent API.
-Our server handles Engain, task IDs, URLs, polling and tracking.
-Do not call Engain directly or configure private accounts.
-Report saved IDs and observed states; do not call a queued message published.
-```
-
-## Reference only when needed
-
-- [Full system](docs/message-system.md): queues, limits, states and script ownership.
-- [Engain contract](docs/engain-messages.md): provider fields for the server adapter.
-- [Tracking specification](docs/message-tracking.md): planned audit and reporting changes, explicitly separated from current functionality.
-
-Protocol 5 stops writing when a branded message is verified, but currently confirms `success_at` after seven-day monitoring. Immediate-success reporting and append-only tracking are still specifications. The collector cron runs hourly; it creates no writing jobs. These docs do not install the external daily agent runner.
+Use [the agent runbook](docs/agent-runbook.md) for request examples and recovery, and [the thread library guide](docs/thread-library.md) for discovery settings. The writer runs in your existing agent runner; server cron handles delivery, collection and checks, not prose generation. Actual email sending is a separate integration and is not part of these Reddit task endpoints.

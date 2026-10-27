@@ -7,7 +7,7 @@
    waiting on a human, never a vanity total. */
 
 const STEPS = [
-  ["plan.html", 1, "Experiments", "P"],
+  ["plan.html", 1, "Message queue", "P"],
   ["library.html", 2, "Thread library", "T"],
   ["queries.html", 3, "Discovery", "Q"]
 ];
@@ -38,7 +38,7 @@ function nav() {
     `<span class="n" aria-hidden="true">${n}</span><span>${l}</span><span class="c" data-count="${k}" hidden></span></a>`).join("");
   document.body.insertAdjacentHTML("afterbegin",
     `<header class="topbar"><div class="in">` +
-      `<a class="brand" href="index.html">Reddit experiments</a>` +
+      `<a class="brand" href="index.html">Geonode outreach</a>` +
       `<nav class="steps" aria-label="Workflow">${steps}</nav>` +
       `<a class="aux" href="history.html" ${is("history.html") ? 'aria-current="page"' : ""}>Archive</a>` +
       `<button class="btn small" data-sign-out>Sign out</button>` +

@@ -1,5 +1,7 @@
 # Pooled accounts: active setup and first test
 
+> Live writers use [START_HERE.md](../START_HERE.md) and `/work/next`. The setup and isolated test procedures below are optional operator diagnostics, not prerequisites for the live workflow.
+
 **Start here for the current phase. Do not set up Accounts Beta.**
 
 Engain supplies the posting account. We supply a project, target URL and final text. Our writing agent does not choose an account, manage credentials for Reddit users or coordinate our private accounts. Engain's account allocation is a delivery detail, not permission to present staged independent endorsements.

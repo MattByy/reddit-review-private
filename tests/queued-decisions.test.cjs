@@ -16,7 +16,7 @@ async function publish(h,e,mode,body){
   h.reddit.get('abc123')[1].data.children.push(h.comment(id,m.body,parent,[],'provider_writer'));
   await h.messages.verify(m,task.redditUrl);return (await h.sql('select * from experiment_messages where id=$1',[m.id]))[0];
 }
-test('equal opening allocation and balanced reply suggestions count assignments, not successful survivors',async t=>{
+test('rotation stays balanced across mixed opening and reply assignments, regardless of publication',async t=>{
   const h=await setup(t);
   for(let i=0;i<50;i++){
     const id=i?'bal'+i.toString(36):'abc123';await h.thread(id);
@@ -27,12 +27,15 @@ test('equal opening allocation and balanced reply suggestions count assignments,
     await h.sql("update experiment_messages set task_id=$2,status='submitted' where id=$1",[m.id,'balance-'+i]);
     await h.rpc('observe_experiment_message',{p_message_id:m.id,p_visibility:'visible',p_url:'https://www.reddit.com/r/test/comments/'+id+'/example/pub/',p_evidence:{author:'writer'},p_reason:null});
   }
-  const opening=await h.sql("select suggested_action,count(*)::int n from experiment_messages where step=1 group by suggested_action");
-  assert.equal(opening.length,5);assert.ok(opening.every(r=>r.n===10));
-  const followup=await h.sql("select suggested_action,count(*)::int n from experiment_messages where step=2 group by suggested_action");
-  assert.equal(followup.length,5);assert.ok(followup.every(r=>r.n===8));
-  const stats=(await h.messages.rows()).actions.filter(r=>r.stage==='first_reply'&&r.basis==='suggested');assert.equal(stats.length,5);
-  assert.ok(stats.every(s=>s.assigned===8&&s.written===0&&s.published===0&&s.pending===8&&s.publication_percent===null));
+  const assignments=await h.sql("select suggested_action,writer_assignment from experiment_messages");
+  const cycles=Map.groupBy(assignments,m=>m.writer_assignment.cycle_id);
+  for(const cycle of cycles.values())assert.equal(new Set(cycle.map(m=>m.suggested_action)).size,cycle.length);
+  assert.ok([...cycles.values()].filter(c=>c.length===5).length>=10);
+  const counts=['direct','question','context','help','method'].map(a=>assignments.filter(m=>m.suggested_action===a).length);
+  assert.ok(Math.max(...counts)-Math.min(...counts)<=1);
+  const stats=(await h.messages.rows()).actions.filter(r=>r.stage==='first_reply'&&r.basis==='suggested');
+  assert.equal(stats.reduce((sum,s)=>sum+s.assigned,0),assignments.length-50);
+  assert.ok(stats.every(s=>s.written===0&&s.published===0&&s.pending===s.assigned&&s.publication_percent===null));
 });
 test('four-level ceiling allows only siblings; the sixth message exhausts even an entirely unbranded path',async t=>{
   const h=await setup(t),e=await start(h);
