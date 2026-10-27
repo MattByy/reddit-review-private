@@ -4,34 +4,39 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Thread Collector</title>
 <style>
-:root{--bg:#fafaf9;--panel:#fff;--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--chip:#f5f5f4;--accent:#4f46e5;--good:#15803d;--warn:#b45309;--bad:#b91c1c}
-@media (prefers-color-scheme:dark){:root{--bg:#0c0a09;--panel:#1c1917;--ink:#f5f5f4;--muted:#a8a29e;--line:#292524;--chip:#292524;--accent:#818cf8;--good:#4ade80;--warn:#fbbf24;--bad:#f87171}}
+:root{--bg:#fafaf9;--panel:#fff;--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--chip:#f5f5f4;--accent:#4f46e5;--good:#15803d;--warn:#b45309;--bad:#b91c1c;--cmt:#0e7490}
+@media (prefers-color-scheme:dark){:root{--bg:#0c0a09;--panel:#1c1917;--ink:#f5f5f4;--muted:#a8a29e;--line:#292524;--chip:#292524;--accent:#818cf8;--good:#4ade80;--warn:#fbbf24;--bad:#f87171;--cmt:#22d3ee}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
 header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
 h1{font-size:18px;margin:0}.muted{color:var(--muted)}.pill{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
 main{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;padding:16px}@media(max-width:900px){main{grid-template-columns:1fr}}
 section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+aside section+section{margin-top:16px}
 label{display:block;margin:6px 0}textarea,input[type=text],input[type=number],select{width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}.grid2 label{font-size:12px;color:var(--muted)}
 button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer}button:disabled{opacity:.5}
 button.ghost{background:none;color:var(--muted);border:1px solid var(--line);padding:3px 8px;font-size:12px}
-#progress{white-space:pre-wrap;font:12px ui-monospace,monospace;margin-top:10px;max-height:240px;overflow:auto}
-.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-14px -14px 12px;padding:0 10px}
+pre{white-space:pre-wrap;font:12px ui-monospace,monospace;margin:10px 0 0;max-height:320px;overflow:auto;overflow-wrap:anywhere}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-14px -14px 12px;padding:0 10px;flex-wrap:wrap}
 .tabs button{background:none;color:var(--muted);border-radius:0;border-bottom:2px solid transparent;padding:10px 10px}
 .tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
-.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}.filters>*{width:auto;flex:1;min-width:130px}.filters button{flex:0}
-.item{display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}.filters>*{width:auto;flex:1;min-width:130px}.filters button{flex:0;white-space:nowrap}
+.item{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .score{font-weight:650;font-size:16px;text-align:center}.hi{color:var(--good)}.mid{color:var(--warn)}.lo{color:var(--bad)}
+.pos{font-size:11px;color:var(--muted);font-weight:400}
+.kind{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}.kind.comment{color:var(--cmt)}
 .meta{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .tags span{font-size:11px;margin-right:4px;padding:1px 6px;border-radius:4px;background:var(--chip);display:inline-block;margin-top:3px}
 .flag{font-size:12px;color:var(--warn)}details{font-size:12px;color:var(--muted)}
-blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--line);background:var(--chip);border-radius:0 6px 6px 0;white-space:pre-wrap;overflow-wrap:anywhere}
-.sub{margin-left:12px}.done{opacity:.55}
+blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);background:var(--chip);border-radius:0 6px 6px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.done{opacity:.55}
 </style>
 </head>
 <body>
 <header><h1>Thread Collector</h1><span id="mode" class="pill"></span><span id="count" class="muted"></span></header>
 <main>
+<aside>
 <section>
   <strong>Collect from Engain</strong>
   <label><input type="checkbox" name="src" value="opportunities" checked> Opportunities (new + SEO)</label>
@@ -42,84 +47,107 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--line);backg
   <label><input type="checkbox" id="spend"> Spend Smart Search quota for new or stale keywords</label>
   <label>Pages per feed <input type="number" id="pages" value="3" min="1" max="20"></label>
   <button id="go">Collect</button>
-  <div id="progress" class="muted"></div>
+  <pre id="progress" class="muted"></pre>
 </section>
 <section>
-  <div class="tabs"><button data-tab="queue" class="on">Queue</button><button data-tab="comments">Relevant comments</button><button data-tab="threads">All threads</button></div>
+  <strong>Queue rules</strong>
+  <div class="grid2" id="settings"></div>
+  <button id="save" class="ghost" style="margin-top:8px">Save rules and refresh</button>
+</section>
+</aside>
+<section>
+  <div class="tabs"><button data-tab="queue" class="on">Queue</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="history">Taken / removed</button></div>
   <div id="tab-queue">
-    <div class="filters"><label class="muted" style="flex:0;white-space:nowrap">Size</label><input type="number" id="qsize" value="50" min="1" max="500" style="max-width:90px"><input type="number" id="qmin" placeholder="Min score" min="0" max="100" style="max-width:110px"><button id="build">Build queue</button></div>
+    <div class="filters"><span class="muted" id="qcount"></span><button id="refreshq" class="ghost">Refresh queue</button><button id="rebuild" class="ghost">Rebuild from scratch</button><button id="take">Agent: take next task</button></div>
+    <pre id="taken" hidden></pre>
     <div id="queue"></div>
   </div>
   <div id="tab-comments" hidden>
     <div class="filters"><input type="text" id="cq" placeholder="Filter text"><select id="cbrand"><option value="">All brands</option></select>
-      <select id="cown"><option value="">Geonode + competitors</option><option value="false">Competitors only</option><option value="true">Geonode only</option></select>
+      <label style="flex:0;white-space:nowrap"><input type="checkbox" id="cavail" checked> Queueable only</label>
       <input type="number" id="cmin" value="40" min="0" max="100" title="Min score" style="max-width:90px"></div>
     <div id="comments"></div>
   </div>
   <div id="tab-threads" hidden>
     <div class="filters"><input type="text" id="q" placeholder="Filter title / subreddit / keyword"><input type="text" id="sub" placeholder="Subreddit">
       <select id="source"><option value="">All sources</option><option>opportunities</option><option>mentions</option><option>smart_search</option></select>
-      <label style="flex:0;white-space:nowrap"><input type="checkbox" id="avail"> Available only</label></div>
+      <label style="flex:0;white-space:nowrap"><input type="checkbox" id="avail"> Queueable only</label></div>
     <div id="threads"></div>
   </div>
+  <div id="tab-history" hidden><div id="history"></div></div>
 </section>
 </main>
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cls=s=>s>=60?'hi':s>=35?'mid':'lo',fmt=n=>n==null?'–':Math.round(n).toLocaleString();
 async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j;}
+const LABELS={thread_target:'Threads in queue',comment_limit:'New comments per refresh',comment_position:'Insert comments at',max_age_days:'Max age (days)',min_comments:'Min thread comments',min_thread_score:'Min thread score',min_comment_score:'Min comment score'};
 let tab='queue';
-for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','comments','threads'])$('#tab-'+t).hidden=t!==tab;refresh();};
+for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','comments','threads','history'])$('#tab-'+t).hidden=t!==tab;refresh();};
 
 async function status(){const s=await api('/api/status');$('#mode').textContent=s.mock?'mock data':'live Engain'+(s.project_name?' · '+s.project_name:'');
   $('#count').textContent=`${s.threads} threads · ${s.comments} mention comments · ${s.queued} queued`;
   if(!s.engain_key)$('#progress').textContent='ENGAIN_API_KEY missing: add it to .env.local or run npm run dev:mock';}
-function threadHtml(t){const r=t.rank;return `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.title||t.url)}</a>
-  <div class="meta"><span>r/${esc(t.subreddit)}</span><span>${fmt(t.num_comments)} comments</span><span>${fmt(t.visits_per_month)} visits/mo</span><span>${r.age_days??'–'} days old</span>${t.relevant_comments?`<span>${t.relevant_comments} relevant comment(s)</span>`:''}</div>
-  <div class="tags">${t.sources.map(s=>`<span>${esc(s)}</span>`).join('')}${t.keywords.map(k=>`<span>“${esc(k)}”</span>`).join('')}</div>
-  ${r.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}${t.availability.available?'':t.availability.reasons.map(f=>`<div class="flag">✕ ${esc(f)}</div>`).join('')}
-  <details><summary>Why this score</summary>${Object.entries(r.parts).map(([k,v])=>`${esc(k)} ${v>0?'+':''}${v}`).join(' · ')}${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}</details>`;}
-function commentHtml(c){return `<div class="meta"><span>${esc(c.brand)}</span><span>${esc(c.sentiment)}</span><span>r/${esc(c.subreddit)}</span><span>${c.rank.age_days??'–'} days old</span><span>u/${esc(c.author)}</span></div>
-  <blockquote>${esc(c.body.length>600?c.body.slice(0,600)+'…':c.body)}</blockquote>
-  <div class="meta">${c.permalink?`<a href="${esc(c.permalink)}" target="_blank" rel="noopener">Open comment</a>`:''}<span>in “${esc(c.thread_title||'thread')}”</span>${c.thread_engaged?'<span class="flag">we already have a task in this thread</span>':''}</div>
-  <details><summary>Why relevant</summary>${c.rank.reasons.map(esc).join(' · ')}<br>topics: ${c.rank.topics.map(esc).join(', ')}<br>${Object.entries(c.rank.parts).map(([k,v])=>`${esc(k)} ${v>0?'+':''}${v}`).join(' · ')}</details>`;}
+async function loadSettings(){const s=await api('/api/settings');$('#settings').innerHTML=Object.entries(LABELS).map(([k,l])=>`<label>${l}<input type="number" data-k="${k}" value="${s[k]}"></label>`).join('');}
+function why(parts){return Object.entries(parts||{}).map(([k,v])=>`${esc(k)} ${v>0?'+':''}${v}`).join(' · ');}
+function threadInfoHtml(t,extra=''){if(!t)return '<span class="muted">Thread details not collected</span>';return `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.title||t.url)}</a>
+  <div class="meta"><span>r/${esc(t.subreddit)}</span><span>${fmt(t.num_comments)} comments</span><span>${t.comments_per_day??'–'}/day</span><span>${fmt(t.visits_per_month)} visits/mo</span><span>${t.age_days??'–'} days old</span>${extra}</div>`;}
+function commentHtml(c,thread){return `<blockquote>${esc(c.body.length>600?c.body.slice(0,600)+'…':c.body)}</blockquote>
+  <div class="meta"><span>${esc(c.brand)} · ${esc(c.sentiment)}</span><span>u/${esc(c.author)}</span><span>${c.age_days??c.rank?.age_days??'–'} days old</span>${c.permalink?`<a href="${esc(c.permalink)}" target="_blank" rel="noopener">Open comment</a>`:''}</div>
+  <div class="meta">in ${thread?.url?`<a href="${esc(thread.url)}" target="_blank" rel="noopener">${esc(thread.title||'thread')}</a>`:esc(thread?.title||c.thread_title||'thread')} · r/${esc(thread?.subreddit||c.subreddit)}</div>`;}
+function itemHtml(x,controls=''){return `<div class="item ${x.status==='queued'||!x.status?'':'done'}"><div class="score ${cls(x.score)}">${x.score??'–'}${x.position?`<div class="pos">#${x.position}</div>`:''}</div><div>
+  <div class="kind ${x.kind}">${x.kind==='comment'?'Reply to comment':'Comment on thread'}</div>
+  ${x.kind==='comment'?commentHtml(x.comment||{body:'(comment no longer collected)'},x.thread):threadInfoHtml(x.thread)}
+  ${x.why?`<details><summary>Why this score</summary>${why(x.why.parts)}${(x.why.flags||x.why.reasons||[]).length?'<br>'+(x.why.flags||x.why.reasons).map(esc).join(' · '):''}</details>`:''}
+  ${controls}</div></div>`;}
 
 async function loadQueue(){
-  const q=await api('/api/queue');
-  $('#queue').innerHTML=q.map((x,i)=>!x.thread?'':`<div class="item ${x.status==='queued'?'':'done'}"><div class="score ${cls(x.thread.rank.score)}">${x.thread.rank.score}<div class="muted" style="font-size:11px;font-weight:400">#${x.position}</div></div><div>
-    ${threadHtml(x.thread)}
-    ${x.comments.slice(0,3).map(c=>`<div class="sub">${commentHtml(c)}</div>`).join('')}
-    <div class="meta" style="margin-top:6px">${x.status==='queued'?`<button class="ghost" data-q="${esc(x.thread_id)}" data-s="done">Mark done</button><button class="ghost" data-q="${esc(x.thread_id)}" data-s="skipped">Skip</button>`:`<span>${esc(x.status)}</span><button class="ghost" data-q="${esc(x.thread_id)}" data-s="queued">Restore</button>`}</div>
-  </div></div>`).join('')||'<p class="muted">Queue is empty. Collect, then Build queue.</p>';
+  const q=await api('/api/queue');$('#qcount').textContent=`${q.count} items (${q.items.filter(i=>i.kind==='comment').length} comments)`;
+  $('#queue').innerHTML=q.items.map(x=>itemHtml(x,`<div class="meta" style="margin-top:6px"><button class="ghost" data-q="${esc(x.item_id)}" data-s="done">Mark done</button><button class="ghost" data-q="${esc(x.item_id)}" data-s="skipped">Skip</button></div>`)).join('')||'<p class="muted">Queue is empty. Collect, or loosen the queue rules.</p>';
   for(const b of document.querySelectorAll('[data-q]'))b.onclick=async()=>{await api('/api/queue/'+encodeURIComponent(b.dataset.q),{status:b.dataset.s});refresh();};
 }
+async function loadHistory(){
+  const q=await api('/api/queue?history=200');
+  $('#history').innerHTML=q.recent.map(x=>itemHtml(x,`<div class="meta"><span>${esc(x.status)}${x.claimed_by?' by '+esc(x.claimed_by):''}</span><span>${esc(x.updated_at)}</span>${x.note?`<span>${esc(x.note)}</span>`:''}</div>`)).join('')||'<p class="muted">Nothing taken or removed yet.</p>';
+}
 async function loadComments(){
-  const p=new URLSearchParams({q:$('#cq').value,brand:$('#cbrand').value,own:$('#cown').value,min_score:$('#cmin').value,limit:200});
+  const p=new URLSearchParams({q:$('#cq').value,brand:$('#cbrand').value,available:$('#cavail').checked,min_score:$('#cmin').value,limit:200});
   const r=await api('/api/comments?'+p),sel=$('#cbrand'),cur=sel.value;
   sel.innerHTML='<option value="">All brands</option>'+Object.entries(r.brands).sort((a,b)=>b[1]-a[1]).map(([b,n])=>`<option value="${esc(b)}">${esc(b)} (${n})</option>`).join('');sel.value=cur;
-  $('#comments').innerHTML=`<p class="muted">${r.total} comments at or above the minimum score</p>`+r.items.map(c=>`<div class="item"><div class="score ${cls(c.rank.score)}">${c.rank.score}</div><div>${commentHtml(c)}</div></div>`).join('');
+  $('#comments').innerHTML=`<p class="muted">${r.total} comments</p>`+r.items.map(c=>`<div class="item"><div class="score ${cls(c.rank.score)}">${c.rank.score}</div><div>${commentHtml(c,null)}
+    ${c.eligibility.queueable?'':c.eligibility.reasons.map(f=>`<div class="flag">✕ ${esc(f)}</div>`).join('')}<details><summary>Why relevant</summary>${c.rank.reasons.map(esc).join(' · ')}<br>topics: ${c.rank.topics.map(esc).join(', ')}<br>${why(c.rank.parts)}</details></div></div>`).join('');
 }
 async function loadThreads(){
   const p=new URLSearchParams({q:$('#q').value,subreddit:$('#sub').value,source:$('#source').value,available:$('#avail').checked,limit:200});
   const r=await api('/api/threads?'+p);
-  $('#threads').innerHTML=`<p class="muted">${r.total} threads</p>`+r.items.map(t=>`<div class="item"><div class="score ${cls(t.rank.score)}">${t.rank.score}</div><div>${threadHtml(t)}</div></div>`).join('');
+  $('#threads').innerHTML=`<p class="muted">${r.total} threads</p>`+r.items.map(t=>`<div class="item"><div class="score ${cls(t.rank.score)}">${t.rank.score}</div><div>
+    ${threadInfoHtml({...t,age_days:t.rank.age_days,comments_per_day:t.rank.comments_per_day})}
+    <div class="tags">${t.sources.map(s=>`<span>${esc(s)}</span>`).join('')}${t.keywords.map(k=>`<span>“${esc(k)}”</span>`).join('')}</div>
+    ${t.rank.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}${t.eligibility.reasons.map(f=>`<div class="flag">✕ ${esc(f)}</div>`).join('')}
+    <details><summary>Why this score</summary>${why(t.rank.parts)}${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}</details></div></div>`).join('');
 }
-async function refresh(){status();try{await({queue:loadQueue,comments:loadComments,threads:loadThreads})[tab]();}catch(e){$('#progress').textContent='Error: '+e.message;}}
+async function refresh(){status();try{await({queue:loadQueue,comments:loadComments,threads:loadThreads,history:loadHistory})[tab]();}catch(e){$('#progress').textContent='Error: '+e.message;}}
 
-$('#build').onclick=async()=>{await api('/api/queue/build',{size:Number($('#qsize').value),min_score:Number($('#qmin').value||0)});refresh();};
+$('#refreshq').onclick=async()=>{await api('/api/queue/refresh',{});refresh();};
+$('#rebuild').onclick=async()=>{await api('/api/queue/refresh',{reset:true});refresh();};
+$('#take').onclick=async()=>{const r=await api('/api/agent/task',{agent:'dashboard'});$('#taken').hidden=false;$('#taken').textContent=JSON.stringify(r,null,2);refresh();};
+$('#save').onclick=async()=>{const body={};for(const i of document.querySelectorAll('[data-k]'))body[i.dataset.k]=Number(i.value);
+  try{await api('/api/settings',body);await api('/api/queue/refresh',{});}catch(e){$('#progress').textContent='Error: '+e.message;}loadSettings();refresh();};
 $('#go').onclick=async()=>{
   const body={sources:[...document.querySelectorAll('[name=src]:checked')].map(x=>x.value),keywords:$('#keywords').value.split('\n'),spend_quota:$('#spend').checked,max_pages:Number($('#pages').value)};
   $('#go').disabled=true;
   try{
     const {run_id}=await api('/api/collect',body);
     for(;;){const r=await api('/api/runs/'+run_id),s=r.summary||r.progress||{};
-      $('#progress').textContent=(r.finished_at?'Done.':'Working: '+(s.step||''))+`\nthreads +${s.added??0} new, ${s.updated??0} updated\ncomments +${s.comments_added??0}\nalready-engaged threads: ${s.engaged_threads??0}`+(s.errors?.length?'\nErrors:\n'+s.errors.join('\n'):'')+(s.notes?.length?'\n'+s.notes.join('\n'):'');
+      $('#progress').textContent=(r.finished_at?'Done.':'Working: '+(s.step||''))+`\nthreads +${s.added??0} new, ${s.updated??0} updated\ncomments +${s.comments_added??0}\nalready-engaged threads: ${s.engaged_threads??0}`
+        +(s.queue?`\nqueue: ${s.queue.queued} items, +${s.queue.added_threads} threads, +${s.queue.added_comments} comments, ${s.queue.removed} removed`:'')
+        +(s.errors?.length?'\nErrors:\n'+s.errors.join('\n'):'')+(s.notes?.length?'\n'+s.notes.join('\n'):'');
       if(r.finished_at)break;await new Promise(x=>setTimeout(x,2000));}
   }catch(e){$('#progress').textContent='Error: '+e.message;}
   $('#go').disabled=false;refresh();
 };
-let t;for(const id of ['#q','#sub','#source','#avail','#cq','#cbrand','#cown','#cmin'])$(id).addEventListener('input',()=>{clearTimeout(t);t=setTimeout(refresh,200);});
-refresh();
+let t;for(const id of ['#q','#sub','#source','#avail','#cq','#cbrand','#cavail','#cmin'])$(id).addEventListener('input',()=>{clearTimeout(t);t=setTimeout(refresh,200);});
+loadSettings();refresh();
 </script>
 </body>
 </html>

@@ -37,53 +37,108 @@ Opportunities and mentions paginate with `cursor` → `continueCursor` until `is
 
 `npm run dev` (live, needs `ENGAIN_API_KEY` in `.env.local`) or `npm run dev:mock` (invented data) starts `server/dev.cjs` on http://127.0.0.1:3000.
 
-A collection run pulls the selected sources and merges them into one row per Reddit thread ID. It then fetches subreddit stats, cached for 24 hours, and ranks threads from 0 to 100:
-
-- **Added:** relevance (35), Google traffic (25), discussion size (15), Google position (10), freshness (15).
-- **Subtracted:** subreddit moderation/removal risk (up to 25), a self-promotion ban (10), BotBouncer (8), and age over 6 months, since the thread may be archived (20).
+A collection run pulls the selected sources and merges them into one row per Reddit thread ID. It then fetches subreddit stats, cached for 24 hours, and scores every thread and comment (weights under **Rules** below).
 
 Each thread shows the breakdown. The weights are a starting point to tune. By default, Smart Search only re-reads stored results; it spends quota only when "spend quota" (`spend_quota: true`) is set.
 
-## Queue and relevant comments
+## The work queue
 
-**Queue.** The collector reads Engain's task list (`GET /api/v1/tasks`). Any thread with a live, published or moderator-removed task counts as already engaged; cancelled tasks don't count. `POST /api/queue/build {size:50}` fills the queue with the top N available threads. A thread is available if it is:
+The queue is an ordered list of two kinds of item:
 
-- not already engaged,
-- not older than 6 months,
-- not marked skipped or done.
+- **thread**: write a top-level comment on a thread (action `comment_on_thread`).
+- **comment**: reply to a comment that mentions a competitor (action `reply_to_comment`).
 
-Skipped and done entries are kept and never re-added.
+Threads fill the queue in score order. Comments first seen since the last refresh are inserted at `comment_position` (default 5), best first, at most `comment_limit` (default 20) per refresh. Everything from that position moves down: with 20 new comments, the thread at #6 moves to #26. The comment backlog is only used when the queue is first built or rebuilt with `reset`.
 
-**Comments.** Engain does not return comment trees, and `www.reddit.com/*.json` answers 403 from a plain local client. The only comment source is therefore `GET /api/v1/mentions`. It tracks Geonode and competitor brands (`GET /api/v1/mentions/brands`: brightdata, oxylabs, firecrawl, serpapi, iproyal and others). Most mentions are comments with `commentContent.body` and `permalink`.
+Each refresh also tops threads back up to `thread_target` (default 50) at the end, and drops items that stopped qualifying (the reason is kept in the history).
 
-Comments are scored 0–100:
+### Rules
 
-- **Required:** at least one proxy/scraping topic term in the comment or thread title. Without one the score is 0, which drops off-topic hits such as sponsorship chatter.
-- **Added:** question or comparison intent, brand and sentiment (a negative competitor mention or a negative Geonode mention scores highest), and recency.
-- **Subtracted:** age over 6 months.
+**A thread is never queued if:**
 
-The brand's own name is removed before topic matching, so "firecrawl" doesn't count as "crawl".
+- Geonode is mentioned anywhere in it (post or comment).
+- We already have a live, published or moderator-removed task there (from Engain's task list).
+- It was already claimed, done or skipped.
+- It is older than `max_age_days` (default 120) or its date is unknown.
+- It has fewer than `min_comments` (default 3) comments.
+- It has no proxy/scraping relevance.
+- It was found only through a brand mention. Those become comment items instead.
 
-A thread found only through a mention has no Engain relevance score. It earns relevance from an on-topic title or body (0.5), or from its best on-topic comment (that comment's score ÷ 100). With neither, it is off-topic and never queued.
+**A comment is queued if:**
 
-Collecting all tracked brands takes roughly 1 request per brand per page. Subreddit stats are looked up only for the best 100 candidates per run (`enrich_limit`) and cached for 24 hours. The first live run found about 500 distinct subreddits, which would take 17 minutes at 30/min.
+- It mentions a competitor, not Geonode.
+- The comment itself names a proxy/scraping topic. Generic words like "IP", "VPN" or "blocked" don't count on their own, and the brand's own name ("firecrawl") is ignored.
+- It scores at least `min_comment_score` (default 40).
+- The same thread rules apply: no Geonode mention, no existing task, not too old.
 
-First live run (2026-10-28, geonode.com, 3 pages per feed):
+**Other rules:**
 
-- 2,169 threads and 552 mention comments, 217 of them scoring 40 or more.
-- About 120 opportunity threads excluded: 83 likely archived, 39 where moderators removed our earlier task.
-- The top-50 queue scored 55–33. 18 queued threads had a relevant comment attached.
+- **One item per thread.** A comment to reply to replaces a queued thread item in the same thread.
+- **Thread score (0–100):**
+  - Added: Engain relevance (35), Google traffic (20), Google position (5), discussion size (10), activity in comments per day (15), freshness (15, full up to 14 days and falling to 0 at `max_age_days`).
+  - Subtracted: subreddit moderation/removal risk, self-promotion bans and BotBouncer.
+
+The `min_*` and `max_age_days` values are live settings, changed with `GET` or `POST /api/settings` or the dashboard.
+
+## Agent API
+
+`POST /api/agent/task` with optional body `{"agent":"writer-1"}`. It refreshes the queue, takes item #1 off it for good and returns it. Positions renumber, and a claimed thread never comes back. It is POST because every call removes an item, so a retry or link preview with GET must not consume work.
+
+```json
+{"task_id":"t_1x8eium","status":"thread","action":"comment_on_thread","score":35,
+ "why":{"parts":{...},"flags":[...]},
+ "thread":{"id","url","title","body","subreddit","created_at","age_days","num_comments","comments_per_day","visits_per_month","engain_reasons","subreddit_rules":{...}},
+ "claimed_at":"…","remaining":69}
+
+{"task_id":"c_k17…","status":"comment","action":"reply_to_comment","score":92,
+ "comment":{"id","permalink","body","author","brand","sentiment","created_at","age_days"},
+ "thread":{…same as above…},"remaining":68}
+
+{"status":"empty","remaining":0,"message":"…"}
+```
+
+`GET /api/agent/queue` lists the queued item IDs, kinds and positions without claiming anything.
+
+## Cron API
+
+`POST /api/cron/refresh` with body `{}` collects from Engain (all sources, 3 pages) and refreshes the queue when the run finishes. It returns `{"started":true,"run_id":n}`, or `{"started":false,"reason":…}` if a run is still going. Pass `{"collect":false}` to refresh the queue only. Other collect options (`max_pages`, `keywords`, `spend_quota`, `sources`) pass through.
+
+A full collection takes several minutes at Engain's 30 requests/min. Hourly works. Mentions and opportunities are the parts that change.
+
+## Auth
+
+| Route | Rule |
+| --- | --- |
+| `/api/agent/*` | `Authorization: Bearer $AGENT_API_KEY` when the key is set. Without a key, only this machine may call. |
+| `/api/cron/*` | `Authorization: Bearer $CRON_SECRET`, same rule. |
+| Everything else (dashboard) | This machine only. |
+
+The server listens on `127.0.0.1` by default. `HOST=0.0.0.0` (for a remote agent or cron runner) refuses to start unless both `AGENT_API_KEY` and `CRON_SECRET` are set.
+
+## Dashboard routes (local only)
 
 | Route | Purpose |
 | --- | --- |
-| `POST /api/collect {sources, keywords, spend_quota, max_pages}` | Start a background run. Sources: `opportunities`, `mentions`, `smart_search`, `tasks`. Empty keywords re-read Smart Search history for free. |
-| `POST /api/queue/build {size, min_score}` / `GET /api/queue` | Build or read the queue, with each thread's relevant comments |
-| `POST /api/queue/:thread_id {status: queued\|skipped\|done, note}` | Update a queue entry |
-| `GET /api/comments?brand=&own=&min_score=&q=` | Relevant mention comments |
-| `GET /api/runs/:id` or `/api/runs/latest` | Progress and summary |
-| `GET /api/threads?q=&subreddit=&source=&min_score=` | Ranked threads |
-| `GET /api/threads/:id` | One thread with full body |
-| `GET /api/subreddits` | Cached subreddit stats |
-| `GET /api/status`, `/api/projects`, `/api/balance`, `/api/smart-search/history` | Diagnostics |
+| `POST /api/collect {sources, keywords, spend_quota, max_pages, enrich_limit}` | Start a collection run. Sources: `opportunities`, `mentions`, `smart_search`, `tasks`. Empty keywords re-read Smart Search history for free. |
+| `GET /api/queue?history=` | Queued items plus recent claimed, done, skipped and removed items |
+| `POST /api/queue/refresh {reset}` | Refresh the queue, or rebuild it from scratch |
+| `POST /api/queue/:item_id {status: skipped\|done, note}` | Take an item off the queue by hand |
+| `GET`/`POST /api/settings` | Queue rules |
+| `GET /api/threads?q=&subreddit=&source=&available=true` | All threads with score and eligibility reasons |
+| `GET /api/comments?brand=&own=&available=true&min_score=` | All mention comments with score and eligibility reasons |
+| `GET /api/runs/:id` or `/api/runs/latest` | Run progress and summary |
+| `GET /api/status`, `/api/subreddits`, `/api/projects`, `/api/balance`, `/api/smart-search/history` | Diagnostics |
 
-Data lives in `.data/dev.db` (SQLite, gitignored). This server is separate from the deployed Vercel/Supabase app and never posts anything.
+## First live run (2026-10-28, geonode.com, 3 pages per feed)
+
+- **Collected:** 2,169 threads and 552 mention comments (Geonode plus 10 competitors).
+- **Not queueable:**
+  - 1,076 threads older than 120 days;
+  - 720 with fewer than 3 comments;
+  - 79 that already mention Geonode;
+  - 69 where moderators removed our task;
+  - 11 with a published task.
+- **Queueable:** 335 threads and 46 comments.
+- **Queue:** 70 items. Threads at #1–4, 20 competitor comments at #5–24, then threads.
+
+Comments come only from Engain mentions. Reddit's own JSON returns 403 to a plain local client, so comments that name no brand are not covered.

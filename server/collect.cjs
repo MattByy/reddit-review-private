@@ -7,6 +7,8 @@ const DAY=86400000;
 const OWN_BRAND=/geonode/i;
 // Geonode's topic: a comment or thread must touch one of these to count as relevant.
 const TOPIC=/\bprox(y|ies)\b|residential|rotating|\bisp\b|datacenter|data center|mobile prox|scrap(e|er|ers|ing)|crawl(er|ing)?|captcha|cloudflare|anti-?bot|\bwaf\b|blocked|ip ban|banned ip|rate.?limit|\bserp\b|unblock|fingerprint|headless|playwright|puppeteer|selenium|geo-?(target|restrict)|\bvpn\b|bandwidth|\bips?\b/gi;
+// Generic words ("ip", "vpn", "blocked", "bandwidth"...) add weight but never qualify a comment alone.
+const STRONG=/^(prox(y|ies)|residential|rotating|datacenter|data center|mobile prox|scrap(e|er|ers|ing)|crawl(er|ing)?|captcha|cloudflare|anti-?bot|serp|unblock|fingerprint|headless|playwright|puppeteer|selenium)$/i;
 const INTENT=/\?|recommend|suggest|looking for|alternative|anyone (use|tried|know)|which (one|provider)|worth it|switch(ed|ing)? (from|to)|too expensive|pricing|cheaper|issue|problem|not working|keeps? (getting )?block/i;
 const ACTIVE=new Set(['scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned','published']);
 const REMOVED=new Set(['mod_removed','automod_removed']);
@@ -49,8 +51,10 @@ function fromSmartSearch(r,keyword){
     reddit_views:num(r.estimatedRedditViews),sources:['smart_search'],keywords:[keyword]};
 }
 
+const DEFAULT_MAX_AGE=120;
 // Score 0-100 with a visible breakdown. Weights are a starting point to tune, not Engain's model.
-function rank(t,sub,now=Date.now()){
+// Age past max_age_days is reported as a flag; the queue excludes those threads outright.
+function rank(t,sub,{max_age_days=DEFAULT_MAX_AGE}={},now=Date.now()){
   const parts={},flags=[];
   // Engain scores opportunities; Smart Search hits matched our own keywords. A thread found only
   // through a brand mention earns relevance from an on-topic title/body or its best on-topic comment.
@@ -60,12 +64,16 @@ function rank(t,sub,now=Date.now()){
   const offTopic=baseRel===0;
   if(offTopic)flags.push('No proxy/scraping signal in the thread or its mention comments');
   parts.relevance=baseRel*35;
-  parts.traffic=Math.min(1,Math.log10(1+(t.visits_per_month||0))/4)*25;
-  parts.discussion=Math.min(1,Math.log10(1+(t.num_comments||0))/2.5)*15;
-  parts.google=t.google_position?Math.max(0,1-(t.google_position-1)/10)*10:0;
+  parts.traffic=Math.min(1,Math.log10(1+(t.visits_per_month||0))/4)*20;
+  parts.google=t.google_position?Math.max(0,1-(t.google_position-1)/10)*5:0;
   const age=t.created_utc?(now-t.created_utc*1000)/DAY:null;
-  parts.freshness=age==null?5:age<=30?15:Math.max(0,1-(age-30)/150)*15;
-  if(age!=null&&age>180){parts.archived=-20;flags.push('Older than 6 months: may be archived (Reddit default)');}
+  parts.discussion=Math.min(1,Math.log10(1+(t.num_comments||0))/2.5)*10;
+  // Activity: comments per day since creation (about 30/day scores full).
+  const perDay=age==null||t.num_comments==null?null:t.num_comments/Math.max(age,1);
+  parts.activity=perDay==null?0:Math.min(1,Math.log10(1+perDay)/1.5)*15;
+  parts.freshness=age==null?0:age<=14?15:Math.max(0,1-(age-14)/(max_age_days-14))*15;
+  const tooOld=age==null||age>max_age_days;
+  if(age==null)flags.push('Creation date unknown');else if(age>max_age_days)flags.push(`Older than ${max_age_days} days`);
   if(sub){
     const commentRate=(sub.buckets||[]).find(b=>b.contentType==='comment'&&num(b.removalRate)!=null)?.removalRate;
     const risk=Math.max((sub.moderationLevel??0)/95,commentRate??0);
@@ -76,7 +84,7 @@ function rank(t,sub,now=Date.now()){
   }
   const score=Math.round(Math.max(0,Math.min(100,Object.values(parts).reduce((a,b)=>a+b,0))));
   for(const k in parts)parts[k]=Math.round(parts[k]*10)/10;
-  return {score,parts,flags,off_topic:offTopic,age_days:age==null?null:Math.round(age*10)/10};
+  return {score,parts,flags,off_topic:offTopic,too_old:tooOld,comments_per_day:perDay==null?null:Math.round(perDay*100)/100,age_days:age==null?null:Math.round(age*10)/10};
 }
 
 function bestCommentScores(store){
@@ -86,22 +94,25 @@ function bestCommentScores(store){
 }
 
 // Comment relevance 0-100. A comment with no Geonode-topic term in it or its thread title scores 0.
-function rankComment(c,now=Date.now()){
+function rankComment(c,{max_age_days=DEFAULT_MAX_AGE}={},now=Date.now()){
   const parts={},reasons=[],own=OWN_BRAND.test(c.brand||'');
   // Strip the brand's own name so "firecrawl" or "serpapi" does not count as a topic word.
   const name=String(c.brand||'').split('.')[0];
   const hits=topicHits((c.body+' '+(c.thread_title||'')).replace(name?new RegExp(name.replace(/[^a-z0-9]/gi,''),'gi'):/$^/,' '));
-  if(!hits.length)return {score:0,parts:{},reasons:['No proxy/scraping topic in the comment or thread title'],own,topics:[]};
+  // The comment itself must name the topic; the thread title only adds weight.
+  const own_words=topicHits(String(c.body||'').replace(name?new RegExp(name.replace(/[^a-z0-9]/gi,''),'gi'):/$^/,' '));
+  if(!own_words.some(h=>STRONG.test(h)))return {score:0,parts:{},reasons:['No proxy/scraping topic in the comment or thread title'],own,too_old:false,topics:hits};
   parts.topic=Math.min(hits.length,4)/4*35;
   if(INTENT.test(c.body)){parts.intent=20;reasons.push('Asks, compares or reports a problem');}
   if(own){parts.brand=c.sentiment==='negative'?25:15;reasons.push(c.sentiment==='negative'?'Negative about Geonode: needs a support answer':'Mentions Geonode');}
   else{parts.brand=c.sentiment==='negative'?25:c.sentiment==='neutral'?15:10;reasons.push(`Mentions ${c.brand}${c.sentiment==='negative'?' negatively':''}`);}
   const age=c.created_utc?(now-c.created_utc*1000)/DAY:null;
-  parts.freshness=age==null?5:age<=7?20:age<=30?14:age<=90?8:age<=180?3:0;
-  if(age!=null&&age>180){parts.archived=-30;reasons.push('Older than 6 months: replies likely disabled');}
+  parts.freshness=age==null?0:age<=7?20:Math.max(0,1-(age-7)/(max_age_days-7))*20;
+  const tooOld=age==null||age>max_age_days;
+  if(age==null)reasons.push('Comment date unknown');else if(age>max_age_days)reasons.push(`Older than ${max_age_days} days`);
   const score=Math.round(Math.max(0,Math.min(100,Object.values(parts).reduce((a,b)=>a+b,0))));
   for(const k in parts)parts[k]=Math.round(parts[k]*10)/10;
-  return {score,parts,reasons,own,topics:hits,age_days:age==null?null:Math.round(age*10)/10};
+  return {score,parts,reasons,own,too_old:tooOld,topics:hits,age_days:age==null?null:Math.round(age*10)/10};
 }
 
 async function paginate(fetchPage,maxPages,key){
@@ -193,66 +204,4 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
   return summary;
 }
 
-function availability(t,engaged,queued){
-  const reasons=[];
-  const e=engaged[t.thread_id];
-  if(e?.statuses.some(s=>REMOVED.has(s)))reasons.push('Moderators removed our earlier task here');
-  else if(e)reasons.push('We already have a task here ('+[...new Set(e.statuses)].join(', ')+')');
-  if(t.rank.age_days!=null&&t.rank.age_days>180)reasons.push('Likely archived');
-  if(t.rank.off_topic)reasons.push('Off-topic for Geonode');
-  if(queued&&['skipped','done'].includes(queued.status))reasons.push('Marked '+queued.status+' in the queue');
-  return {available:reasons.length===0,reasons};
-}
-
-function scored(store){
-  const subs=store.subreddits(),engaged=store.engaged(),queue=Object.fromEntries(store.queue().map(q=>[q.thread_id,q])),best=bestCommentScores(store);
-  const comments={};
-  for(const c of store.comments()){const r=rankComment(c);if(r.score>0)(comments[c.thread_id]||=[]).push({...c,rank:r});}
-  return store.threads().map(t=>{
-    const row={...t,body:t.body,best_comment_score:best[t.thread_id]||0,subreddit_stats:subs[(t.subreddit||'').toLowerCase()]||null};
-    row.rank=rank(row,row.subreddit_stats);row.availability=availability(row,engaged,queue[t.thread_id]);
-    if(row.body)row.body=String(row.body).slice(0,400);
-    row.queue=queue[t.thread_id]||null;row.relevant_comments=(comments[t.thread_id]||[]).sort((a,b)=>b.rank.score-a.rank.score).length;
-    return row;
-  });
-}
-
-function ranked(store,{q,subreddit,source,min_score,available,limit=100,offset=0}={}){
-  const needle=String(q||'').toLowerCase();
-  const rows=scored(store)
-    .filter(t=>!needle||`${t.title} ${t.subreddit} ${t.keywords.join(' ')}`.toLowerCase().includes(needle))
-    .filter(t=>!subreddit||String(t.subreddit).toLowerCase()===String(subreddit).toLowerCase())
-    .filter(t=>!source||t.sources.some(s=>s.startsWith(source)))
-    .filter(t=>min_score==null||min_score===''||t.rank.score>=Number(min_score))
-    .filter(t=>available!=='true'||t.availability.available)
-    .sort((a,b)=>b.rank.score-a.rank.score||(b.visits_per_month||0)-(a.visits_per_month||0));
-  return {total:rows.length,items:rows.slice(Number(offset),Number(offset)+Math.min(Number(limit)||100,500))};
-}
-
-// Refill the queue with the top N available threads; skipped/done entries are kept and never re-added.
-function buildQueue(store,{size=50,min_score=0}={}){
-  size=Math.max(1,Math.min(Number(size)||50,500));
-  const top=scored(store).filter(t=>t.availability.available&&t.rank.score>=Number(min_score)).sort((a,b)=>b.rank.score-a.rank.score).slice(0,size);
-  store.replaceQueued(top.map(t=>t.thread_id),top.map(t=>t.rank.score));
-  return queueView(store);
-}
-function queueView(store){
-  const rows=Object.fromEntries(scored(store).map(t=>[t.thread_id,t]));
-  const all=store.comments().map(c=>({...c,rank:rankComment(c)}));
-  return store.queue().map(q=>{const t=rows[q.thread_id];return {...q,thread:t||null,
-    comments:all.filter(c=>c.thread_id===q.thread_id&&c.rank.score>0).sort((a,b)=>b.rank.score-a.rank.score)};});
-}
-
-function rankedComments(store,{q,brand,own,min_score=40,limit=100,offset=0}={}){
-  const needle=String(q||'').toLowerCase(),engaged=store.engaged();
-  const rows=store.comments().map(c=>({...c,rank:rankComment(c),thread_engaged:!!engaged[c.thread_id]}))
-    .filter(c=>c.rank.score>=Number(min_score||0))
-    .filter(c=>!brand||c.brand===brand)
-    .filter(c=>own==null||own===''||String(c.rank.own)===String(own))
-    .filter(c=>!needle||`${c.body} ${c.thread_title} ${c.subreddit}`.toLowerCase().includes(needle))
-    .sort((a,b)=>b.rank.score-a.rank.score||(b.created_utc||0)-(a.created_utc||0));
-  const brands={};for(const c of store.comments())brands[c.brand]=(brands[c.brand]||0)+1;
-  return {total:rows.length,brands,items:rows.slice(Number(offset),Number(offset)+Math.min(Number(limit)||100,500))};
-}
-
-module.exports={collect,ranked,rank,rankComment,buildQueue,queueView,rankedComments,threadRef,fromOpportunity,fromMention,fromSmartSearch,commentFromMention,SOURCES};
+module.exports={collect,rank,rankComment,topicHits,threadRef,fromOpportunity,fromMention,fromSmartSearch,commentFromMention,SOURCES,REMOVED,DEFAULT_MAX_AGE};

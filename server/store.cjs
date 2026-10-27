@@ -24,10 +24,15 @@ function open(file){
       first_seen text not null, last_seen text not null);
     create index if not exists comments_thread on comments(thread_id);
     create table if not exists engaged(thread_id text primary key, subreddit text, statuses text not null, updated_at text not null);
-    create table if not exists queue(
-      thread_id text primary key, position integer, status text not null default 'queued',
-      score_at_add integer, added_at text not null, updated_at text not null, note text);
+    create table if not exists settings(key text primary key, value text not null);
   `);
+  // The first queue held threads only; the mixed thread/comment queue replaces it.
+  if(db.prepare("select 1 from pragma_table_info('queue') where name='thread_id'").get()&&!db.prepare("select 1 from pragma_table_info('queue') where name='kind'").get())db.exec('drop table queue');
+  db.exec(`create table if not exists queue(
+    item_id text primary key, kind text not null, thread_id text not null, comment_id text,
+    position integer, status text not null default 'queued', score_at_add integer,
+    added_at text not null, updated_at text not null, claimed_at text, claimed_by text, note text);
+    create index if not exists queue_thread on queue(thread_id);`);
   // A run cannot survive a restart; close any left open so it does not look in progress.
   db.prepare('update runs set finished_at=?,summary=? where finished_at is null').run(new Date().toISOString(),JSON.stringify({errors:['Interrupted: the server stopped during this run']}));
   const parse=row=>{if(!row)return row;for(const k of JSON_COLS)row[k]=JSON.parse(row[k]);return row;};
@@ -79,19 +84,38 @@ function open(file){
       for(const [id,v] of map)ins.run(id,v.subreddit,JSON.stringify(v.statuses),now);
     },
     engaged(){return Object.fromEntries(db.prepare('select * from engaged').all().map(r=>[r.thread_id,{subreddit:r.subreddit,statuses:JSON.parse(r.statuses)}]));},
-    queue:()=>db.prepare('select * from queue order by status=\'queued\' desc, position').all(),
-    replaceQueued(ids,scores){
+    queue:()=>db.prepare("select * from queue order by status='queued' desc, position, updated_at desc").all(),
+    queued:()=>db.prepare("select * from queue where status='queued' order by position").all(),
+    // Writes the full ordered list of queued items (positions 1..n) and retires the given ones,
+    // in one transaction. Non-queued rows are history and are never deleted.
+    writeQueue(items,retired=[]){
       const now=new Date().toISOString();db.exec('begin');
       try{
-        db.exec("delete from queue where status='queued'");
-        const ins=db.prepare('insert into queue(thread_id,position,status,score_at_add,added_at,updated_at) values(?,?,\'queued\',?,?,?)');
-        ids.forEach((id,i)=>ins.run(id,i+1,scores[i],now,now));db.exec('commit');
+        const ret=db.prepare("update queue set status='removed',note=?,position=null,updated_at=? where item_id=? and status='queued'");
+        for(const r of retired)ret.run(r.reason,now,r.item_id);
+        db.exec("update queue set position=null where status='queued'");
+        const up=db.prepare(`insert into queue(item_id,kind,thread_id,comment_id,position,status,score_at_add,added_at,updated_at) values(?,?,?,?,?,'queued',?,?,?)
+          on conflict(item_id) do update set position=excluded.position,status='queued',updated_at=excluded.updated_at`);
+        items.forEach((x,i)=>up.run(x.item_id,x.kind,x.thread_id,x.comment_id??null,i+1,x.score??null,x.added_at||now,now));
+        db.exec('commit');
       }catch(e){db.exec('rollback');throw e;}
     },
+    resetQueue(){db.exec("delete from queue where status='queued'");},
+    // Takes the first queued item off the queue; the caller refreshes positions afterwards.
+    claimFirst(agent){
+      const first=db.prepare("select * from queue where status='queued' order by position limit 1").get();if(!first)return null;
+      const now=new Date().toISOString();
+      db.prepare("update queue set status='claimed',position=null,claimed_at=?,claimed_by=?,updated_at=? where item_id=? and status='queued'").run(now,agent??null,now,first.item_id);
+      return {...first,status:'claimed',claimed_at:now,claimed_by:agent??null};
+    },
     setQueueStatus(id,status,note){
-      const r=db.prepare('update queue set status=?,note=?,updated_at=? where thread_id=?').run(status,note??null,new Date().toISOString(),id);
+      const r=db.prepare('update queue set status=?,note=?,updated_at=?,position=case when ?=\'queued\' then 1e9 else null end where item_id=?').run(status,note??null,new Date().toISOString(),status,id);
       return r.changes>0;
     },
+    kv(key){const r=db.prepare('select value from settings where key=?').get(key);return r?JSON.parse(r.value):null;},
+    setKv(key,value){db.prepare('insert or replace into settings(key,value) values(?,?)').run(key,JSON.stringify(value));},
+    settings(defaults){const r=db.prepare("select value from settings where key='queue'").get();return {...defaults,...(r?JSON.parse(r.value):{})};},
+    saveSettings(value){db.prepare("insert or replace into settings(key,value) values('queue',?)").run(JSON.stringify(value));},
     run(id){const r=id==='latest'?db.prepare('select * from runs order by id desc limit 1').get():db.prepare('select * from runs where id=?').get(Number(id));return r&&{...r,input:JSON.parse(r.input),summary:r.summary&&JSON.parse(r.summary)};},
     close:()=>db.close(),
   };
