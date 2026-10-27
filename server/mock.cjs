@@ -32,9 +32,17 @@ async function mockFetch(url,options={}){
     const items=[];for(let n=start;n<Math.min(start+size,total);n++)items.push(opportunity(type==='seo_opportunities'?n+30:n,type));
     const done=start+size>=total;return json({opportunities:items,isDone:done,...(done?{}:{continueCursor:String(start+size)})});
   }
-  if(u.pathname==='/api/v1/mentions')return json({mentions:[3,8,41].map((n,i)=>({id:'men_'+n,type:i?'comment':'post',mentionedBrand:'Geonode',subreddit:post(n).url.split('/')[4],redditPostId:'t3_'+id(n),
-    postContent:post(n),commentContent:i?{body:'I tried Geonode for this',author:'someone',score:4,createdUtc:now-3600,permalink:post(n).url+'c'+n+'/'}:undefined,
-    sentiment:['neutral','positive','negative'][i],reasoning:'Mock mention',snippet:'…Geonode…',createdAt:Date.now()})),isDone:true});
+  if(u.pathname==='/api/v1/mentions/brands')return json({brands:[{brand:'geonode.com',count:3},{brand:'brightdata.com',count:3}]});
+  if(u.pathname==='/api/v1/mentions'){
+    const brand=q.get('brand')||'geonode.com',own=brand==='geonode.com';
+    const bodies=own?[null,'I tried Geonode for rotating proxies, works fine','Geonode residential proxies keep getting blocked by Cloudflare?']
+      :['Bright Data is great but way too expensive for scraping at my scale, any alternative?','Our sponsor Bright Data won the robot fight lol','Bright Data proxies got my scraper unblocked'];
+    return json({mentions:(own?[3,8,41]:[5,9,12]).map((n,i)=>({id:'men_'+brand+'_'+n,type:bodies[i]?'comment':'post',mentionedBrand:brand,subreddit:post(n).url.split('/')[4],redditPostId:'t3_'+id(n),
+      postContent:own||i!==1?post(n):{...post(n),title:'Season finale discussion'},commentContent:bodies[i]?{body:bodies[i],author:'someone'+i,score:4,createdUtc:now-3600*(i+1),permalink:post(n).url+'c'+n+'/'}:undefined,
+      sentiment:['neutral','positive','negative'][i],reasoning:'Mock mention',snippet:'…'+brand+'…',createdAt:Date.now()})),isDone:true});
+  }
+  if(u.pathname==='/api/v1/tasks')return json({page:[{_id:'t1',status:'published',threadUrl:post(0).url,subreddit:post(0).url.split('/')[4]},{_id:'t2',status:'cancelled',threadUrl:post(1).url},{_id:'t3',status:'mod_removed',threadUrl:post(2).url}],isDone:true});
+  if(u.pathname==='/api/v1/smart-search/history')return json({history:[...searched].map((k,i)=>({id:'h'+i,keyword:k,searchMode:'web_ranking',exactSpelling:false,resultsCount:8,googleTraffic:0,searchedAt:new Date().toISOString()}))});
   if(u.pathname==='/api/v1/smart-search'||u.pathname==='/api/v1/smart-search/results'){
     const body=method==='POST'?JSON.parse(options.body):{},keyword=body.keyword||q.get('keyword');
     if(method==='GET'&&!searched.has(keyword))return json({error:'Keyword not searched'},404);

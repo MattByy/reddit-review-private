@@ -9,18 +9,20 @@ for(const f of ['.env.local','.env'])if(fs.existsSync(path.join(root,f)))process
 
 const {client}=require('./engain.cjs');
 const {open}=require('./store.cjs');
-const {collect,ranked,SOURCES}=require('./collect.cjs');
+const {collect,ranked,buildQueue,queueView,rankedComments,SOURCES}=require('./collect.cjs');
 
 function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectId=process.env.ENGAIN_PROJECT_ID,log=console.log}={}){
   const store=open(dbFile||path.join(root,'.data',mock?'dev-mock.db':'dev.db'));
   const engain=client(mock?{apiKey:'mock',fetchImpl:require('./mock.cjs').mockFetch,limits:false,log}:{apiKey,log});
-  const live=new Map();let active=null;
+  const live=new Map();let active=null,projectName=null;
 
   async function project(){
     if(projectId)return projectId;
+    // The key reaches several workspaces' projects; default to Geonode's.
     const me=await engain.me();
     if(!me.projects?.length)throw Object.assign(Error('This Engain key has no projects'),{status:409});
-    return projectId=me.projects[0].id;
+    const p=me.projects.find(p=>/geonode/i.test(p.name))||me.projects[0];projectName=p.name;
+    return projectId=p.id;
   }
   async function startCollect(input){
     if(active)throw Object.assign(Error('A collection run is already in progress (run '+active+')'),{status:409});
@@ -32,7 +34,19 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   }
 
   const routes={
-    'GET /api/status':async()=>({mock,engain_key:mock||!!apiKey,project_id:projectId||null,sources:SOURCES,active_run:active,threads:store.threads().length}),
+    'GET /api/status':async()=>{
+      if(!projectId&&(mock||apiKey))await project().catch(()=>{});
+      return {mock,engain_key:mock||!!apiKey,project_id:projectId||null,project_name:projectName,sources:SOURCES,active_run:active,
+        threads:store.threads().length,comments:store.comments().length,queued:store.queue().filter(q=>q.status==='queued').length};
+    },
+    'GET /api/queue':async()=>queueView(store),
+    'POST /api/queue/build':async(_,body)=>buildQueue(store,body||{}),
+    'POST /api/queue/:id':async(_,body,id)=>{
+      if(!['queued','skipped','done'].includes(body?.status))throw Object.assign(Error('status must be queued, skipped or done'),{status:422});
+      if(!store.setQueueStatus(id,body.status,body.note))throw Object.assign(Error('Thread is not in the queue'),{status:404});
+      return {ok:true};
+    },
+    'GET /api/comments':async q=>rankedComments(store,q),
     'GET /api/projects':async()=>engain.me(),
     'GET /api/balance':async()=>engain.balance(),
     'GET /api/smart-search/history':async()=>engain.smartSearchHistory({projectId:await project(),limit:50}),

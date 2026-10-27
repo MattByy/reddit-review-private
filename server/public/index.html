@@ -4,24 +4,29 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Thread Collector</title>
 <style>
-:root{--bg:#fafaf9;--panel:#fff;--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--accent:#4f46e5;--good:#15803d;--warn:#b45309;--bad:#b91c1c}
-@media (prefers-color-scheme:dark){:root{--bg:#0c0a09;--panel:#1c1917;--ink:#f5f5f4;--muted:#a8a29e;--line:#292524;--accent:#818cf8;--good:#4ade80;--warn:#fbbf24;--bad:#f87171}}
+:root{--bg:#fafaf9;--panel:#fff;--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--chip:#f5f5f4;--accent:#4f46e5;--good:#15803d;--warn:#b45309;--bad:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#0c0a09;--panel:#1c1917;--ink:#f5f5f4;--muted:#a8a29e;--line:#292524;--chip:#292524;--accent:#818cf8;--good:#4ade80;--warn:#fbbf24;--bad:#f87171}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
-header{padding:16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
 h1{font-size:18px;margin:0}.muted{color:var(--muted)}.pill{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
-main{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px}@media(max-width:900px){main{grid-template-columns:1fr}}
-section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
-label{display:block;margin:6px 0}textarea,input[type=text],input[type=number]{width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
-button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:8px 12px;font:inherit;cursor:pointer}button:disabled{opacity:.5}
-#progress{white-space:pre-wrap;font:12px ui-monospace,monospace;margin-top:10px}
-.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.filters input{width:auto;flex:1;min-width:140px}
-table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-size:12px;color:var(--muted);font-weight:500}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.score{font-weight:600}.hi{color:var(--good)}.mid{color:var(--warn)}.lo{color:var(--bad)}
+main{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;padding:16px}@media(max-width:900px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+label{display:block;margin:6px 0}textarea,input[type=text],input[type=number],select{width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer}button:disabled{opacity:.5}
+button.ghost{background:none;color:var(--muted);border:1px solid var(--line);padding:3px 8px;font-size:12px}
+#progress{white-space:pre-wrap;font:12px ui-monospace,monospace;margin-top:10px;max-height:240px;overflow:auto}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-14px -14px 12px;padding:0 10px}
+.tabs button{background:none;color:var(--muted);border-radius:0;border-bottom:2px solid transparent;padding:10px 10px}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}.filters>*{width:auto;flex:1;min-width:130px}.filters button{flex:0}
+.item{display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.score{font-weight:650;font-size:16px;text-align:center}.hi{color:var(--good)}.mid{color:var(--warn)}.lo{color:var(--bad)}
+.meta{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
-.tags span{font-size:11px;margin-right:4px;padding:1px 6px;border-radius:4px;background:var(--line)}
+.tags span{font-size:11px;margin-right:4px;padding:1px 6px;border-radius:4px;background:var(--chip);display:inline-block;margin-top:3px}
 .flag{font-size:12px;color:var(--warn)}details{font-size:12px;color:var(--muted)}
-@media(max-width:700px){.hide-sm{display:none}}
+blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--line);background:var(--chip);border-radius:0 6px 6px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.sub{margin-left:12px}.done{opacity:.55}
 </style>
 </head>
 <body>
@@ -30,52 +35,91 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 <section>
   <strong>Collect from Engain</strong>
   <label><input type="checkbox" name="src" value="opportunities" checked> Opportunities (new + SEO)</label>
-  <label><input type="checkbox" name="src" value="mentions" checked> Brand mentions</label>
-  <label><input type="checkbox" name="src" value="smart_search"> Smart Search keywords</label>
-  <label>Keywords, one per line<textarea id="keywords" rows="4" placeholder="residential proxies&#10;web scraping proxy"></textarea></label>
-  <label><input type="checkbox" id="spend"> Spend Smart Search quota (1 keyword each) when no stored results exist</label>
+  <label><input type="checkbox" name="src" value="mentions" checked> Brand + competitor mentions</label>
+  <label><input type="checkbox" name="src" value="smart_search" checked> Smart Search</label>
+  <label><input type="checkbox" name="src" value="tasks" checked> Our existing tasks (to exclude)</label>
+  <label>Keywords, one per line <span class="muted">(empty = re-read past searches, free)</span><textarea id="keywords" rows="3"></textarea></label>
+  <label><input type="checkbox" id="spend"> Spend Smart Search quota for new or stale keywords</label>
   <label>Pages per feed <input type="number" id="pages" value="3" min="1" max="20"></label>
-  <button id="go">Collect threads</button>
+  <button id="go">Collect</button>
   <div id="progress" class="muted"></div>
 </section>
 <section>
-  <div class="filters">
-    <input type="text" id="q" placeholder="Filter title / subreddit / keyword">
-    <input type="text" id="sub" placeholder="Subreddit">
-    <select id="source"><option value="">All sources</option><option>opportunities</option><option>mentions</option><option>smart_search</option></select>
+  <div class="tabs"><button data-tab="queue" class="on">Queue</button><button data-tab="comments">Relevant comments</button><button data-tab="threads">All threads</button></div>
+  <div id="tab-queue">
+    <div class="filters"><label class="muted" style="flex:0;white-space:nowrap">Size</label><input type="number" id="qsize" value="50" min="1" max="500" style="max-width:90px"><input type="number" id="qmin" placeholder="Min score" min="0" max="100" style="max-width:110px"><button id="build">Build queue</button></div>
+    <div id="queue"></div>
   </div>
-  <table><thead><tr><th>Score</th><th>Thread</th><th class="n hide-sm">Comments</th><th class="n hide-sm">Visits/mo</th><th class="n hide-sm">Age (d)</th></tr></thead><tbody id="rows"></tbody></table>
+  <div id="tab-comments" hidden>
+    <div class="filters"><input type="text" id="cq" placeholder="Filter text"><select id="cbrand"><option value="">All brands</option></select>
+      <select id="cown"><option value="">Geonode + competitors</option><option value="false">Competitors only</option><option value="true">Geonode only</option></select>
+      <input type="number" id="cmin" value="40" min="0" max="100" title="Min score" style="max-width:90px"></div>
+    <div id="comments"></div>
+  </div>
+  <div id="tab-threads" hidden>
+    <div class="filters"><input type="text" id="q" placeholder="Filter title / subreddit / keyword"><input type="text" id="sub" placeholder="Subreddit">
+      <select id="source"><option value="">All sources</option><option>opportunities</option><option>mentions</option><option>smart_search</option></select>
+      <label style="flex:0;white-space:nowrap"><input type="checkbox" id="avail"> Available only</label></div>
+    <div id="threads"></div>
+  </div>
 </section>
 </main>
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cls=s=>s>=60?'hi':s>=35?'mid':'lo',fmt=n=>n==null?'–':Math.round(n).toLocaleString();
 async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j;}
-async function status(){const s=await api('/api/status');$('#mode').textContent=s.mock?'mock data':'live Engain';if(!s.engain_key)$('#progress').textContent='ENGAIN_API_KEY missing: add it to .env.local or run npm run dev:mock';return s;}
-async function load(){
-  const p=new URLSearchParams({q:$('#q').value,subreddit:$('#sub').value,source:$('#source').value,limit:200});
-  const {total,items}=await api('/api/threads?'+p);$('#count').textContent=total+' threads';
-  $('#rows').innerHTML=items.map(t=>{const r=t.rank,c=r.score>=60?'hi':r.score>=35?'mid':'lo';return `<tr>
-    <td class="score ${c}">${r.score}</td>
-    <td><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.title||t.url)}</a><div class="muted">r/${esc(t.subreddit)}</div>
-      <div class="tags">${t.sources.map(s=>`<span>${esc(s)}</span>`).join('')}${t.keywords.map(k=>`<span>“${esc(k)}”</span>`).join('')}</div>
-      ${r.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}
-      <details><summary>Why this score</summary>${Object.entries(r.parts).map(([k,v])=>`${esc(k)}: ${v>0?'+':''}${v}`).join(' · ')}
-        ${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}${t.mentions.length?'<br>Mentions: '+t.mentions.map(m=>esc(m.brand+' ('+m.sentiment+')')).join(', '):''}</details></td>
-    <td class="n hide-sm">${t.num_comments??'–'}</td><td class="n hide-sm">${t.visits_per_month??'–'}</td><td class="n hide-sm">${r.age_days??'–'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="muted">No threads yet. Collect some.</td></tr>';
+let tab='queue';
+for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','comments','threads'])$('#tab-'+t).hidden=t!==tab;refresh();};
+
+async function status(){const s=await api('/api/status');$('#mode').textContent=s.mock?'mock data':'live Engain'+(s.project_name?' · '+s.project_name:'');
+  $('#count').textContent=`${s.threads} threads · ${s.comments} mention comments · ${s.queued} queued`;
+  if(!s.engain_key)$('#progress').textContent='ENGAIN_API_KEY missing: add it to .env.local or run npm run dev:mock';}
+function threadHtml(t){const r=t.rank;return `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.title||t.url)}</a>
+  <div class="meta"><span>r/${esc(t.subreddit)}</span><span>${fmt(t.num_comments)} comments</span><span>${fmt(t.visits_per_month)} visits/mo</span><span>${r.age_days??'–'} days old</span>${t.relevant_comments?`<span>${t.relevant_comments} relevant comment(s)</span>`:''}</div>
+  <div class="tags">${t.sources.map(s=>`<span>${esc(s)}</span>`).join('')}${t.keywords.map(k=>`<span>“${esc(k)}”</span>`).join('')}</div>
+  ${r.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}${t.availability.available?'':t.availability.reasons.map(f=>`<div class="flag">✕ ${esc(f)}</div>`).join('')}
+  <details><summary>Why this score</summary>${Object.entries(r.parts).map(([k,v])=>`${esc(k)} ${v>0?'+':''}${v}`).join(' · ')}${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}</details>`;}
+function commentHtml(c){return `<div class="meta"><span>${esc(c.brand)}</span><span>${esc(c.sentiment)}</span><span>r/${esc(c.subreddit)}</span><span>${c.rank.age_days??'–'} days old</span><span>u/${esc(c.author)}</span></div>
+  <blockquote>${esc(c.body.length>600?c.body.slice(0,600)+'…':c.body)}</blockquote>
+  <div class="meta">${c.permalink?`<a href="${esc(c.permalink)}" target="_blank" rel="noopener">Open comment</a>`:''}<span>in “${esc(c.thread_title||'thread')}”</span>${c.thread_engaged?'<span class="flag">we already have a task in this thread</span>':''}</div>
+  <details><summary>Why relevant</summary>${c.rank.reasons.map(esc).join(' · ')}<br>topics: ${c.rank.topics.map(esc).join(', ')}<br>${Object.entries(c.rank.parts).map(([k,v])=>`${esc(k)} ${v>0?'+':''}${v}`).join(' · ')}</details>`;}
+
+async function loadQueue(){
+  const q=await api('/api/queue');
+  $('#queue').innerHTML=q.map((x,i)=>!x.thread?'':`<div class="item ${x.status==='queued'?'':'done'}"><div class="score ${cls(x.thread.rank.score)}">${x.thread.rank.score}<div class="muted" style="font-size:11px;font-weight:400">#${x.position}</div></div><div>
+    ${threadHtml(x.thread)}
+    ${x.comments.slice(0,3).map(c=>`<div class="sub">${commentHtml(c)}</div>`).join('')}
+    <div class="meta" style="margin-top:6px">${x.status==='queued'?`<button class="ghost" data-q="${esc(x.thread_id)}" data-s="done">Mark done</button><button class="ghost" data-q="${esc(x.thread_id)}" data-s="skipped">Skip</button>`:`<span>${esc(x.status)}</span><button class="ghost" data-q="${esc(x.thread_id)}" data-s="queued">Restore</button>`}</div>
+  </div></div>`).join('')||'<p class="muted">Queue is empty. Collect, then Build queue.</p>';
+  for(const b of document.querySelectorAll('[data-q]'))b.onclick=async()=>{await api('/api/queue/'+encodeURIComponent(b.dataset.q),{status:b.dataset.s});refresh();};
 }
+async function loadComments(){
+  const p=new URLSearchParams({q:$('#cq').value,brand:$('#cbrand').value,own:$('#cown').value,min_score:$('#cmin').value,limit:200});
+  const r=await api('/api/comments?'+p),sel=$('#cbrand'),cur=sel.value;
+  sel.innerHTML='<option value="">All brands</option>'+Object.entries(r.brands).sort((a,b)=>b[1]-a[1]).map(([b,n])=>`<option value="${esc(b)}">${esc(b)} (${n})</option>`).join('');sel.value=cur;
+  $('#comments').innerHTML=`<p class="muted">${r.total} comments at or above the minimum score</p>`+r.items.map(c=>`<div class="item"><div class="score ${cls(c.rank.score)}">${c.rank.score}</div><div>${commentHtml(c)}</div></div>`).join('');
+}
+async function loadThreads(){
+  const p=new URLSearchParams({q:$('#q').value,subreddit:$('#sub').value,source:$('#source').value,available:$('#avail').checked,limit:200});
+  const r=await api('/api/threads?'+p);
+  $('#threads').innerHTML=`<p class="muted">${r.total} threads</p>`+r.items.map(t=>`<div class="item"><div class="score ${cls(t.rank.score)}">${t.rank.score}</div><div>${threadHtml(t)}</div></div>`).join('');
+}
+async function refresh(){status();try{await({queue:loadQueue,comments:loadComments,threads:loadThreads})[tab]();}catch(e){$('#progress').textContent='Error: '+e.message;}}
+
+$('#build').onclick=async()=>{await api('/api/queue/build',{size:Number($('#qsize').value),min_score:Number($('#qmin').value||0)});refresh();};
 $('#go').onclick=async()=>{
   const body={sources:[...document.querySelectorAll('[name=src]:checked')].map(x=>x.value),keywords:$('#keywords').value.split('\n'),spend_quota:$('#spend').checked,max_pages:Number($('#pages').value)};
   $('#go').disabled=true;
   try{
     const {run_id}=await api('/api/collect',body);
     for(;;){const r=await api('/api/runs/'+run_id),s=r.summary||r.progress||{};
-      $('#progress').textContent=(r.finished_at?'Done.':'Working: '+(s.step||''))+`\nadded ${s.added??0}, updated ${s.updated??0}`+(s.errors?.length?'\nErrors:\n'+s.errors.join('\n'):'')+(s.notes?.length?'\n'+s.notes.join('\n'):'');
-      await load();if(r.finished_at)break;await new Promise(x=>setTimeout(x,1500));}
+      $('#progress').textContent=(r.finished_at?'Done.':'Working: '+(s.step||''))+`\nthreads +${s.added??0} new, ${s.updated??0} updated\ncomments +${s.comments_added??0}\nalready-engaged threads: ${s.engaged_threads??0}`+(s.errors?.length?'\nErrors:\n'+s.errors.join('\n'):'')+(s.notes?.length?'\n'+s.notes.join('\n'):'');
+      if(r.finished_at)break;await new Promise(x=>setTimeout(x,2000));}
   }catch(e){$('#progress').textContent='Error: '+e.message;}
-  $('#go').disabled=false;
+  $('#go').disabled=false;refresh();
 };
-let t;for(const id of ['#q','#sub','#source'])$(id).addEventListener('input',()=>{clearTimeout(t);t=setTimeout(load,200);});
-status().then(load);
+let t;for(const id of ['#q','#sub','#source','#avail','#cq','#cbrand','#cown','#cmin'])$(id).addEventListener('input',()=>{clearTimeout(t);t=setTimeout(refresh,200);});
+refresh();
 </script>
 </body>
 </html>

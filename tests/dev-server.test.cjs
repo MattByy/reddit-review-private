@@ -49,3 +49,35 @@ test('collect merges sources per thread and skips unsearched keywords unless quo
     assert.strictEqual((await call(app,'GET','/api/threads/nope')).status,404);
   }finally{app.close();}
 });
+
+test('queue holds the top available threads and never re-adds skipped ones or threads we already worked in',async()=>{
+  const app=createApp({mock:true,dbFile:':memory:',log:()=>{}});
+  try{
+    const r=await call(app,'POST','/api/collect',{max_pages:5});
+    const run=await finished(app,r.body.run_id);
+    assert.deepStrictEqual(run.summary.errors,[]);
+    assert.strictEqual(run.summary.engaged_threads,2,'published and mod-removed tasks count, cancelled does not');
+    assert.ok(run.summary.notes.some(n=>n.includes('previously searched keywords')),'empty keywords reuse Smart Search history');
+
+    let q=(await call(app,'POST','/api/queue/build',{size:10})).body;
+    assert.strictEqual(q.length,10);
+    for(let i=1;i<q.length;i++)assert.ok(q[i-1].thread.rank.score>=q[i].thread.rank.score);
+    const ids=q.map(x=>x.thread_id);
+    assert.ok(!ids.includes('mrs')&&!ids.includes('mru'),'threads with published or removed tasks are excluded');
+    const all=(await call(app,'GET','/api/threads?limit=500')).body.items;
+    assert.deepStrictEqual(all.filter(t=>['mrs','mru'].includes(t.thread_id)).map(t=>t.availability.available),[false,false]);
+    assert.ok(!(await call(app,'GET','/api/threads?available=true&limit=500')).body.items.some(t=>['mrs','mru'].includes(t.thread_id)));
+
+    assert.strictEqual((await call(app,'POST','/api/queue/'+ids[0],{status:'skipped'})).status,200);
+    q=(await call(app,'POST','/api/queue/build',{size:10})).body;
+    assert.strictEqual(q.filter(x=>x.status==='queued').length,10);
+    assert.ok(!q.some(x=>x.thread_id===ids[0]&&x.status==='queued'),'skipped thread is not re-queued');
+    assert.strictEqual((await call(app,'POST','/api/queue/nope',{status:'done'})).status,404);
+    assert.strictEqual((await call(app,'POST','/api/queue/'+ids[1],{status:'bogus'})).status,422);
+
+    const c=(await call(app,'GET','/api/comments?min_score=1')).body;
+    assert.ok(c.items.length>0);
+    assert.ok(!c.items.some(x=>x.body.includes('robot fight')),'off-topic competitor mentions are filtered out');
+    assert.ok(c.items.some(x=>x.brand==='brightdata.com'&&x.rank.reasons.some(r=>r.includes('Asks'))));
+  }finally{app.close();}
+});
