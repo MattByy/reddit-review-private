@@ -7,11 +7,11 @@
     "simulate": "node simulation/transparency-flow.cjs",
     "pool:test": "node --test tests/pool-check.test.cjs tests/pooled-smoke.test.cjs tests/library.test.cjs",
     "pool:check": "node scripts/pool-check.cjs",
-    "simulate": "node simulation/run.cjs",
     "simulate:queue": "node simulation/queue.cjs",
     "simulate:check": "node simulation/check-report.cjs",
     "simulate:preview": "node simulation/preview.cjs",
-    "test:browser": "node tests/plan-browser.cjs"
+    "test:browser": "node tests/plan-browser.cjs",
+    "live-check": "node scripts/live-check.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.14"

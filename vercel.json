@@ -32,6 +32,29 @@
     },
     "api/cron/tick.js": {
       "maxDuration": 60
+    },
+    "api/cron/dispatch.js": {
+      "maxDuration": 60
+    },
+    "api/cron/check-status.js": {
+      "maxDuration": 60
+    },
+    "api/cron/monitor-replies.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/dispatch",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/check-status",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/monitor-replies",
+      "schedule": "*/30 * * * *"
+    }
+  ]
 }
