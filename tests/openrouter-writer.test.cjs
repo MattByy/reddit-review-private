@@ -112,6 +112,24 @@ test('a draft cut off at the length limit cannot be approved until it is rewritt
   }finally{a.close();}
 });
 
+test('no sending limits: back-to-back sends to the same subreddit both go through',async()=>{
+  const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
+  try{
+    await ready(a);
+    const sent=[];
+    for(let i=0;i<3;i++){
+      const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
+      const r=await call(a,'POST',`/api/agent/queue2/${q.queue2_id}/approve`,{mode:'pool'});
+      assert.strictEqual(r.status,200,JSON.stringify(r.body));sent.push(r.body.queue2.url.split('/')[4]);
+    }
+    a.store.db.prepare("update queue2_pacing set sends_today_utc=500,subreddit_last_send=? where id=1").run(JSON.stringify({[sent[0]]:new Date().toISOString()}));
+    const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
+    a.store.db.prepare('update queue2 set url=? where id=?').run(`https://www.reddit.com/r/${sent[0]}/comments/zz1/x/`,q.queue2_id);
+    const r=await call(a,'POST',`/api/agent/queue2/${q.queue2_id}/approve`,{mode:'pool'});
+    assert.strictEqual(r.status,200,'same subreddit straight after, with 500 sends today: '+JSON.stringify(r.body));
+  }finally{a.close();}
+});
+
 test('prompts are visible and editable per type, and the edited one is used',async()=>{
   const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
   try{

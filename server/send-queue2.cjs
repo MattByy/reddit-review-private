@@ -22,38 +22,8 @@ function checkDisclosure(body){
   return {ok:true};
 }
 
-// Pacing: 45min global, 24h per subreddit, 20/UTC day
-function checkPacing(store,subreddit){
-  const p=store.queue2Pacing();
-  const now=Date.now();
-  
-  // 45 minute global
-  if(p.last_send_global){
-    const elapsed=now-Date.parse(p.last_send_global);
-    if(elapsed<45*60*1000){
-      const wait=Math.ceil((45*60*1000-elapsed)/60000);
-      return {ok:false,reason:`Global pace floor: wait ${wait} more minutes (45min between sends)`};
-    }
-  }
-  
-  // 24 hour per subreddit
-  const subLast=p.subreddit_last_send[subreddit];
-  if(subLast){
-    const elapsed=now-Date.parse(subLast);
-    if(elapsed<24*60*60*1000){
-      const wait=Math.ceil((24*60*60*1000-elapsed)/3600000);
-      return {ok:false,reason:`Subreddit pace floor: wait ${wait} more hours (24h between sends to r/${subreddit})`};
-    }
-  }
-  
-  // 20 per UTC day
-  const today=new Date().toISOString().slice(0,10);
-  if(p.today_utc_date===today&&p.sends_today_utc>=20){
-    return {ok:false,reason:`Daily cap reached: ${p.sends_today_utc} sends today (max 20 per UTC day)`};
-  }
-  
-  return {ok:true};
-}
+// No sending limits: no spacing between sends, none per subreddit, no daily cap (owner's call).
+// Sends are still recorded in queue2_pacing for visibility.
 
 // Extract subreddit from URL
 function subredditFromUrl(url){
@@ -103,9 +73,6 @@ async function sendQueue2({id,mode,userAccountId,posterAccount,override},
   const subreddit=subredditFromUrl(item.url||item.thread_url);
   if(!subreddit)fail(422,'Cannot extract subreddit from URL');
   
-  // Guard: pacing
-  const pacing=checkPacing(store,subreddit);
-  if(!pacing.ok)fail(429,pacing.reason);
   
   // Guard: beta thread-check
   if(mode==='beta'&&!override?.thread_check){
@@ -216,4 +183,4 @@ async function pollQueue2Status(id,{engain,store,log=console.log}){
   }
 }
 
-module.exports={sendQueue2,pollQueue2Status,checkDisclosure,checkPacing,subredditFromUrl};
+module.exports={sendQueue2,pollQueue2Status,checkDisclosure,subredditFromUrl};

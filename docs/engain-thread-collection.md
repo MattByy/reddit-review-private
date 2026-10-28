@@ -145,14 +145,13 @@ Queue 2 messages are written by OpenRouter (`OPENROUTER_API_KEY` in `.env.local`
 2. Review the draft on the Queue 2 tab. Editing it (`POST /api/agent/queue2/:id {"message"}`) withdraws any approval.
 3. `POST /api/agent/queue2/:id/approve {"mode":"pool"|"beta","userAccountId"?}` ("Approve & send") records the approval and sends to Engain through the existing send guards.
 
-**What can never be approved or sent:**
+**What can never be approved or sent** (there are no sending limits: no spacing, nothing per subreddit, no daily cap):
 
 - Placeholder messages.
 - Skipped drafts (the model answered SKIP).
 - Truncated drafts (`finish_reason: length`), until they are rewritten or edited.
 - Messages without the disclosure.
 - OpenRouter drafts that nobody approved.
-- Anything outside the posting limits (45 minutes between sends, 24 hours per subreddit, 20 per day).
 
 ## Scheduled jobs
 

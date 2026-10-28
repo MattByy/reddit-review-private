@@ -2,7 +2,7 @@
 const {describe,it,before,after}=require('node:test');
 const assert=require('node:assert');
 const {open}=require('../server/store.cjs');
-const {sendQueue2,pollQueue2Status,checkDisclosure,checkPacing}=require('../server/send-queue2.cjs');
+const {sendQueue2,pollQueue2Status,checkDisclosure}=require('../server/send-queue2.cjs');
 const {client}=require('../server/engain.cjs');
 const {mockFetch}=require('../server/mock.cjs');
 
@@ -78,24 +78,6 @@ describe('Queue2 sending',()=>{
     assert.strictEqual(r.ok,true);
   });
 
-  it('checkPacing enforces 45min global floor',()=>{
-    store.db.prepare(`insert or replace into queue2_pacing(id,last_send_global,sends_today_utc,today_utc_date,subreddit_last_send,updated_at)
-      values(1,?,0,?,?,?)`).run(new Date().toISOString(),'2026-10-28','{}',new Date().toISOString());
-    
-    const r=checkPacing(store,'test');
-    assert.strictEqual(r.ok,false);
-    assert.match(r.reason,/45/);
-  });
-
-  it('checkPacing enforces 20/day cap',()=>{
-    const today=new Date().toISOString().slice(0,10);
-    store.db.prepare(`insert or replace into queue2_pacing(id,last_send_global,sends_today_utc,today_utc_date,subreddit_last_send,updated_at)
-      values(1,?,20,?,?,?)`).run(new Date(Date.now()-3600000).toISOString(),today,'{}',new Date().toISOString());
-    
-    const r=checkPacing(store,'test');
-    assert.strictEqual(r.ok,false);
-    assert.match(r.reason,/20/);
-  });
 
   it('sendQueue2 rejects placeholder message',async()=>{
     const item=store.queue2(2);
