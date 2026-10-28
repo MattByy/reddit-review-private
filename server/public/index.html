@@ -86,7 +86,8 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
   <div id="tab-sent" hidden>
     <div class="filters"><select id="sentdays" style="max-width:160px"><option value="1">Last 24 hours</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="0">All time</option></select>
       <span class="muted" id="sentinfo"></span><button id="checksent" class="ghost">Check statuses now</button></div>
-    <div id="senttiles" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:12px"></div>
+    <div id="senttiles" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:8px;align-items:start"></div>
+    <div class="meta" id="sentfilter" style="margin-bottom:8px"></div>
     <div id="sent"></div>
   </div>
   <div id="tab-prompts" hidden>
@@ -225,20 +226,30 @@ window.approveQ2=id=>q2('Sending #'+id+' to Engain',async()=>{
 window.pollQ2=id=>q2('Checking #'+id,async()=>{const r=await api(`/api/agent/queue2/${id}/poll`,{});return `#${id}: ${r.status}${r.redditUrl?' → '+r.redditUrl:''}${r.reason?' ('+r.reason+')':''}`;});
 // Sent (tracking): everything sent from Queue 2 with Engain's latest status. Pending items are
 // re-checked by the tracker job; settled ones keep their status.
-const BCOL={pending:'mid',published:'hi',automod_removed:'lo',mod_removed:'lo',deleted:'lo',parent_removed:'lo',cancelled:'',error:'lo'};
+const BCOL={pending:'mid',published:'hi',automod_removed:'lo',mod_removed:'lo',deleted:'lo',parent_removed:'lo',not_posted:'lo',cancelled:'',error:'lo'};
+const GCOL={in_progress:'mid',published:'hi',removed:'lo',not_posted:'lo',other:''};
+let sentFilter=null;   // {group} or {group,status}; set by clicking a card or one of its lines
+window.filterSent=(group,status)=>{sentFilter=group?{group,status:status||null}:null;return loadSent();};
 async function loadSent(){
   if(betaAccounts===null){try{const b=await api('/api/agent/beta-accounts');allAccounts=b.accounts||[];betaAccounts=allAccounts.filter(a=>a.usable);}catch{betaAccounts=[];}}
   const v=await api('/api/sent?days='+$('#sentdays').value);
-  $('#sentinfo').textContent=`${v.total} sent`+(v.published_rate==null?'':` · ${v.published_rate}% of settled ones published`);
-  $('#senttiles').innerHTML=Object.entries(v.labels).map(([k,l])=>`<div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
-    <div class="score ${BCOL[k]}" style="text-align:left">${v.counts[k]}</div><div class="muted" style="font-size:12px">${esc(l)}</div></div>`).join('');
+  $('#sentinfo').textContent=`${v.total} sent`+(v.published_rate==null?'':` · ${v.published_rate}% of finished ones published`);
+  const part=(g,x)=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;cursor:pointer" onclick="event.stopPropagation();filterSent('${g.key}','${esc(x.status)}')"><span>${esc(x.label)}</span><b>${x.count}</b></div>`;
+  $('#senttiles').innerHTML=v.groups.map(g=>`<div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer${sentFilter?.group===g.key?';border-color:var(--accent)':''}" onclick="filterSent('${g.key}')">
+    <div class="score ${GCOL[g.key]}" style="text-align:left">${g.count}</div><div style="font-size:13px">${esc(g.label)}</div>
+    ${g.detail==='always'?`<div style="margin-top:6px">${g.parts.map(x=>part(g,x)).join('')}</div>`:''}
+    ${g.detail==='expand'&&g.parts.length?`<details onclick="event.stopPropagation()" style="margin-top:4px"><summary>Details</summary>${g.parts.map(x=>part(g,x)).join('')}</details>`:''}
+  </div>`).join('');
+  const items=v.items.filter(x=>!sentFilter||(x.group===sentFilter.group&&(!sentFilter.status||(x.engain_status||'submitted')===sentFilter.status)));
+  const gl=sentFilter&&v.groups.find(g=>g.key===sentFilter.group),pl=gl&&sentFilter.status&&gl.parts.find(x=>x.status===sentFilter.status);
+  $('#sentfilter').innerHTML=sentFilter?`Showing ${items.length}: ${esc(gl?.label||'')}${pl?' · '+esc(pl.label):''} <button class="ghost" onclick="filterSent(null)">Show all</button>`:'';
   const t=x=>x?esc(String(x).slice(0,16).replace('T',' ')):'–';
-  $('#sent').innerHTML=v.items.map(x=>`<div class="item"><div class="score ${BCOL[x.bucket]}" style="font-size:11px">${esc(x.bucket_label)}</div><div>
+  $('#sent').innerHTML=items.map(x=>`<div class="item"><div class="score ${BCOL[x.bucket]}" style="font-size:11px">${esc(x.bucket_label)}</div><div>
     <div class="kind ${esc(x.kind)}">${esc(KIND[x.kind]||x.kind)} · #${x.queue2_id}${x.checking?' · <span class="mid">checking</span>':''}</div>
     <div class="meta"><a href="${esc(x.thread_url||x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a>${x.reddit_url?` · <a href="${esc(x.reddit_url)}" target="_blank" rel="noopener">live comment</a>`:''}</div>
     <div class="meta"><span>sent ${t(x.sent_at)}</span><span>${x.delivery_mode==='beta'?'from your account '+esc(accountName(x.user_account_id)):'Engain pool'}</span>${x.prompt_variant_name?`<span>prompt “${esc(x.prompt_variant_name)}”</span>`:''}<span>Engain: ${esc(x.engain_status||'–')}</span><span>last checked ${t(x.status_checked_at)}</span></div>
     <div class="meta">${x.history.map(h=>`${t(h.at)} ${esc(h.from_status||'sent')} → ${esc(h.to_status)}`).join(' · ')}</div>
-  </div></div>`).join('')||'<p class="muted">Nothing sent in this period.</p>';
+  </div></div>`).join('')||'<p class="muted">Nothing here for this period.</p>';
 }
 $('#sentdays').addEventListener('input',refresh);
 $('#checksent').onclick=()=>q2('Checking sent statuses with Engain',async()=>{const r=await api('/api/cron/tracker',{});

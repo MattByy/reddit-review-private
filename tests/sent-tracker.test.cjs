@@ -46,6 +46,12 @@ test('sent items are tracked until their status is final, and keep it afterwards
     v=(await call(a,'GET','/api/sent')).body;
     assert.deepStrictEqual(v.counts,{pending:1,published:1,automod_removed:1,mod_removed:1,deleted:1,parent_removed:0,not_posted:0,cancelled:0,error:0});
     assert.strictEqual(v.total,5,'nothing leaves the list');assert.strictEqual(v.published_rate,25);
+    const g=Object.fromEntries(v.groups.map(x=>[x.key,x]));
+    assert.deepStrictEqual(v.groups.map(x=>[x.label,x.count]),[['In progress',1],['Published',1],['Removed',3],["Couldn't be posted",0],['Cancelled / error',0]]);
+    assert.deepStrictEqual(g.removed.parts.map(x=>[x.label,x.count]),[['Removed by AutoModerator',1],['Removed by moderators',1],['Parent comment removed',0],['Deleted (account or Engain)',1]],'removed always lists its four kinds');
+    assert.deepStrictEqual(g.in_progress.parts,[{status:'in_review',label:'Waiting to be picked up',count:1}]);
+    assert.strictEqual(g.removed.detail,'always');assert.strictEqual(g.not_posted.detail,'expand');assert.strictEqual(g.other.detail,'expand');
+    assert.ok(v.items.every(i=>v.groups.some(x=>x.key===i.group)));
     const pub=v.items.find(i=>i.queue2_id===ids[0]);
     assert.strictEqual(pub.bucket_label,'Published');assert.strictEqual(pub.checking,false);assert.ok(pub.reddit_url);
     assert.deepStrictEqual(pub.history.map(h=>h.to_status),[pub.history[0].to_status,'published']);
@@ -95,5 +101,18 @@ test('every Engain task status lands in the right bucket',()=>{
   for(const [s,b] of Object.entries(expect))assert.strictEqual(final(s),b,s);
   for(const s of ['scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned'])
     assert.strictEqual(bucket({engain_status:s,settled:0,send_status:'submitted'}),'pending',s);
+});
+
+test("couldn't-be-posted and cancelled/error groups keep their individual statuses",async()=>{
+  const {sentView}=require('../server/tracker.cjs');
+  const rows=['post_url_broken','thread_archived_locked','thread_archived_locked','cancelled','error','rebuilt'].map((st,i)=>({id:i+1,kind:'thread',
+    engain_task_id:'t'+i,engain_status:st,settled:1,send_status:st==='cancelled'?'cancelled':'failed',sent_at:new Date().toISOString(),item:{}}));
+  const v=sentView({sentSince:()=>rows,queue2Events:()=>[]},{days:7});
+  const g=Object.fromEntries(v.groups.map(x=>[x.key,x]));
+  assert.strictEqual(g.not_posted.count,3);
+  assert.deepStrictEqual(g.not_posted.parts.map(x=>[x.label,x.count]),[['Thread archived or locked',2],['Thread link broken',1]]);
+  assert.strictEqual(g.other.count,3);
+  assert.deepStrictEqual(g.other.parts.map(x=>x.label).sort(),['Cancelled','Error','Rebuilt']);
+  assert.strictEqual(g.removed.count,0);assert.strictEqual(g.removed.parts.length,4);
 });
 

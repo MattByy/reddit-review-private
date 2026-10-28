@@ -211,6 +211,17 @@ Everything sent from Queue 2 goes on a tracking list with Engain's latest status
 
 These are all 19 values in Engain's spec (v1 `TaskItem.status` plus the legacy aliases `sent_for_posting` → `in_review` and `assigned` → `in_queue`). The "Our comments" verdicts count the four removal statuses of Engain's `task.removed` webhook as **disapproved**.
 
+- **Summary groups** (`groups` in `/api/sent`; the Sent tab's cards):
+
+| Group | Contains | Shown |
+| --- | --- | --- |
+| In progress | the pending statuses | total; Details lists the statuses |
+| Published | `published` | total |
+| Removed | AutoModerator, moderators, parent comment removed, deleted | total, with all four always listed separately |
+| Couldn't be posted | broken link, archived or locked, private or banned, flair | total; Details lists the statuses |
+| Cancelled / error | `cancelled`, `error`, `rebuilt`, unknown | total; Details lists the statuses |
+
+  Clicking a card, or a status inside it, filters the list ("Show all" resets it).
 - **`GET /api/sent?days=7`** (`1`, `7`, `30`; `0` = all time) returns counts per bucket for items **sent** in that window, the publish rate (published ÷ settled), and every item with its history. `POST /api/cron/tracker` runs the checker now.
 - **Dashboard:** the **Sent (tracking)** tab shows the window selector, a count tile per bucket, and the list.
 
