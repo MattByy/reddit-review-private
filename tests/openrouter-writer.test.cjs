@@ -186,6 +186,56 @@ test('dedicated accounts (Engain v2): list, post a thread comment, once per thre
   }finally{mock.tasks.splice(saved);a.close();}
 });
 
+test('approve routes automatically: first comments from a random own account, replies through the pool',async()=>{
+  const mock=require('../server/mock.cjs'),saved=mock.tasks.length;
+  const a=app({fetchImpl:fakeOpenRouter().fetchImpl});
+  const add=(kind,n)=>{a.store.db.prepare(`insert into queue2(item_id,kind,thread_id,url,thread_url,title,message,message_source,item,created_at,updated_at)
+      values(?,?,?,?,?,'t','Disclosure: I work at Geonode. A useful note.','given','{}',datetime('now'),datetime('now'))`)
+      .run(kind[0]+'_auto'+n,kind,'auto'+n,`https://www.reddit.com/r/proxies/comments/auto${n}/`+(kind==='thread'?'':`x/c${n}/`),`https://www.reddit.com/r/proxies/comments/auto${n}/`);
+    return a.store.db.prepare('select id from queue2 where item_id=?').get(kind[0]+'_auto'+n).id;};
+  try{
+    const used=new Set();
+    for(let n=0;n<20;n++){
+      const r=await call(a,'POST',`/api/agent/queue2/${add('thread',n)}/approve`,{});
+      assert.strictEqual(r.status,200,JSON.stringify(r.body));
+      assert.ok(['sn_mock_1','sn_mock_2'].includes(r.body.account.id),'only ready accounts');
+      assert.strictEqual(mock.tasks.at(-1).postedFrom,'dedicated');assert.strictEqual(mock.tasks.at(-1).accountId,r.body.account.id);
+      assert.strictEqual(r.body.queue2.delivery_mode,'beta');assert.strictEqual(r.body.queue2.user_account_id,r.body.account.id);
+      used.add(r.body.account.id);
+    }
+    assert.strictEqual(used.size,2,'the account is chosen at random');
+
+    // In a thread where sn_mock_1 already commented, only sn_mock_2 can be picked; when both have, nothing is sent.
+    const t1=add('thread',100);
+    mock.tasks.push({_id:'pre1',accountId:'sn_mock_1',threadUrl:'https://www.reddit.com/r/proxies/comments/auto100/',status:'published'});
+    for(let i=0;i<5;i++){
+      if(i){a.store.db.prepare("update queue2 set send_status='ready',approved_at=null where id=?").run(t1);mock.tasks.splice(mock.tasks.findIndex(t=>t.postedFrom==='dedicated'&&t.threadUrl.includes('auto100')),1);}
+      const r=await call(a,'POST',`/api/agent/queue2/${t1}/approve`,{});
+      assert.strictEqual(r.body.account.id,'sn_mock_2');
+    }
+    const t2=add('thread',200);
+    for(const id of ['sn_mock_1','sn_mock_2'])mock.tasks.push({_id:'pre_'+id,accountId:id,threadUrl:'https://www.reddit.com/r/proxies/comments/auto200/',status:'published'});
+    let r=await call(a,'POST',`/api/agent/queue2/${t2}/approve`,{});
+    assert.strictEqual(r.status,409);assert.match(r.body.error,/All 2 of your ready accounts already commented/);
+    let e=(await call(a,'GET','/api/agent/queue2')).body.items.find(x=>x.queue2_id===t2);
+    assert.strictEqual(e.send_status,'ready');assert.strictEqual(e.approved_at,null,'not marked approved when nothing was sent');
+
+    // A reply goes through the pool without any account choice.
+    r=await call(a,'POST',`/api/agent/queue2/${add('comment',300)}/approve`,{});
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));
+    assert.strictEqual(r.body.account,null);assert.strictEqual(r.body.queue2.delivery_mode,'pool');
+    assert.strictEqual(mock.tasks.at(-1).type,'reply');
+
+    // No accounts available: nothing is sent.
+    a.engain.v2Accounts=async()=>{throw Object.assign(Error('Forbidden'),{status:403});};
+    const t3=add('thread',400);
+    r=await call(a,'POST',`/api/agent/queue2/${t3}/approve`,{});
+    assert.strictEqual(r.status,409);assert.match(r.body.error,/not available/);
+    e=(await call(a,'GET','/api/agent/queue2')).body.items.find(x=>x.queue2_id===t3);
+    assert.strictEqual(e.send_status,'ready');assert.strictEqual(e.approved_at,null);
+  }finally{mock.tasks.splice(saved);a.close();}
+});
+
 test('prompts are visible and editable per type, and the edited one is used',async()=>{
   const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
   try{

@@ -166,7 +166,12 @@ Engain removed `/api/v1/accounts-beta/*`; every call there now answers `404 No m
 
 **Limit:** dedicated accounts **cannot post replies** (`/api/v2/tasks/reply` refuses `accountId`). Thread items can go to one of our accounts or to the pool; comment and mention items always go to the pool.
 
-On the Queue 2 tab, "Approve & send" offers **My account** (with a picker of ready accounts) on thread items. The server refuses a dedicated send when that account already commented on the thread, unless `override.thread_check` is set.
+**Routing is automatic.** "Approve & send" (`POST /api/agent/queue2/:id/approve {}`) needs no choice:
+
+- **thread items** (first comment in a thread) post from a **random ready account of ours**. The accounts are shuffled, and any account that already commented in that thread is skipped (v2 thread-check). If none is left, or our accounts aren't available, nothing is sent, the item stays ready and unapproved, and the reason is returned.
+- **comment and mention items** (replies) go through the **Engain pool**.
+
+The response's `account` says which account posted, and the Queue 2 tab shows it. Passing `mode` (`pool` or `dedicated` with `userAccountId`) overrides the automatic choice.
 
 `/api/agent/beta-accounts` (the name is kept for compatibility) returns `{available, accounts:[{userAccountId, username, niche, usable, …}]}`. Approve with `{"mode":"dedicated","userAccountId":"…"}`; `mode:"beta"` is still accepted and is what the database stores.
 

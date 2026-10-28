@@ -4,7 +4,7 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const http=require('node:http');
-const {timingSafeEqual,createHash}=require('node:crypto');
+const {timingSafeEqual,createHash,randomInt}=require('node:crypto');
 const root=path.resolve(__dirname,'..');
 for(const f of ['.env.local','.env'])if(fs.existsSync(path.join(root,f)))process.loadEnvFile(path.join(root,f));
 
@@ -105,6 +105,23 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   }
   const jobStatus=()=>Object.fromEntries(Object.keys(jobs).map(n=>[n,{running:!!running[n],next_run:next[n]||null,last:store.kv('job_'+n)}]));
 
+  // A random ready account of ours that has not commented in this item's thread yet.
+  async function pickAccount(item){
+    const pid=await project();
+    let list;
+    try{list=(await engain.v2Accounts(pid)).accounts||[];}
+    catch(e){if(e.status===403||e.status===404)fail(409,`Your own accounts are not available to this key (HTTP ${e.status}), so this first comment was not sent.`);throw e;}
+    const ready=list.filter(a=>a.isReadyForSelection);
+    if(!ready.length)fail(409,'None of your own accounts is ready to post, so this first comment was not sent.');
+    for(let i=ready.length-1;i>0;i--){const j=randomInt(i+1);[ready[i],ready[j]]=[ready[j],ready[i]];}
+    for(const a of ready){
+      let c=null;
+      try{c=await engain.v2ThreadCheck(a.userAccountId,{projectId:pid,threadUrl:item.thread_url||item.url});}catch(e){log('thread check failed for '+a.userAccountId+': '+e.message);}
+      if(!c?.exists)return {...a,username:a.username?String(a.username).replace(/^u\//,''):null};
+    }
+    fail(409,`All ${ready.length} of your ready accounts already commented in this thread.`);
+  }
+
   const routes={
     // Agent: take the next item off the queue. POST because every call removes an item.
     // Moves #1 of queue 1 into queue 2 with body.message, or a random placeholder message.
@@ -118,15 +135,24 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       return r;
     },
     'POST /api/agent/queue2/:id/write':async(_,__,id)=>{await writer.writeQueue2(store,id,writerOpts);return queue.queue2Item(store,id);},
-    // Approve and send in one step: records who approved, then the send guards run as usual.
+    // Approve and send in one step. Routing is automatic unless body.mode is given:
+    //   thread items (first comment in a thread) -> a random ready account of ours (Engain v2),
+    //     skipping any account that already commented in that thread;
+    //   comment and mention items (replies) -> the Engain pool (v2 accounts cannot post replies).
     'POST /api/agent/queue2/:id/approve':async(_,body,id)=>{
       const item=store.queue2(id);if(!item)fail(404,'No such queue 2 entry');
       if(item.message_source==='random'||['skipped','truncated'].includes(item.write_status))fail(422,item.write_status==='truncated'?'This message is cut off. Rewrite or edit it first.':'There is no real message to approve. Write one first.');
+      if(item.send_status&&item.send_status!=='ready')fail(409,'Only a ready item can be approved');
+      let mode=body?.mode,userAccountId=body?.userAccountId,override=body?.override,account=null;
+      if(!mode){
+        if(item.kind==='thread'){account=await pickAccount(item);mode='dedicated';userAccountId=account.userAccountId;override={...override,thread_check:true};}
+        else mode='pool';
+      }
       if(!store.approveQueue2(id,body?.approved_by?String(body.approved_by).slice(0,80):'dashboard'))fail(409,'Only a ready item can be approved');
       const {sendQueue2}=require('./send-queue2.cjs');
-      const sent=await sendQueue2({id,mode:body?.mode||'pool',userAccountId:body?.userAccountId,posterAccount:body?.posterAccount,override:body?.override},
+      const sent=await sendQueue2({id,mode,userAccountId,posterAccount:body?.posterAccount,override},
         {engain,store,projectId:await project(),log});
-      return {...sent,queue2:queue.queue2Item(store,id)};
+      return {...sent,account:account&&{id:account.userAccountId,username:account.username||null,niche:account.niche||null},queue2:queue.queue2Item(store,id)};
     },
     'GET /api/prompts':async()=>({prompts:writer.prompts(store),defaults:writer.DEFAULT_PROMPTS,variables:writer.VARIABLES,
       model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,openrouter_key:!!(writerOpts.apiKey??process.env.OPENROUTER_API_KEY)}),
