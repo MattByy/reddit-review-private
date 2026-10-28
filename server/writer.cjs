@@ -231,7 +231,8 @@ async function complete({provider='openrouter',model,prompt,temperature=0.7,maxT
     if(r.status===429&&attempt<4){await new Promise(z=>setTimeout(z,(attempt+1)*(fetchImpl===fetch?5000:1)));continue;}
     if(!r.ok)throw Error(j?.error?.message||`${p.label} ${r.status}`);
     const c=j?.choices?.[0],text=cleanText(c?.message?.content);
-    if(!text)throw Error(p.label+' returned an empty message');
+    // Reasoning models (GLM, MiniMax) think first; a small token limit can end before the answer.
+    if(!text)throw Error(p.label+' returned an empty message'+(c?.message?.reasoning||c?.message?.reasoning_content?' (only reasoning; the token limit ran out before the answer)':''));
     return {text,finish_reason:c.finish_reason??null,latency_ms:Date.now()-started,usage:j.usage??null};
   }
 }
@@ -246,7 +247,8 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   if(!keys[provider])fail(503,`${PROVIDERS[provider].key} is not set (add it to .env.local)`);
   const prompt=render(variant.text,variables(entry,store,variant.text)),pv={prompt_variant_id:variant.id,prompt_variant_name:variant.name,provider};
   let res;
-  try{res=await complete({provider,model,prompt,temperature:variant.temperature??0.7,keys,fetchImpl});}
+  // Some Featherless models reason before answering and need room for both.
+  try{res=await complete({provider,model,prompt,temperature:variant.temperature??0.7,maxTokens:provider==='featherless'?3000:1500,keys,fetchImpl});}
   catch(e){
     store.setQueue2Draft(id,{write_status:'failed',write_error:String(e.message).slice(0,500),prompt_used:prompt,model,provider});
     fail(502,'Writing failed: '+e.message);

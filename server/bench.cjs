@@ -128,7 +128,7 @@ async function draftRun(store,runId,{keys,fetchImpl=fetch,concurrency=4,log=()=>
     for(;;){
       const d=pending[next++];if(!d)return;
       try{
-        const r=await writer.complete({provider:d.provider,model:d.model,prompt:d.prompt_used,temperature:d.temperature,maxTokens:600,keys,fetchImpl});
+        const r=await writer.complete({provider:d.provider,model:d.model,prompt:d.prompt_used,temperature:d.temperature,maxTokens:3000,keys,fetchImpl});
         const skipped=/^skip\.?$/i.test(r.text),truncated=r.finish_reason==='length';
         set.run(skipped?'skipped':truncated?'truncated':'written',r.text,null,r.finish_reason,r.latency_ms,JSON.stringify(skipped?{words:0,list:[]}:flags(r.text)),new Date().toISOString(),d.id);
       }catch(e){set.run('failed',null,String(e.message).slice(0,500),null,null,null,new Date().toISOString(),d.id);log(`bench ${runId}: ${short(d.model)} failed: ${e.message}`);}
