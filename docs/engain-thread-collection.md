@@ -64,7 +64,7 @@ Comments this server sees for the first time since the last refresh go in at #5,
 
 Engain does not return replies under our comment or its current votes. Reddit's JSON answers 403 from here.
 
-Threads are topped back up to `thread_target` (default 50) **at the end**. Items that stop qualifying are dropped, and the reason is kept in the history.
+Threads are added **at the end**, only while the queue holds fewer than `queue_target` (default 50) items in total. Items that stop qualifying are dropped, and the reason is kept in the history.
 
 ### Rules
 
@@ -113,20 +113,41 @@ The `min_*` and `max_age_days` values are live settings, changed with `GET` or `
 
 `GET /api/agent/queue` lists the queued item IDs, kinds and positions without claiming anything.
 
-## Cron API
+## Scheduled jobs
 
-`POST /api/cron/refresh` with body `{}` collects from Engain (all sources, 3 pages) and refreshes the queue when the run finishes. It returns `{"started":true,"run_id":n}`, or `{"started":false,"reason":…}` if a run is still going. Pass `{"collect":false}` to refresh the queue only. Other collect options (`max_pages`, `keywords`, `spend_quota`, `sources`) pass through.
+`npm run dev` runs two jobs inside the server (`JOBS=off` disables them). Each is also an HTTP route, so an outside cron can call it instead. Intervals are queue settings.
 
-A full collection takes several minutes at Engain's 30 requests/min. Hourly works. Mentions and opportunities are the parts that change.
+| Job | Every | Route | What it does |
+| --- | --- | --- | --- |
+| **threads** | 10 min (`threads_every_minutes`) | `POST /api/cron/threads` | See below. |
+| **comments** | 30 min (`comments_every_minutes`) | `POST /api/cron/comments` | See below. |
 
-Run `check-published` often (every 10–15 minutes) and `refresh` hourly.
+**threads job.** With `queue_target` (default 50) or more items queued (threads and comments together), it does nothing and makes no Engain calls. Below the target, it adds threads **at the end** until the target is reached.
+
+If the stored threads were collected more than `thread_collect_minutes` (60) ago, it first runs a collection: opportunities, Smart Search history, our tasks, and only Geonode's own mentions (to exclude threads that mention us). Competitor mentions are read too only when `mention_comments=1`.
+
+**comments job.** It reads our Engain task list and records every task's status, with a verdict:
+
+| Verdict | Engain statuses |
+| --- | --- |
+| **approved** | `published` |
+| **disapproved** | `mod_removed`, `automod_removed` |
+| **pending** | scheduled, in review/queue, waiting |
+| **cancelled** | `cancelled` |
+| **failed** | everything else |
+
+Every status change is appended to `task_events` with its time. Newly published comments go in **at position 5 immediately**, even past the queue target. A queued comment whose task is no longer `published` is removed from the queue, and the reason ("Engain status is now mod_removed (disapproved)") is kept in its history.
+
+- **Claims don't refill.** `POST /api/agent/task` only removes the first item and drops stale ones; refilling is the threads job's work.
+- **Status and records:** `GET /api/jobs` shows the last and next run of each job. `GET /api/our-comments?verdict=` lists every recorded task with its status history.
+- **Other routes:** `POST /api/cron/refresh` still runs a full collection regardless of queue size. `POST /api/cron/check-published` is an alias for the comments job.
 
 ## Auth
 
 | Route | Rule |
 | --- | --- |
 | `/api/agent/*` | `Authorization: Bearer $AGENT_API_KEY` when the key is set. Without a key, only this machine may call. |
-| `/api/cron/*` (`refresh`, `check-published`) | `Authorization: Bearer $CRON_SECRET`, same rule. |
+| `/api/cron/*` (`threads`, `comments`, `refresh`) | `Authorization: Bearer $CRON_SECRET`, same rule. |
 | Everything else (dashboard) | This machine only. |
 
 The server listens on `127.0.0.1` by default. `HOST=0.0.0.0` (for a remote agent or cron runner) refuses to start unless both `AGENT_API_KEY` and `CRON_SECRET` are set.

@@ -50,13 +50,18 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
   <pre id="progress" class="muted"></pre>
 </section>
 <section>
+  <strong>Scheduled jobs</strong>
+  <div id="jobs" class="muted" style="font-size:12px;margin-top:6px"></div>
+  <div class="meta" style="margin-top:8px"><button class="ghost" id="runthreads">Run threads job now</button><button class="ghost" id="runcomments">Run comments job now</button></div>
+</section>
+<section>
   <strong>Queue rules</strong>
   <div class="grid2" id="settings"></div>
   <button id="save" class="ghost" style="margin-top:8px">Save rules and refresh</button>
 </section>
 </aside>
 <section>
-  <div class="tabs"><button data-tab="queue" class="on">Queue</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="history">Taken / removed</button></div>
+  <div class="tabs"><button data-tab="queue" class="on">Queue</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="ours">Our comments</button><button data-tab="history">Taken / removed</button></div>
   <div id="tab-queue">
     <div class="filters"><span class="muted" id="qcount"></span><button id="checkpub" class="ghost">Check published now</button><button id="refreshq" class="ghost">Refresh queue</button><button id="rebuild" class="ghost">Rebuild from scratch</button><button id="take">Agent: take next task</button></div>
     <pre id="taken" hidden></pre>
@@ -74,6 +79,10 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
       <label style="flex:0;white-space:nowrap"><input type="checkbox" id="avail"> Queueable only</label></div>
     <div id="threads"></div>
   </div>
+  <div id="tab-ours" hidden>
+    <div class="filters"><select id="verdict"><option value="">All</option><option>approved</option><option>disapproved</option><option>pending</option><option>failed</option><option>cancelled</option></select><span class="muted" id="ourcounts"></span></div>
+    <div id="ours"></div>
+  </div>
   <div id="tab-history" hidden><div id="history"></div></div>
 </section>
 </main>
@@ -81,9 +90,9 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cls=s=>s>=60?'hi':s>=35?'mid':'lo',fmt=n=>n==null?'–':Math.round(n).toLocaleString();
 async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j;}
-const LABELS={thread_target:'Threads in queue',comment_limit:'New comments per refresh',comment_position:'Insert comments at',max_age_days:'Max age (days)',min_comments:'Min thread comments',min_thread_score:'Min thread score',min_comment_score:'Min comment score',mention_comments:'Competitor mentions (0 off, 1 on)'};
+const LABELS={queue_target:'Queue size (threads fill up to this)',threads_every_minutes:'Threads job every (min)',comments_every_minutes:'Comments job every (min)',thread_collect_minutes:'Ask Engain for threads if older than (min)',comment_limit:'New comments per refresh',comment_position:'Insert comments at',max_age_days:'Max age (days)',min_comments:'Min thread comments',min_thread_score:'Min thread score',min_comment_score:'Min comment score',mention_comments:'Competitor mentions (0 off, 1 on)'};
 let tab='queue';
-for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','comments','threads','history'])$('#tab-'+t).hidden=t!==tab;refresh();};
+for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','comments','threads','ours','history'])$('#tab-'+t).hidden=t!==tab;refresh();};
 
 async function status(){const s=await api('/api/status');$('#mode').textContent=s.mock?'mock data':'live Engain'+(s.project_name?' · '+s.project_name:'');
   $('#count').textContent=`${s.threads} threads · ${s.comments} mention comments · ${s.queued} queued`;
@@ -131,16 +140,30 @@ async function loadThreads(){
     ${t.rank.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}${t.eligibility.reasons.map(f=>`<div class="flag">✕ ${esc(f)}</div>`).join('')}
     <details><summary>Why this score</summary>${why(t.rank.parts)}${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}</details></div></div>`).join('');
 }
-async function refresh(){status();try{await({queue:loadQueue,comments:loadComments,threads:loadThreads,history:loadHistory})[tab]();}catch(e){$('#progress').textContent='Error: '+e.message;}}
+async function refresh(){status();try{await({queue:loadQueue,comments:loadComments,threads:loadThreads,ours:loadOurs,history:loadHistory})[tab]();loadJobs();}catch(e){$('#progress').textContent='Error: '+e.message;}}
 
-$('#checkpub').onclick=async()=>{
-  $('#checkpub').disabled=true;
-  try{const r=await api('/api/cron/check-published',{});
-    if(!r.started)$('#progress').textContent=r.reason;
-    else for(;;){const x=await api('/api/runs/'+r.run_id);if(x.finished_at){const s=x.summary;$('#progress').textContent=`Published check: ${s.published_new??0} new, ${s.published_known??0} already known\nqueue: +${s.queue?.added_comments??0} comments at #5`+(s.errors?.length?'\n'+s.errors.join('\n'):'');break;}await new Promise(z=>setTimeout(z,1000));}
-  }catch(e){$('#progress').textContent='Error: '+e.message;}
-  $('#checkpub').disabled=false;refresh();
-};
+async function runJob(name,btn){
+  btn.disabled=true;$('#progress').textContent='Running '+name+' job… (a thread collection takes a few minutes)';
+  try{$('#progress').textContent=name+' job:\n'+JSON.stringify(await api('/api/cron/'+name,{}),null,1);}catch(e){$('#progress').textContent='Error: '+e.message;}
+  btn.disabled=false;refresh();
+}
+$('#checkpub').onclick=()=>runJob('comments',$('#checkpub'));
+$('#runthreads').onclick=()=>runJob('threads',$('#runthreads'));
+$('#runcomments').onclick=()=>runJob('comments',$('#runcomments'));
+const VCOL={approved:'hi',disapproved:'lo',pending:'mid',failed:'lo',cancelled:''};
+async function loadJobs(){
+  const j=await api('/api/jobs'),t=x=>x?new Date(x).toLocaleTimeString():'–';
+  $('#jobs').innerHTML=Object.entries(j).map(([n,s])=>{const r=s.last?.result;return `<div><b>${esc(n)}</b>${s.running?' · running…':''} · next ${t(s.next_run)}<br>last ${t(s.last?.finished)}: ${esc(s.last?.error?'error: '+s.last.error:r?r.action+(r.reason?' – '+r.reason:'')+(r.added_threads?` (+${r.added_threads} threads)`:'')+(r.added_comments?` (+${r.added_comments} comments)`:'')+(r.status_changes?.length?` (${r.status_changes.length} status changes)`:''):'never')}</div>`;}).join('');
+}
+async function loadOurs(){
+  const r=await api('/api/our-comments?verdict='+$('#verdict').value);
+  $('#ourcounts').textContent=Object.entries(r.counts).map(([k,v])=>`${v} ${k}`).join(' · ');
+  $('#ours').innerHTML=r.items.map(x=>`<div class="item"><div class="score ${VCOL[x.verdict]||''}" style="font-size:12px">${esc(x.verdict)}</div><div>
+    ${x.content?`<blockquote>${esc(x.content.length>300?x.content.slice(0,300)+'…':x.content)}</blockquote>`:''}
+    <div class="meta"><span>${esc(x.type||'')}</span><span>r/${esc(x.subreddit||'')}</span><span>Engain: ${esc(x.status)}</span>${x.reddit_url?`<a href="${esc(x.reddit_url)}" target="_blank" rel="noopener">Open comment</a>`:''}${x.thread_url?`<a href="${esc(x.thread_url)}" target="_blank" rel="noopener">Thread</a>`:''}</div>
+    <div class="meta">${x.history.map(e=>`${esc(String(e.at).slice(0,16).replace('T',' '))}: ${esc(e.from_status||'first seen')} → ${esc(e.to_status)}`).join(' · ')}</div></div></div>`).join('')||'<p class="muted">Nothing yet. Run the comments job.</p>';
+}
+$('#verdict').addEventListener('input',refresh);
 $('#refreshq').onclick=async()=>{await api('/api/queue/refresh',{});refresh();};
 $('#rebuild').onclick=async()=>{await api('/api/queue/refresh',{reset:true});refresh();};
 $('#take').onclick=async()=>{const r=await api('/api/agent/task',{agent:'dashboard'});$('#taken').hidden=false;$('#taken').textContent=JSON.stringify(r,null,2);refresh();};

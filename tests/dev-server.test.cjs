@@ -3,6 +3,7 @@ const test=require('node:test');
 const assert=require('node:assert');
 const {createApp}=require('../server/dev.cjs');
 const {threadRef,rank,fromOpportunity}=require('../server/collect.cjs');
+const mock=require('../server/mock.cjs');
 
 const mockId=n=>'m'+(1000+n).toString(36);
 const app=(opts={})=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',...opts});
@@ -74,7 +75,7 @@ test('a newly published comment goes in at position 5 and pushes the rest down; 
   const {a}=await collected();
   try{
     const before=await queued(a),targets=[14,15,16].map(mockId);
-    targets.forEach((tid,i)=>a.store.savePublished({task_id:'new_'+i,type:'comment',reddit_url:`https://www.reddit.com/r/proxies/comments/${tid}/x/new${i}/`,
+    targets.forEach((tid,i)=>a.store.saveTask({task_id:'new_'+i,type:'comment',status:'published',verdict:'approved',reddit_url:`https://www.reddit.com/r/proxies/comments/${tid}/x/new${i}/`,
       thread_url:`https://www.reddit.com/r/proxies/comments/${tid}/need_proxies/`,thread_id:tid,content:'Just published',subreddit:'proxies',
       published_at:new Date(Date.now()-i*60000).toISOString(),parent_task_id:null,labels:[]}));
     assert.strictEqual((await call(a,'POST','/api/queue/refresh',{})).body.added_comments,3);
@@ -89,18 +90,73 @@ test('a newly published comment goes in at position 5 and pushes the rest down; 
   }finally{a.close();}
 });
 
-test('published check: only the task list is read, and a second check adds nothing',async()=>{
+test('comments job records every status change and keeps the queue in step',async()=>{
+  const a=app(),saved=JSON.parse(JSON.stringify(mock.tasks));
+  try{
+    let r=(await call(a,'POST','/api/cron/comments',{})).body;
+    assert.strictEqual(r.action,'checked');assert.strictEqual(r.published_new,2);assert.strictEqual(r.added_comments,2);
+    assert.deepStrictEqual(r.task_statuses,{approved:2,disapproved:1,pending:0,failed:0,cancelled:1});
+    assert.strictEqual((await call(a,'POST','/api/cron/comments',{})).body.added_comments,0,'a second check adds nothing');
+
+    // Moderators remove one of our published comments; a new one gets published.
+    mock.tasks.find(t=>t._id==='t1').status='mod_removed';
+    mock.tasks.push({_id:'t5',type:'comment',status:'published',threadUrl:mock.post(14).url,redditUrl:mock.post(14).url+'ours5/',content:'Fresh one',publishedAt:new Date().toISOString(),labels:[],subreddit:'proxies'});
+    r=(await call(a,'POST','/api/cron/comments',{})).body;
+    assert.deepStrictEqual(r.status_changes.map(c=>[c.task_id,c.from,c.to,c.verdict]),[['t1','published','mod_removed','disapproved']]);
+    assert.strictEqual(r.published_new,1);assert.strictEqual(r.added_comments,1);
+    const q=await queued(a);
+    assert.ok(!q.some(i=>i.item_id==='p_t1'),'a removed comment leaves the queue');
+    assert.ok(q.some(i=>i.item_id==='p_t5'));
+    const hist=(await call(a,'GET','/api/queue?history=50')).body.recent.find(i=>i.item_id==='p_t1');
+    assert.match(hist.note,/mod_removed \(disapproved\)/);
+
+    const ours=(await call(a,'GET','/api/our-comments')).body;
+    assert.deepStrictEqual(ours.counts,{approved:2,disapproved:2,cancelled:1});
+    const t1=ours.items.find(i=>i.task_id==='t1');
+    assert.deepStrictEqual(t1.history.map(e=>[e.from_status,e.to_status,e.to_verdict]),[[null,'published','approved'],['published','mod_removed','disapproved']]);
+    assert.strictEqual((await call(a,'GET','/api/our-comments?verdict=disapproved')).body.total,2);
+  }finally{mock.tasks.splice(0,mock.tasks.length,...saved);a.close();}
+});
+
+test('threads job does nothing at the target, and refills below it',async()=>{
   const a=app();
   try{
-    let r=await call(a,'POST','/api/cron/check-published',{});
-    let run=await finished(a,r.body.run_id);
-    assert.deepStrictEqual(run.input.sources,['tasks']);
-    assert.strictEqual(run.summary.published_new,2);assert.strictEqual(run.summary.queue.added_comments,2);
-    r=await call(a,'POST','/api/cron/check-published',{});
-    run=await finished(a,r.body.run_id);
-    assert.strictEqual(run.summary.published_known,2);assert.strictEqual(run.summary.queue.added_comments,0);
-    assert.strictEqual((await call(a,'GET','/api/published')).body.length,2);
+    await call(a,'POST','/api/settings',{queue_target:10});
+    let r=(await call(a,'POST','/api/cron/threads',{})).body;
+    assert.strictEqual(r.action,'filled');assert.ok(r.collected,'first run collects from Engain');
+    assert.strictEqual(r.queued,10);
+    const runs=a.store.run('latest').id;
+    r=(await call(a,'POST','/api/cron/threads',{})).body;
+    assert.strictEqual(r.action,'none');assert.strictEqual(a.store.run('latest').id,runs,'a full queue makes no Engain calls');
+
+    for(let i=0;i<3;i++)await call(a,'POST','/api/agent/task',{});
+    assert.strictEqual((await queued(a)).length,7,'claiming does not refill');
+    r=(await call(a,'POST','/api/cron/threads',{})).body;
+    assert.strictEqual(r.action,'filled');assert.strictEqual(r.collected,null,'stored threads are fresh, so no new collection');
+    assert.strictEqual(r.added_threads,3);assert.strictEqual(r.queued,10);
+    const q=await queued(a);assert.ok(q.slice(-3).every(i=>i.kind==='thread'),'new threads go at the end');
+
+    await call(a,'POST','/api/settings',{thread_collect_minutes:5});
+    a.store.setKv('last_thread_collection',new Date(Date.now()-3600000).toISOString());
+    await call(a,'POST','/api/agent/task',{});
+    r=(await call(a,'POST','/api/cron/threads',{})).body;
+    assert.ok(r.collected,'stale stored threads trigger a new collection');
+    assert.strictEqual(a.store.run(r.collected.run_id).input.mention_brands,'own','only our own mentions are read while competitor mentions are off');
   }finally{a.close();}
+});
+
+test('our published comments still go in when the queue is full',async()=>{
+  const a=app(),saved=JSON.parse(JSON.stringify(mock.tasks));
+  try{
+    await call(a,'POST','/api/settings',{queue_target:5});
+    await call(a,'POST','/api/cron/threads',{});
+    assert.strictEqual((await queued(a)).length,5);
+    mock.tasks.push({_id:'t6',type:'comment',status:'published',threadUrl:mock.post(15).url,redditUrl:mock.post(15).url+'ours6/',content:'Another',publishedAt:new Date().toISOString(),labels:[],subreddit:'proxies'});
+    const r=(await call(a,'POST','/api/cron/comments',{})).body;
+    assert.strictEqual(r.added_comments,1);
+    const q=await queued(a);
+    assert.strictEqual(q.length,6);assert.strictEqual(q[4].item_id,'p_t6');
+  }finally{mock.tasks.splice(0,mock.tasks.length,...saved);a.close();}
 });
 
 test('competitor mentions can be switched on and come right after our comments',async()=>{
@@ -139,7 +195,7 @@ test('agent task: each call returns item #1 and removes it for good',async()=>{
     assert.ok(!(await queued(a)).some(i=>i.item_id===r.body.task_id),'a claimed comment is never queued again');
 
     assert.strictEqual((await call(a,'POST','/api/settings',{min_thread_score:100,max_age_days:14})).status,200);
-    a.store.db.exec("update published set published_at='2020-01-01T00:00:00Z'");
+    a.store.db.exec("update our_tasks set published_at='2020-01-01T00:00:00Z'");
     r=await call(a,'POST','/api/agent/task',{});
     assert.strictEqual(r.body.status,'empty');
     assert.strictEqual((await call(a,'POST','/api/settings',{max_age_days:1})).status,422);

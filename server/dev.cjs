@@ -32,35 +32,99 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     const p=me.projects.find(p=>/geonode/i.test(p.name))||me.projects[0];projectName=p.name;
     return projectId=p.id;
   }
-  // Collection runs in the background; the queue refreshes when it finishes.
-  async function startCollect(input){
+  // One collection at a time. Returns the run ID at once and `done`, which settles with the
+  // summary after the queue has been refreshed.
+  async function beginCollect(input,{addThreads=true}={}){
     if(active)fail(409,'A collection run is already in progress (run '+active+')');
-    const pid=await project(),id=store.startRun(input);active=id;live.set(id,{step:'starting'});
-    collect(input,{engain,store,projectId:pid,onProgress:p=>live.set(id,p)})
-      .then(s=>{let q;try{q=queue.refreshQueue(store).summary;}catch(e){s.errors.push('queue refresh: '+e.message);}store.finishRun(id,{...s,queue:q});},
-        e=>store.finishRun(id,{errors:[e.message]}))
+    active='starting';
+    let pid;try{pid=await project();}catch(e){active=null;throw e;}
+    const id=store.startRun(input);active=id;live.set(id,{step:'starting'});
+    const done=collect(input,{engain,store,projectId:pid,onProgress:p=>live.set(id,p)})
+      .then(s=>{try{s.queue=queue.refreshQueue(store,{addThreads}).summary;}catch(e){s.errors.push('queue refresh: '+e.message);}store.finishRun(id,s);return s;},
+        e=>{const s={errors:[e.message]};store.finishRun(id,s);return s;})
       .finally(()=>{active=null;live.delete(id);log(`collection run ${id} finished`);});
-    return {run_id:id};
+    return {run_id:id,done};
   }
+
+  // The two scheduled jobs. Each is also an HTTP route for an outside cron.
+  const jobs={
+    // Fill the queue with threads only when it holds fewer than queue_target items. Stored
+    // threads are used while they are fresh; older than thread_collect_minutes, Engain is asked first.
+    async threads(){
+      const cfg=queue.settings(store),before=store.queued().length;
+      if(before>=cfg.queue_target)return {action:'none',reason:`Queue has ${before} items (target ${cfg.queue_target})`,queued:before};
+      const last=store.kv('last_thread_collection');
+      let collected=null;
+      if(!last||Date.now()-Date.parse(last)>cfg.thread_collect_minutes*60000){
+        if(active)return {action:'waiting',reason:'Collection run '+active+' is in progress',queued:before};
+        const {run_id,done}=await beginCollect({sources:['opportunities','mentions','smart_search','tasks'],mention_brands:cfg.mention_comments?undefined:'own'});
+        const s=await done;
+        if((s.added||0)+(s.updated||0)>0)store.setKv('last_thread_collection',new Date().toISOString());
+        collected={run_id,threads_added:s.added||0,threads_updated:s.updated||0,errors:s.errors||[]};
+      }
+      const r=queue.refreshQueue(store);
+      return {action:'filled',before,queued:store.queued().length,added_threads:r.summary.added_threads,collected};
+    },
+    // Read our Engain tasks: record every status change (approved, disapproved, ...), insert
+    // newly published comments at comment_position and drop queued comments that were removed.
+    async comments(){
+      if(active)return {action:'waiting',reason:'Collection run '+active+' is in progress (it also checks our comments)'};
+      const {run_id,done}=await beginCollect({sources:['tasks'],enrich:false},{addThreads:false});
+      const s=await done;
+      return {action:'checked',run_id,published_new:s.published_new||0,task_statuses:s.task_statuses,status_changes:s.status_changes||[],
+        added_comments:s.queue?.added_comments??0,removed_from_queue:s.queue?.removed??0,queued:store.queued().length,errors:s.errors||[]};
+    },
+  };
+  const running={};
+  async function runJob(name){
+    if(running[name])return {action:'skipped',reason:name+' job is already running'};
+    running[name]=true;const started=new Date().toISOString();
+    try{
+      const result=await jobs[name]();
+      store.setKv('job_'+name,{started,finished:new Date().toISOString(),result});log(`job ${name}: ${result.action}${result.reason?' ('+result.reason+')':''}`);
+      return result;
+    }catch(e){store.setKv('job_'+name,{started,finished:new Date().toISOString(),error:e.message});log(`job ${name} failed: ${e.message}`);throw e;}
+    finally{running[name]=false;}
+  }
+  // In-process schedule; intervals are read from the queue settings before every run.
+  const timers={},next={};
+  function startScheduler(){
+    const plan=(name,minutesKey,delay)=>{
+      next[name]=new Date(Date.now()+delay).toISOString();
+      timers[name]=setTimeout(async()=>{
+        await runJob(name).catch(()=>{});
+        plan(name,minutesKey,queue.settings(store)[minutesKey]*60000);
+      },delay);
+    };
+    plan('comments','comments_every_minutes',3000);
+    plan('threads','threads_every_minutes',8000);
+    log('jobs scheduled: comments every '+queue.settings(store).comments_every_minutes+' min, threads every '+queue.settings(store).threads_every_minutes+' min');
+  }
+  const jobStatus=()=>Object.fromEntries(Object.keys(jobs).map(n=>[n,{running:!!running[n],next_run:next[n]||null,last:store.kv('job_'+n)}]));
 
   const routes={
     // Agent: take the next item off the queue. POST because every call removes an item.
     'POST /api/agent/task':async(_,body)=>queue.claimNext(store,body?.agent?String(body.agent).slice(0,80):null),
     'GET /api/agent/queue':async()=>{const v=queue.queueView(store,{history:0});return {count:v.count,items:v.items.map(({item_id,kind,position,score})=>({item_id,kind,position,score}))};},
-    // Cron: collect from Engain (default) and refresh the queue afterwards, or only refresh.
+    // Cron: the two jobs. They wait for the work to finish (a thread collection takes minutes).
+    'POST /api/cron/threads':async()=>runJob('threads'),
+    'POST /api/cron/comments':async()=>runJob('comments'),
+    'POST /api/cron/check-published':async()=>runJob('comments'),
+    // Cron: a full collection regardless of queue size, or {collect:false} to only refresh.
     'POST /api/cron/refresh':async(_,body)=>{
       const {collect:doCollect=true,...opts}=body||{};
       if(!doCollect)return {refreshed:queue.refreshQueue(store).summary};
       if(active)return {started:false,reason:'Collection run '+active+' is still in progress'};
-      return {started:true,...await startCollect(opts)};
+      const {run_id}=await beginCollect(opts);return {started:true,run_id};
     },
-
-    // Cron: cheap check (task list only) that puts newly published comments of ours into the queue.
-    'POST /api/cron/check-published':async()=>{
-      if(active)return {started:false,reason:'Collection run '+active+' is still in progress'};
-      return {started:true,...await startCollect({sources:['tasks'],enrich:false})};
-    },
+    'GET /api/jobs':async()=>jobStatus(),
     'GET /api/published':async()=>queue.publishedList(store),
+    'GET /api/our-comments':async q=>{
+      const rows=store.ourTasks(q.verdict||undefined),counts={};
+      for(const r of store.ourTasks())counts[r.verdict]=(counts[r.verdict]||0)+1;
+      const lim=Math.min(Number(q.limit)||200,1000);
+      return {counts,total:rows.length,items:rows.slice(0,lim).map(r=>({...r,history:store.taskEvents(r.task_id)}))};
+    },
 
     'GET /api/status':async()=>{
       if(!projectId&&(mock||apiKey))await project().catch(()=>{});
@@ -79,7 +143,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'GET /api/projects':async()=>engain.me(),
     'GET /api/balance':async()=>engain.balance(),
     'GET /api/smart-search/history':async()=>engain.smartSearchHistory({projectId:await project(),limit:50}),
-    'POST /api/collect':async(_,body)=>startCollect(body||{}),
+    'POST /api/collect':async(_,body)=>{const {run_id}=await beginCollect(body||{});return {run_id};},
     'GET /api/runs/:id':async(_,__,id)=>{const r=store.run(id);if(!r)fail(404,'No such run');return {...r,progress:live.get(r.id)||null};},
   };
 
@@ -111,7 +175,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       send(200,await route(Object.fromEntries(u.searchParams),body,param));
     }catch(e){send(e.status&&e.status<600?e.status:500,{error:e.message,engain:e.body});}
   }
-  return {handle,store,engain,close:()=>store.close()};
+  return {handle,store,engain,runJob,startScheduler,close:()=>{for(const t of Object.values(timers))clearTimeout(t);store.close();}};
 }
 
 if(require.main===module){
@@ -124,6 +188,8 @@ if(require.main===module){
   http.createServer(app.handle).listen(port,host,()=>{
     console.log(`Thread collector running at http://${host}:${port}  (${mock?'MOCK Engain data':'live Engain API'})`);
     if(!mock&&!process.env.ENGAIN_API_KEY)console.log('  ENGAIN_API_KEY is missing: add it to .env.local, or use npm run dev:mock');
+    // JOBS=off leaves scheduling to an outside cron calling /api/cron/threads and /api/cron/comments.
+    if(process.env.JOBS==='off')console.log('  Scheduled jobs are off (JOBS=off)');else app.startScheduler();
   });
 }
 

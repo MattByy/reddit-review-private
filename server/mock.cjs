@@ -21,6 +21,15 @@ function opportunity(n,type){
     estimatedMonthlyClicks:type==='seo_opportunities'?(n*311)%9000:null,allRankingKeywords:type==='seo_opportunities'?['proxy for scraping','rotating proxies']:[],discoveredVia:['mock'],createdAt:Date.now()};
 }
 const searched=new Set(['residential proxies']);
+// Our Engain tasks. Exported so tests can publish or remove one between checks.
+const tasks=[
+  {_id:'t1',type:'comment',status:'published',threadUrl:post(0).url,redditUrl:post(0).url+'ours1/',content:'Our published comment',
+    publishedAt:new Date(Date.now()-86400000).toISOString(),parentTaskId:null,labels:['geonode-agent'],subreddit:post(0).url.split('/')[4]},
+  {_id:'t4',type:'reply',status:'published',threadUrl:post(6).url,redditUrl:post(6).url+'ours2/',content:'Our published reply',
+    publishedAt:new Date(Date.now()-3600000).toISOString(),parentTaskId:'t9',labels:[],subreddit:post(6).url.split('/')[4]},
+  {_id:'t2',type:'comment',status:'cancelled',threadUrl:post(1).url},
+  {_id:'t3',type:'comment',status:'mod_removed',threadUrl:post(2).url},
+];
 
 async function mockFetch(url,options={}){
   const u=new URL(url),q=u.searchParams,method=options.method||'GET';
@@ -41,9 +50,7 @@ async function mockFetch(url,options={}){
       postContent:own||i!==1?post(n):{...post(n),title:'Season finale discussion'},commentContent:bodies[i]?{body:bodies[i],author:'someone'+i,score:4,createdUtc:now-3600*(i+1),permalink:post(n).url+'c'+n+'/'}:undefined,
       sentiment:['neutral','positive','negative'][i],reasoning:'Mock mention',snippet:'…'+brand+'…',createdAt:Date.now()})),isDone:true});
   }
-  if(u.pathname==='/api/v1/tasks')return json({page:[{_id:'t1',type:'comment',status:'published',threadUrl:post(0).url,redditUrl:post(0).url+'ours1/',content:'Our published comment',
-      publishedAt:new Date(Date.now()-86400000).toISOString(),parentTaskId:null,labels:['geonode-agent'],subreddit:post(0).url.split('/')[4]},
-    {_id:'t4',type:'reply',status:'published',threadUrl:post(6).url,redditUrl:post(6).url+'ours2/',content:'Our published reply',publishedAt:new Date(Date.now()-3600000).toISOString(),parentTaskId:'t9',labels:[],subreddit:post(6).url.split('/')[4]},{_id:'t2',status:'cancelled',threadUrl:post(1).url},{_id:'t3',status:'mod_removed',threadUrl:post(2).url}],isDone:true});
+  if(u.pathname==='/api/v1/tasks')return json({page:tasks,isDone:true});
   if(u.pathname==='/api/v1/smart-search/history')return json({history:[...searched].map((k,i)=>({id:'h'+i,keyword:k,searchMode:'web_ranking',exactSpelling:false,resultsCount:8,googleTraffic:0,searchedAt:new Date().toISOString()}))});
   if(u.pathname==='/api/v1/smart-search'||u.pathname==='/api/v1/smart-search/results'){
     const body=method==='POST'?JSON.parse(options.body):{},keyword=body.keyword||q.get('keyword');
@@ -64,4 +71,4 @@ async function mockFetch(url,options={}){
   return json({error:'Not mocked: '+u.pathname},404);
 }
 
-module.exports={mockFetch};
+module.exports={mockFetch,tasks,post};

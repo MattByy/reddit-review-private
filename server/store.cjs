@@ -25,11 +25,20 @@ function open(file){
     create index if not exists comments_thread on comments(thread_id);
     create table if not exists engaged(thread_id text primary key, subreddit text, statuses text not null, updated_at text not null);
     create table if not exists settings(key text primary key, value text not null);
-    create table if not exists published(
-      task_id text primary key, type text, reddit_url text not null, thread_url text, thread_id text, content text,
-      subreddit text, published_at text, parent_task_id text, labels text not null default '[]',
-      first_seen text not null, last_seen text not null);
+    create table if not exists our_tasks(
+      task_id text primary key, type text, status text not null, verdict text not null, reddit_url text, thread_url text, thread_id text,
+      content text, subreddit text, created_at text, published_at text, parent_task_id text, labels text not null default '[]',
+      first_seen text not null, last_seen text not null, status_changed_at text not null, published_seen_at text);
+    create table if not exists task_events(id integer primary key autoincrement, task_id text not null, from_status text, to_status text not null,
+      from_verdict text, to_verdict text not null, at text not null);
+    create index if not exists task_events_task on task_events(task_id);
   `);
+  // The first published-only table is folded into our_tasks.
+  if(db.prepare("select 1 from sqlite_master where name='published'").get()){
+    db.exec(`insert or ignore into our_tasks(task_id,type,status,verdict,reddit_url,thread_url,thread_id,content,subreddit,published_at,parent_task_id,labels,first_seen,last_seen,status_changed_at,published_seen_at)
+      select task_id,type,'published','approved',reddit_url,thread_url,thread_id,content,subreddit,published_at,parent_task_id,labels,first_seen,last_seen,first_seen,first_seen from published;
+      drop table published;`);
+  }
   // The first queue held threads only; the mixed thread/comment queue replaces it.
   if(db.prepare("select 1 from pragma_table_info('queue') where name='thread_id'").get()&&!db.prepare("select 1 from pragma_table_info('queue') where name='kind'").get())db.exec('drop table queue');
   db.exec(`create table if not exists queue(
@@ -83,15 +92,30 @@ function open(file){
       return old?'updated':'added';
     },
     comments:()=>db.prepare('select * from comments').all(),
-    // Our own comments that Engain has published. first_seen marks when this server first saw
-    // them published, which is what decides whether a queue refresh treats them as new.
-    savePublished(p){
-      const now=new Date().toISOString(),old=db.prepare('select first_seen from published where task_id=?').get(p.task_id);
-      const row={...p,labels:JSON.stringify(p.labels||[]),first_seen:old?.first_seen||now,last_seen:now},keys=Object.keys(row);
-      db.prepare(`insert or replace into published(${keys.join(',')}) values(${keys.map(()=>'?').join(',')})`).run(...keys.map(k=>row[k]??null));
-      return old?'updated':'added';
+    // Every Engain task of ours with its current status and verdict. Each status change is
+    // appended to task_events. published_seen_at is when this server first saw it published,
+    // which is what makes a queue refresh treat it as new.
+    saveTask(t){
+      const now=new Date().toISOString(),old=db.prepare('select * from our_tasks where task_id=?').get(t.task_id);
+      const changed=!old||old.status!==t.status;
+      const row={...t,labels:JSON.stringify(t.labels||[]),first_seen:old?.first_seen||now,last_seen:now,
+        status_changed_at:changed?now:old.status_changed_at,published_seen_at:old?.published_seen_at||(t.status==='published'?now:null)},keys=Object.keys(row);
+      db.exec('begin');
+      try{
+        db.prepare(`insert or replace into our_tasks(${keys.join(',')}) values(${keys.map(()=>'?').join(',')})`).run(...keys.map(k=>row[k]??null));
+        if(changed)db.prepare('insert into task_events(task_id,from_status,to_status,from_verdict,to_verdict,at) values(?,?,?,?,?,?)').run(t.task_id,old?.status??null,t.status,old?.verdict??null,t.verdict,now);
+        db.exec('commit');
+      }catch(e){db.exec('rollback');throw e;}
+      return {added:!old,changed,from:old?.status??null,to:t.status,from_verdict:old?.verdict??null,verdict:t.verdict};
     },
-    published:()=>db.prepare('select * from published order by published_at desc').all().map(r=>({...r,labels:JSON.parse(r.labels)})),
+    ourTasks(verdict){
+      const rows=verdict?db.prepare('select * from our_tasks where verdict=? order by status_changed_at desc').all(verdict):db.prepare('select * from our_tasks order by status_changed_at desc').all();
+      return rows.map(r=>({...r,labels:JSON.parse(r.labels)}));
+    },
+    taskEvents(taskId,limit=200){
+      return taskId?db.prepare('select * from task_events where task_id=? order by id').all(taskId):db.prepare('select * from task_events order by id desc limit ?').all(limit);
+    },
+    published:()=>db.prepare("select * from our_tasks where status='published' and reddit_url is not null and type in ('comment','reply') order by published_at desc").all().map(r=>({...r,labels:JSON.parse(r.labels)})),
     // Replaces engagement state wholesale: Engain's task list is the source of truth.
     setEngaged(map){
       const now=new Date().toISOString();db.exec('delete from engaged');

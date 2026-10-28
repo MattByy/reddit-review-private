@@ -7,13 +7,17 @@
 // An agent claims item #1, which leaves the queue for good.
 const {rank,rankComment,REMOVED}=require('./collect.cjs');
 
-const DEFAULTS={thread_target:50,comment_limit:20,comment_position:5,max_age_days:120,min_comments:3,min_thread_score:0,min_comment_score:40,mention_comments:0};
-const LIMITS={thread_target:[1,500],comment_limit:[0,200],comment_position:[1,500],max_age_days:[14,3650],min_comments:[0,100000],min_thread_score:[0,100],min_comment_score:[0,100],mention_comments:[0,1]};
+// queue_target counts every queued item. Threads are only added while the queue is below it;
+// our published comments always go in, even past it.
+const DEFAULTS={queue_target:50,comment_limit:20,comment_position:5,max_age_days:120,min_comments:3,min_thread_score:0,min_comment_score:40,mention_comments:0,
+  thread_collect_minutes:60,threads_every_minutes:10,comments_every_minutes:30};
+const LIMITS={queue_target:[1,500],comment_limit:[0,200],comment_position:[1,500],max_age_days:[14,3650],min_comments:[0,100000],min_thread_score:[0,100],min_comment_score:[0,100],mention_comments:[0,1],
+  thread_collect_minutes:[5,1440],threads_every_minutes:[1,1440],comments_every_minutes:[1,1440]};
 const OWN=/geonode/i;
 const DAY=86400000;
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
-const settings=store=>store.settings(DEFAULTS);
+const settings=store=>{const s=store.settings(DEFAULTS);return Object.fromEntries(Object.keys(DEFAULTS).map(k=>[k,s[k]]));};
 function saveSettings(store,input){
   const next={...settings(store)};
   for(const [k,v] of Object.entries(input||{})){
@@ -70,12 +74,14 @@ function evaluate(store){
     if(!c.permalink)r.push('No comment link');
     c.eligibility={queueable:r.length===0,reasons:[...new Set(r)]};commentById[c.id]=c;
   }
+  // Every task of ours is evaluated, so a queued comment that is later removed drops out.
   const publishedById={};
-  const publishedRows=store.published().map(p=>{
+  const publishedRows=store.ourTasks().filter(p=>['comment','reply'].includes(p.type)&&p.reddit_url).map(p=>{
     const r=[],age=p.published_at?(Date.now()-Date.parse(p.published_at))/DAY:null;
+    if(p.status!=='published')r.push(`Engain status is now ${p.status} (${p.verdict})`);
     if(age==null)r.push('Publish date unknown');else if(age>cfg.max_age_days)r.push(`Published more than ${cfg.max_age_days} days ago`);
     if(handledItems.has('p_'+p.task_id))r.push('Already '+handledItems.get('p_'+p.task_id)+' from the queue');
-    const row={...p,age_days:age==null?null:Math.round(age*10)/10,eligibility:{queueable:r.length===0,reasons:r}};
+    const row={...p,first_seen:p.published_seen_at,age_days:age==null?null:Math.round(age*10)/10,eligibility:{queueable:r.length===0,reasons:r}};
     return publishedById[p.task_id]=row;
   });
   return {cfg,threads:threadRows,comments:commentRows,published:publishedRows,threadById,commentById,publishedById};
@@ -90,14 +96,14 @@ const rowFor=(q,ev)=>q.kind==='thread'?ev.threadById[q.thread_id]:q.kind==='comm
 
 // Brings the queue up to date:
 //  1. drops items that stopped qualifying (the reason stays in the history);
-//  2. adds threads at the end until there are thread_target of them;
-//  3. inserts what arrived since the last refresh at comment_position: our newly published
-//     comments (newest first), then competitor comments if enabled, at most comment_limit.
+//  2. (addComments) inserts what arrived since the last refresh at comment_position: our newly
+//     published comments (newest first), then competitor comments if enabled, at most comment_limit;
+//  3. (addThreads) adds threads at the end while the queue holds fewer than queue_target items.
 // A first build or a reset draws comments from everything collected. Safe to run any time.
-function refreshQueue(store,{reset=false}={}){
+function refreshQueue(store,{reset=false,addThreads=true,addComments=true}={}){
   if(reset)store.resetQueue();
   const now=new Date().toISOString(),since=reset?null:store.kv('queue_state')?.comments_seen_until??null;
-  const ev=evaluate(store),cfg=ev.cfg,isNew=x=>!since||x.first_seen>since;
+  const ev=evaluate(store),cfg=ev.cfg,isNew=x=>!!x.first_seen&&(!since||x.first_seen>since);
   const retired=[],kept=[];
   for(const q of store.queued()){
     const row=rowFor(q,ev);
@@ -105,11 +111,11 @@ function refreshQueue(store,{reset=false}={}){
     else retired.push({item_id:q.item_id,reason:row?.eligibility.reasons[0]||'No longer in collected data'});
   }
   const seen=new Set(kept.map(q=>q.item_id)),incoming=[];
-  for(const p of ev.published.filter(p=>p.eligibility.queueable&&isNew(p)&&!seen.has('p_'+p.task_id)).sort((a,b)=>String(b.published_at).localeCompare(String(a.published_at)))){
+  for(const p of !addComments?[]:ev.published.filter(p=>p.eligibility.queueable&&isNew(p)&&!seen.has('p_'+p.task_id)).sort((a,b)=>String(b.published_at).localeCompare(String(a.published_at)))){
     if(incoming.length>=cfg.comment_limit)break;incoming.push(itemFor.comment(p));
   }
   const mentionThreads=new Set(kept.filter(q=>q.kind==='mention').map(q=>q.thread_id));
-  for(const c of ev.comments.filter(c=>c.eligibility.queueable&&isNew(c)).sort((a,b)=>b.rank.score-a.rank.score)){
+  for(const c of !addComments?[]:ev.comments.filter(c=>c.eligibility.queueable&&isNew(c)).sort((a,b)=>b.rank.score-a.rank.score)){
     if(incoming.length>=cfg.comment_limit)break;
     if(mentionThreads.has(c.thread_id)||seen.has('c_'+c.id))continue;
     mentionThreads.add(c.thread_id);incoming.push(itemFor.mention(c));
@@ -121,13 +127,15 @@ function refreshQueue(store,{reset=false}={}){
     return true;
   });
   const inList=new Set(list.map(q=>q.thread_id));
-  const need=cfg.thread_target-list.filter(q=>q.kind==='thread').length;
+  // Threads only fill the gap below queue_target, counting every item including new comments.
+  const need=addThreads?cfg.queue_target-list.length-incoming.length:0;
   const newThreads=need<=0?[]:ev.threads.filter(t=>t.eligibility.queueable&&!inList.has(t.thread_id)&&!busy.has(t.thread_id))
     .sort((a,b)=>b.rank.score-a.rank.score).slice(0,need).map(itemFor.thread);
   list=[...list,...newThreads];
   list.splice(Math.min(cfg.comment_position-1,list.length),0,...incoming);
   store.writeQueue(list,retired);
-  store.setKv('queue_state',{comments_seen_until:now});
+  // Only a refresh that may insert comments moves the "seen until" mark, so none are skipped.
+  if(addComments)store.setKv('queue_state',{comments_seen_until:now});
   const count=k=>list.filter(q=>q.kind===k).length;
   return {ev,summary:{queued:list.length,threads:count('thread'),comments:count('comment'),mentions:count('mention'),added_threads:newThreads.length,
     added_comments:incoming.filter(q=>q.kind==='comment').length,added_mentions:incoming.filter(q=>q.kind==='mention').length,removed:retired.length}};
@@ -159,9 +167,10 @@ function describe(q,ev){
   return {status:'thread',action:'comment_on_thread',score:t?.rank.score??q.score_at_add,why:t&&{parts:t.rank.parts,flags:t.rank.flags},thread:threadInfo(t)};
 }
 
-// Agent entry point: refresh, take item #1 off the queue and describe it.
+// Agent entry point: drop stale items, take #1 off the queue and describe it. Claiming never
+// adds anything; the threads and comments jobs refill the queue.
 function claimNext(store,agent){
-  const {ev}=refreshQueue(store);
+  const {ev}=refreshQueue(store,{addThreads:false,addComments:false});
   const item=store.claimFirst(agent);
   store.writeQueue(store.queued());
   if(!item)return {status:'empty',remaining:0,message:'The queue is empty. Run a collection or loosen the queue settings.'};

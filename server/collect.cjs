@@ -12,6 +12,8 @@ const STRONG=/^(prox(y|ies)|residential|rotating|datacenter|data center|mobile p
 const INTENT=/\?|recommend|suggest|looking for|alternative|anyone (use|tried|know)|which (one|provider)|worth it|switch(ed|ing)? (from|to)|too expensive|pricing|cheaper|issue|problem|not working|keeps? (getting )?block/i;
 const ACTIVE=new Set(['scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned','published']);
 const REMOVED=new Set(['mod_removed','automod_removed']);
+// approved = live on Reddit; disapproved = moderators or AutoModerator removed it.
+const verdictFor=s=>s==='published'?'approved':REMOVED.has(s)?'disapproved':s==='cancelled'?'cancelled':ACTIVE.has(s)?'pending':'failed';
 
 function threadRef(raw){
   let u;try{u=new URL(raw);}catch{return null;}
@@ -148,13 +150,18 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
         if(!ACTIVE.has(t.status)&&!REMOVED.has(t.status))continue;
         const ref=threadRef(t.threadUrl||t.redditUrl);if(!ref)continue;
         const e=map.get(ref.thread_id)||{subreddit:t.subreddit||ref.subreddit,statuses:[]};e.statuses.push(t.status);map.set(ref.thread_id,e);
-        // Our published comments and replies become follow-up items in the queue.
-        if(t.status==='published'&&t.redditUrl&&['comment','reply'].includes(t.type)){
-          const r=store.savePublished({task_id:t._id||t.id,type:t.type,reddit_url:t.redditUrl,thread_url:t.threadUrl||null,thread_id:ref.thread_id,
-            content:String(t.content||'').slice(0,10000),subreddit:t.subreddit||ref.subreddit,published_at:t.publishedAt||null,
-            parent_task_id:t.parentTaskId||null,labels:Array.isArray(t.labels)?t.labels:[]});
-          summary[r==='added'?'published_new':'published_known']=(summary[r==='added'?'published_new':'published_known']||0)+1;
-        }
+      }
+      // Record every task's status and verdict; changes are logged as events. Published
+      // comments and replies become follow-up items in the queue.
+      const st=summary.task_statuses={approved:0,disapproved:0,pending:0,failed:0,cancelled:0};summary.status_changes=[];
+      for(const t of tasks){
+        const id=t._id||t.id;if(!id||!t.status)continue;
+        const ref=threadRef(t.threadUrl||t.redditUrl),verdict=verdictFor(t.status);st[verdict]++;
+        const r=store.saveTask({task_id:id,type:t.type||null,status:t.status,verdict,reddit_url:t.redditUrl||null,thread_url:t.threadUrl||null,thread_id:ref?.thread_id||null,
+          content:String(t.content||'').slice(0,10000),subreddit:t.subreddit||ref?.subreddit||null,created_at:t.creationDate||null,published_at:t.publishedAt||null,
+          parent_task_id:t.parentTaskId||null,labels:Array.isArray(t.labels)?t.labels:[]});
+        if(t.status==='published'&&t.redditUrl&&['comment','reply'].includes(t.type))summary[r.added||r.from!=='published'?'published_new':'published_known']=(summary[r.added||r.from!=='published'?'published_new':'published_known']||0)+1;
+        if(r.changed&&!r.added){summary.status_changes.push({task_id:id,from:r.from,to:r.to,verdict:r.verdict});if(r.verdict==='disapproved')summary.newly_disapproved=(summary.newly_disapproved||0)+1;}
       }
       store.setEngaged(map);summary.engaged_threads=map.size;summary.per_source.tasks_read=tasks.length;
     });
@@ -165,7 +172,11 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
     });
   if(sources.includes('mentions')){
     let brands=[];
-    await step('mention_brands',async()=>{brands=((await engain.mentionBrands({projectId})).brands||[]).map(b=>b.brand).filter(Boolean);});
+    await step('mention_brands',async()=>{
+      brands=((await engain.mentionBrands({projectId})).brands||[]).map(b=>b.brand).filter(Boolean);
+      // 'own' reads only Geonode's mentions: enough to exclude threads that already mention us.
+      if(input.mention_brands==='own')brands=brands.filter(b=>OWN_BRAND.test(b));
+    });
     for(const brand of brands.length?brands:[undefined])
       await step('mentions:'+(brand||'project'),async()=>{
         const items=await paginate(cursor=>engain.mentions({projectId,brand,sortBy:'date_newest',numItems:100,cursor}),maxPages,'mentions');
