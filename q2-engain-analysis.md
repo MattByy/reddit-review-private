@@ -1,75 +1,102 @@
-# Q2 to Engain Analysis
+# Q2 (queue2) to Engain Analysis — CORRECTED
 
 ## Executive Summary
 
-**Can Q2 items be sent to Engain?**
+**Can queue2 items be sent to Engain?**
 
-- **(a) Thread comments:** ✅ **YES** — Fully supported with no gaps
-- **(b) Replies to comments:** ✅ **YES** — Fully supported with no gaps
+- **(a) Thread comments:** ✅ **YES** — `kind: 'thread'` items have thread URLs and can be posted as top-level comments
+- **(b) Replies to comments:** ✅ **YES** — `kind: 'comment'` and `kind: 'mention'` items have comment URLs and can be posted as replies
 
-All required fields are present in Q2 items, and the existing delivery pipeline (`api/_delivery.js` and `api/_messages.js`) already handles both cases.
+**However:** Queue2 items are currently **NOT ready** to send as-is. Critical fields are missing and safety gates are absent.
 
 ---
 
-## 1. What is Q2?
+## 1. What is Q2? (The REAL Q2)
 
-**Q2 is the `queued` status** in the `experiment_messages` table.
+**Q2 is the `queue2` SQLite table** in the local dev server (`server/store.cjs`, `server/queue.cjs`, `server/dev.cjs`).
 
-### The Message Workflow
+This is NOT the production `experiment_messages` table. It's a local development server that collects Reddit threads from Engain's API.
 
-Messages progress through these states:
+### The Two-Queue System
 
-1. **`awaiting_draft`** — Message created, needs text (this is Q1)
-2. **`queued`** — Draft filed, ready to send (this is **Q2**)
-3. **`submitting`** — Being submitted to Engain
-4. **`submitted`** — Sent to Engain, awaiting publication
-5. **`visible`** — Published and verified on Reddit
+From `docs/engain-thread-collection.md`:
 
-**Q2 = messages with `status = 'queued'`**
+**Queue 1** (table: `queue`):
+- Work items to be done
+- Contains threads, our published comments, and competitor mentions
+- Prioritized and ranked
 
-### What's in a Q2 Item?
+**Queue 2** (table: `queue2`):
+- Items from queue 1 that have a message attached
+- Created by calling `POST /api/agent/task`
+- The item never returns to queue 1
 
-From `supabase/migrations/041-message-experiments.sql` and `042-queued-message-decisions.sql`:
+### Queue2 Table Structure
+
+From `server/store.cjs` lines 36-39:
 
 ```sql
-CREATE TABLE experiment_messages (
-  id uuid PRIMARY KEY,
-  experiment_id uuid NOT NULL,
-  step integer NOT NULL,
-  
-  -- Message type and target
-  kind text NOT NULL CHECK(kind IN ('comment','reply')),
-  target_url text NOT NULL,
-  body text,
-  
-  -- Placement
-  parent_message_id uuid,
-  previous_message_id uuid,
-  reply_mode text CHECK(reply_mode IN ('opening','reply','chain','sibling')),
-  depth integer,
-  
-  -- Status
-  status text NOT NULL DEFAULT 'awaiting_draft',
-  
-  -- Delivery
-  transport jsonb,  -- Contains account info
-  task_id text,     -- Engain task ID after submission
-  ...
-)
+CREATE TABLE queue2(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,          -- 'thread' | 'comment' | 'mention'
+  thread_id TEXT,
+  url TEXT,                     -- Where the message goes
+  thread_url TEXT,              -- The thread URL
+  title TEXT,                   -- Thread title
+  message TEXT NOT NULL,        -- Message body
+  message_source TEXT NOT NULL, -- 'given' | 'random'
+  item TEXT NOT NULL,           -- Full queue 1 item JSON
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 ```
 
-**Key Q2 fields:**
-- `kind`: `'comment'` or `'reply'`
-- `target_url`: Reddit URL (thread or comment)
-- `body`: Message text with disclosure
-- `transport.account_id`: Account to post from (populated during sendOne)
-- `transport.username`: Reddit username
+### Three Item Kinds
+
+From `docs/engain-thread-collection.md`:
+
+| Kind | What it is | `url` (where message goes) | `thread_url` | Action |
+|------|-----------|---------------------------|--------------|---------|
+| `thread` | A thread to comment on | Thread URL | Thread URL | Post top-level comment |
+| `comment` | Our published comment | Our comment permalink | Thread URL | Reply to our comment |
+| `mention` | Competitor mention | Competitor comment permalink | Thread URL | Reply to competitor |
+
+### How Items Enter Queue2
+
+From `server/dev.cjs` and `server/queue.cjs`:
+
+```javascript
+// POST /api/agent/task with optional body {"agent":"writer-1","message":"..."}
+// Moves #1 from queue 1 to queue 2 with a message
+
+const result = {
+  "task_id": "p_k976...",
+  "status": "comment",           // The kind
+  "url": "https://reddit.com/r/sub/comments/.../comment/abc123",
+  "thread_url": "https://reddit.com/r/sub/comments/...",
+  "comment": {...},              // Details about our comment
+  "thread": {...},               // Thread metadata
+  "remaining": 58,               // Items left in queue 1
+  "queue2": {
+    "queue2_id": 5,
+    "status": "comment",
+    "url": "...",
+    "message": "Placeholder message: ...",
+    "message_source": "random",  // or "given"
+    "item": {...}                // Full queue 1 item
+  }
+}
+```
 
 ---
 
 ## 2. What Engain Needs
 
 ### Official Engain Accounts Beta API
+
+From https://docs.engain.io/engain-accounts-beta:
 
 **Endpoint:** `POST /api/v1/accounts-beta/comments`
 
@@ -82,291 +109,485 @@ CREATE TABLE experiment_messages (
 }
 ```
 
-**From Official Docs** (https://docs.engain.io/engain-accounts-beta):
+**Response:**
+```json
+{
+  "id": "cmt_...",
+  "status": "in_queue",
+  "threadUrl": "https://reddit.com/...",
+  "content": "Comment text",
+  "userAccountId": "acct_...",
+  "createdAt": "2026-10-28T00:00:00Z"
+}
+```
 
-> "The accounts-beta API supports creating comments and replies through owned Reddit accounts. Use the same endpoint for both — the `targetUrl` determines whether it's a thread comment or a comment reply."
+### How Engain Determines Comment vs Reply
 
-### Thread Comment vs Reply
+**From the URL format only:**
 
-**Thread Comment:**
-- `targetUrl`: Thread URL like `https://reddit.com/r/subreddit/comments/abc123/title/`
-- Creates a top-level comment on the post
+- **Thread comment:** `targetUrl` = thread URL like `https://reddit.com/r/sub/comments/abc123/title/`
+- **Reply:** `targetUrl` = comment URL like `https://reddit.com/r/sub/comments/abc123/title/def456/`
 
-**Reply to Comment:**
-- `targetUrl`: Comment URL like `https://reddit.com/r/subreddit/comments/abc123/title/def456/`
-- Creates a reply to that specific comment
-
-**Same endpoint, same request structure — Engain determines the action from the URL format.**
+Same endpoint for both. Engain parses the URL.
 
 ---
 
-## 3. Field Mapping: Q2 → Engain
+## 3. Field Mapping: Queue2 → Engain
 
-### Q2 Message Fields
+### Queue2 Item Fields
+
 ```javascript
 {
-  id: "uuid",
-  kind: "comment" | "reply",
-  target_url: "https://reddit.com/...",
-  body: "Message text...",
-  transport: {
-    account_id: "acct_abc123",
-    username: "u/example",
-    mode: "owned"
-  }
+  queue2_id: 5,
+  item_id: "p_k976...",
+  kind: "comment",                    // 'thread' | 'comment' | 'mention'
+  url: "https://reddit.com/r/...",    // Where message goes
+  thread_url: "https://reddit.com/...",
+  title: "Thread title",
+  message: "Placeholder message: ...",
+  message_source: "random",           // 'given' | 'random'
+  created_by: "agent-1",
+  created_at: "2026-10-28T00:00:00Z",
+  item: {...}                         // Full queue 1 item JSON
 }
 ```
 
-### Engain Request Fields
-```javascript
-{
-  userAccountId: message.transport.account_id,  // ← from transport
-  targetUrl: message.target_url,                 // ← direct map
-  body: message.body                             // ← direct map
-}
-```
+### Mapping to Engain Request
 
-### Gaps Analysis
+| Engain Field | Queue2 Source | Present? | Notes |
+|--------------|---------------|----------|-------|
+| `userAccountId` | ❌ NOT PRESENT | **NO** | **MISSING: No account selection** |
+| `targetUrl` | `url` | ✅ YES | Maps directly |
+| `body` | `message` | ✅ YES | Present, but may be placeholder |
 
-| Engain Field | Source | Present? | Notes |
-|---|---|---|---|
-| `userAccountId` | `transport.account_id` | ✅ YES | Populated by `delivery.choose()` before send |
-| `targetUrl` | `target_url` | ✅ YES | Set when message created |
-| `body` | `body` | ✅ YES | Filed when moving to `queued` status |
+### Field Status by Kind
 
-**All required fields present. No gaps.**
+**Thread comments (`kind: 'thread'`):**
+- ✅ `url` is thread URL → Engain posts top-level comment
+- ✅ `message` is the body text
+- ❌ `userAccountId` missing
+- ⚠️ `message` might be placeholder (`message_source: 'random'`)
+
+**Replies to our comments (`kind: 'comment'`):**
+- ✅ `url` is our comment permalink → Engain posts reply to it
+- ✅ `message` is the body text
+- ❌ `userAccountId` missing
+- ⚠️ `message` might be placeholder
+
+**Replies to competitor mentions (`kind: 'mention'`):**
+- ✅ `url` is competitor comment permalink → Engain posts reply to it
+- ✅ `message` is the body text
+- ❌ `userAccountId` missing
+- ⚠️ `message` might be placeholder
 
 ---
 
-## 4. Existing Code Path
+## 4. Critical Gaps
 
-### Current Implementation (`api/_messages.js`)
+### ❌ Missing Required Fields
 
-The `sendOne()` function already handles Q2 items:
+1. **No `userAccountId`**
+   - Engain requires specifying which account posts
+   - Queue2 has no account field
+   - Must be chosen before sending
+
+2. **No `projectId`**
+   - May be in server config (`process.env.ENGAIN_PROJECT_ID`)
+   - Not stored per-item in queue2
+
+### ⚠️ Placeholder Messages
+
+From `server/queue.cjs` lines 180-187:
 
 ```javascript
-async function sendOne(m, caps) {
-  // 1. Validate body (transparency check)
-  validateBody(m.body);
-  
-  // 2. Check target availability
-  const o = await conversation(m.target_url);
-  
-  // 3. Choose account
-  const transport = await delivery.choose(caps, parent?.transport);
-  
-  // 4. Transparency validation
-  const transparencyCheck = await transparency.validateTransparency({
-    body: m.body,
-    accountId: transport.account_id,
-    kind: m.kind,
-    parentUrl: m.kind === 'reply' ? m.target_url : null
-  });
-  
-  // 5. Rule check
-  const check = await delivery.check(m, thread, o, caps.project_id);
-  
-  // 6. Reserve publication
-  const reserved = await sb('POST', 'rpc/reserve_experiment_message', {...});
-  
-  // 7. Submit to Engain
-  const response = await delivery.submit(m, transport);
-}
+const PLACEHOLDERS = [
+  'Placeholder message: thanks for sharing this, useful thread.',
+  'Placeholder message: interesting point, worth testing before deciding.',
+  // ... more placeholders
+];
 ```
 
-### Delivery Path (`api/_delivery.js`)
+**Problem:**
+- Items with `message_source: 'random'` contain placeholder text
+- These explicitly say "Placeholder message:" at the start
+- **MUST NOT** be sent to Reddit
+- Need a gate to reject `message_source: 'random'`
+
+### 🚫 Missing Safety Gates
+
+Comparing to production `api/_messages.js` and `api/_send.js`:
+
+| Safety Gate | Production | Queue2 Dev Server |
+|-------------|-----------|------------------|
+| **Disclosure check** | ✅ Required | ❌ Missing |
+| **Transparency validation** | ✅ Full validation | ❌ Missing |
+| **Account eligibility** | ✅ Active & disclosed | ❌ No account chosen |
+| **Thread already engaged check** | ✅ One account per thread | ❌ Missing |
+| **Duplicate body check** | ✅ Never same text twice | ❌ Missing |
+| **Rate limiting** | ✅ 45min global / 24h per sub | ❌ Missing |
+| **Pace floor** | ✅ 20 per UTC day cap | ❌ Missing |
+| **Rule check** | ✅ Engain rule validation | ❌ Missing |
+| **Parent verification** | ✅ Check parent still exists | ❌ Missing |
+| **Forbidden phrases** | ✅ Block unsupported claims | ❌ Missing |
+| **Sent/status tracking** | ✅ Full lifecycle | ❌ No status column |
+| **Idempotency** | ✅ Prevent duplicate sends | ❌ No sent tracking |
+
+### 📊 No Status Tracking
+
+Queue2 has no fields for:
+- `sent_at` (when submitted to Engain)
+- `engain_task_id` (Engain's task ID)
+- `status` (pending, published, failed)
+- `reddit_url` (published permalink)
+- `sent_by` (which system sent it)
+
+**Problem:** Nothing prevents sending the same item twice.
+
+---
+
+## 5. URL Format Verification
+
+### Thread URLs (kind: 'thread')
+
+Example: `https://reddit.com/r/webscraping/comments/abc123/title/`
+
+✅ **Format is correct** for Engain `targetUrl`
+- Matches Engain's expected thread URL format
+- Will create top-level comment
+
+### Comment URLs (kind: 'comment' and 'mention')
+
+Example: `https://reddit.com/r/webscraping/comments/abc123/title/def456/`
+
+✅ **Format is correct** for Engain `targetUrl`
+- Matches Engain's expected comment permalink format
+- Last segment (`def456`) is comment ID
+- Will create reply to that comment
+
+**Verified:** The URL formats in queue2 match what Engain expects.
+
+---
+
+## 6. Existing Code Reuse
+
+### Can Production Code Be Reused?
+
+**Production path:** `api/_delivery.js` → `api/_engain-real.js`
 
 ```javascript
+// api/_delivery.js
 async function submit(message, transport) {
-  if (transport.mode !== 'owned' && transport.mode !== 'private') {
-    throw Error('TRANSPARENCY VIOLATION: Only owned accounts permitted.');
-  }
-  
   return engain('POST', '/api/v1/accounts-beta/comments', {
     userAccountId: transport.account_id,
-    targetUrl: message.target_url,  // ← Works for BOTH thread & comment URLs
+    targetUrl: message.target_url,
     body: message.body
   });
 }
 ```
 
-**The code ALREADY handles both thread comments and replies — no distinction needed because Engain determines the type from the URL format.**
+**Dev server path:** `server/engain.cjs`
 
----
-
-## 5. Transparency & Safety Enforcement
-
-Q2 items go through comprehensive validation before Engain submission:
-
-### Pre-Flight Checks (from `api/_messages.js` sendOne)
-
-1. **Body validation** (`validateBody`)
-   - 1-10,000 characters
-   - No forbidden claims
-   
-2. **Disclosure check** (`transparency.validateTransparency`)
-   - GeoNode affiliation disclosure present
-   - Correct format
-   
-3. **Target availability** (`conversation`)
-   - Thread/comment exists
-   - Not removed, locked, or archived
-   
-4. **Account eligibility** (`delivery.choose`)
-   - Account is disclosed and active
-   - No duplicate account on same thread
-   
-5. **Rule check** (`delivery.check`)
-   - Engain's subreddit rule validation
-   - Blocks on `verdict: 'fail'`
-   
-6. **Rate limiting** (`reserve_experiment_message`)
-   - 45-minute global pace
-   - 24-hour per-subreddit limit
-   - 20 publications per UTC day cap
-
-**All transparency requirements are enforced. The existing gates apply to Q2 items.**
-
----
-
-## 6. What About Replies Specifically?
-
-### Reply-Specific Logic
-
-When `kind === 'reply'`:
-
-1. **Parent verification** (line 168-169 in `_messages.js`):
 ```javascript
-if (m.parent_message_id) {
-  parent = await getMessage(m.parent_message_id);
-  if (parent.status !== 'visible' || parent.reddit_url !== m.target_url) {
-    // Block if parent changed
+// server/engain.cjs
+const client = ({apiKey, fetchImpl=fetch, limits=true, log=()=>{}} = {}) => {
+  async function call(method, path, {query, body, bucket='general'} = {}) {
+    // Makes authenticated Engain API calls
+    // Handles rate limiting (30 req/min)
   }
-}
+  
+  return {
+    me: () => call('GET', '/api/v1/me'),
+    opportunities: q => call('GET', '/api/v1/opportunities', {query: q}),
+    // ... etc
+    // NO accounts-beta endpoints!
+  };
+};
 ```
 
-2. **Transparency check includes parent URL**:
+### What Can Be Reused?
+
+**✅ Can reuse:**
+- HTTP client structure (`server/engain.cjs`)
+- Rate limiting logic (`Bucket` class)
+- API key authentication
+- Request/response handling
+
+**❌ Cannot reuse directly:**
+- `api/_delivery.js` is production code (Vercel Functions)
+- Depends on production Supabase tables
+- Assumes full transparency enforcement stack
+- Dev server has different data model
+
+### Smallest Path to Wire Up
+
+**Option 1: Add accounts-beta to dev server client**
+
+In `server/engain.cjs`, add:
+
 ```javascript
-const transparencyCheck = await transparency.validateTransparency({
-  parentUrl: m.kind === 'reply' ? m.target_url : null,
-  kind: m.kind
-});
+return {
+  // ... existing methods
+  
+  // Accounts beta
+  accounts: () => call('GET', '/api/v1/accounts-beta/accounts'),
+  createComment: (userAccountId, targetUrl, body) => 
+    call('POST', '/api/v1/accounts-beta/comments', {
+      body: {userAccountId, targetUrl, body}
+    }),
+  getComments: (cursor) => 
+    call('GET', '/api/v1/accounts-beta/comments', {
+      query: cursor ? {cursor} : {}
+    }),
+  cancelComment: (commentId) => 
+    call('POST', `/api/v1/accounts-beta/comments/${commentId}/cancel`),
+};
 ```
 
-3. **Rule check context** (from `_delivery.js` line 57-60):
+**Option 2: New minimal sender**
+
+Create `server/send-queue2.cjs`:
+
 ```javascript
-async function check(message, thread, observation, projectId) {
-  return engain('POST', '/api/v1/rule-check', {
-    context: {
-      ...(message.kind === 'reply' ? {
-        parentCommentUrl: message.target_url,
-        parentComment: observation.target?.body
-      } : {})
+const {client} = require('./engain.cjs');
+
+async function sendQueue2Item(item, {apiKey, accountId}) {
+  // 1. Validate not placeholder
+  if (item.message_source === 'random') {
+    throw new Error('Cannot send placeholder message');
+  }
+  
+  // 2. Validate disclosure present
+  if (!/geonode/i.test(item.message)) {
+    throw new Error('Message must include GeoNode disclosure');
+  }
+  
+  // 3. Call Engain
+  const engain = client({apiKey});
+  const response = await engain.call('POST', '/api/v1/accounts-beta/comments', {
+    body: {
+      userAccountId: accountId,
+      targetUrl: item.url,
+      body: item.message
     }
   });
+  
+  return response;
 }
-```
 
-**Reply-specific validation is already implemented and working.**
-
----
-
-## 7. Comparison with Repo's Notes
-
-### ENGAIN-API-FIELDS.md
-
-The repo's assumptions about accounts-beta (lines 70-110) **match the official docs**:
-
-✅ `userAccountId`, `targetUrl`, `body` required  
-✅ Response returns `id` or `_id` as task ID  
-✅ `status` field tracks publication state  
-✅ Same endpoint for comments and replies  
-
-### OFFICIAL-ENGAIN-API-FINDINGS.md
-
-This doc (created Oct 27) noted that "accounts-beta" was NOT in the official docs at `https://docs.engain.io/`. 
-
-**Update:** The official docs DO have accounts-beta at `https://docs.engain.io/engain-accounts-beta` (confirmed in this investigation).
-
-**The repo's implementation aligns with the official beta API.**
-
----
-
-## 8. Dry-Run Test
-
-See `scripts/q2-dry-run.cjs` for a demonstration script that:
-
-1. Fetches Q2 items (status='queued')
-2. Maps each to Engain request payload
-3. Shows the full request without sending
-
-Run with:
-```bash
-node scripts/q2-dry-run.cjs
+module.exports = {sendQueue2Item};
 ```
 
 ---
 
-## Answers
+## 7. Recommended Implementation Plan
+
+### Phase 1: Minimal Sender (Proof of Concept)
+
+**Goal:** Send one queue2 item manually with safeguards
+
+**Steps:**
+1. Add accounts-beta methods to `server/engain.cjs`
+2. Create `server/send-queue2.cjs` with:
+   - Placeholder rejection (`message_source === 'random'` → error)
+   - Basic disclosure check (contains "GeoNode")
+   - Engain API call
+3. Add manual route: `POST /api/queue2/:id/send {"accountId":"acct_..."}`
+4. Test with one item
+5. **DO NOT** auto-send anything
+
+**Files to create/modify:**
+- `server/engain.cjs` — add accounts-beta methods
+- `server/send-queue2.cjs` — new sender module
+- `server/dev.cjs` — add manual send route
+
+### Phase 2: Status Tracking
+
+**Goal:** Prevent duplicate sends
+
+**Steps:**
+1. Add columns to queue2:
+   ```sql
+   ALTER TABLE queue2 ADD COLUMN sent_at TEXT;
+   ALTER TABLE queue2 ADD COLUMN engain_task_id TEXT;
+   ALTER TABLE queue2 ADD COLUMN status TEXT DEFAULT 'draft';
+   ALTER TABLE queue2 ADD COLUMN reddit_url TEXT;
+   ```
+2. Update sender to:
+   - Check `status != 'sent'` before sending
+   - Record `sent_at` and `engain_task_id` after success
+   - Mark `status = 'sent'`
+3. Add status polling (check Engain for published status)
+
+### Phase 3: Full Safety Gates
+
+**Goal:** Match production transparency enforcement
+
+**Steps:**
+1. Port disclosure rules from `api/_rules.js`
+2. Add account selection (list accounts, choose least-used)
+3. Add duplicate body check (same text on same thread)
+4. Add rate limiting (45min global, 24h per subreddit, 20/day)
+5. Add Engain rule check before send
+6. Add parent existence verification
+7. Add transparency validation
+
+### Phase 4: Integration
+
+**Goal:** Connect to production workflow
+
+**Steps:**
+1. Decide: dev server → production, or separate?
+2. If separate: keep as testing/staging environment
+3. If production: migrate data model to match `experiment_messages`
+4. Add monitoring and alerts
+
+---
+
+## 8. Answers to User Questions
 
 ### (a) Thread Comments
 
-**✅ YES — Fully supported**
+**Can queue2 `kind: 'thread'` items be sent as thread comments?**
 
-- Q2 items with `kind = 'comment'` already contain thread URLs in `target_url`
-- Existing code path: `sendOne` → `delivery.submit` → Engain `/accounts-beta/comments`
-- All required fields present: `userAccountId`, `targetUrl`, `body`
-- No gaps
+✅ **YES — Partially**
+
+**What works:**
+- `url` field contains thread URL in correct format
+- Engain will accept it as `targetUrl`
+- Will create top-level comment
+
+**What's missing:**
+- ❌ `userAccountId` (which account to post from)
+- ❌ Disclosure in message body (may be placeholder)
+- ❌ Placeholder detection (`message_source: 'random'` check)
+- ❌ Duplicate send protection
+- ❌ Rate limiting
+- ❌ Transparency validation
+- ❌ Subreddit rules check
+
+**Status:** **PARTIALLY** — URL format works, but critical safety fields missing
+
+---
 
 ### (b) Replies to Comments
 
-**✅ YES — Fully supported**
+**Can queue2 `kind: 'comment'` and `kind: 'mention'` items be sent as replies?**
 
-- Q2 items with `kind = 'reply'` already contain comment URLs in `target_url`
-- Same endpoint, same code path
-- Additional reply-specific validation included (parent verification, context)
-- All required fields present: `userAccountId`, `targetUrl`, `body`
-- No gaps
+✅ **YES — Partially**
 
----
+**What works:**
+- `url` field contains comment permalink in correct format
+- Engain will accept it as `targetUrl`
+- Will create reply to that comment
 
-## Recommended Next Step
+**What's missing:**
+- ❌ `userAccountId` (which account to post from)
+- ❌ Disclosure in message body (may be placeholder)
+- ❌ Placeholder detection (`message_source: 'random'` check)
+- ❌ Parent verification (comment still exists and not removed)
+- ❌ Duplicate send protection
+- ❌ Rate limiting
+- ❌ Transparency validation
+- ❌ Subreddit rules check
 
-**The system is already complete.** Q2 items CAN be sent to Engain for both thread comments and replies right now.
-
-### What's Working
-
-1. Messages move from `awaiting_draft` → `queued` (Q2) after filing
-2. Cron job `api/cron/dispatch.js` calls `_messages.dispatch()`
-3. `dispatch()` calls `sendOne()` for each Q2 item
-4. `sendOne()` validates, chooses account, and submits to Engain
-5. Both thread comments and replies work through the same path
-
-### Optional Enhancement
-
-If you want to **manually trigger** Q2 dispatch:
-
-```bash
-# API endpoint already exists
-curl -X POST https://your-app.vercel.app/api/cron/dispatch \
-  -H "Authorization: Bearer $CRON_SECRET"
-```
-
-Or add a **test mode** to see Q2 items without sending:
-
-```bash
-node scripts/q2-dry-run.cjs
-```
+**Status:** **PARTIALLY** — URL format works, but critical safety fields missing
 
 ---
 
-## Summary for Repo Owner
+## 9. Complete Gap Summary
 
-Q2 items are `queued` messages ready for delivery. They already have everything Engain needs:
+### Required Before Sending
 
-- **Thread comments:** `target_url` = thread URL → Engain creates top-level comment ✅
-- **Reply to comment:** `target_url` = comment URL → Engain creates reply ✅
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| **Account selection** | ❌ MISSING | Need `userAccountId` for every send |
+| **Project ID** | ⚠️ MAYBE | May be in config, not per-item |
+| **Placeholder guard** | ❌ MISSING | Block `message_source: 'random'` |
+| **Disclosure enforcement** | ❌ MISSING | Must verify GeoNode mention in body |
+| **Status tracking** | ❌ MISSING | No `sent_at`, `status`, `task_id` columns |
+| **Duplicate prevention** | ❌ MISSING | Nothing stops re-sending same item |
+| **Rate limiting** | ❌ MISSING | No pacing, no daily caps |
+| **Rule check** | ❌ MISSING | No Engain rule validation |
+| **Parent verification** | ❌ MISSING | No check if comment still exists |
+| **Thread engagement check** | ❌ MISSING | No "already have task there" gate |
+| **Forbidden phrases** | ❌ MISSING | No filter for unsupported claims |
+| **Transparency log** | ❌ MISSING | No audit trail |
 
-The existing production code (`api/_messages.js`, `api/_delivery.js`) handles both cases with full transparency enforcement. No code changes needed to send Q2 items — it's already running in cron.
+### URL Format
 
-**Status: Production-ready. Both use cases fully supported.**
+| Kind | URL Format | Engain Compatible? |
+|------|-----------|-------------------|
+| `thread` | Thread URL | ✅ YES |
+| `comment` | Our comment URL | ✅ YES |
+| `mention` | Competitor comment URL | ✅ YES |
+
+---
+
+## 10. Final Recommendation
+
+### Immediate Next Step
+
+**DO NOT send queue2 items to Engain yet.** Critical safety gates are missing.
+
+### Recommended Path Forward
+
+**Step 1: Proof of Concept (1-2 hours)**
+- Add accounts-beta methods to `server/engain.cjs`
+- Create `server/send-queue2.cjs` with minimal gates:
+  - Reject placeholder messages
+  - Require "GeoNode" in body
+  - Require `accountId` parameter
+- Add `POST /api/queue2/:id/send` route (manual only)
+- Test with ONE item (dry-run first)
+
+**Step 2: Status Tracking (2-3 hours)**
+- Add `sent_at`, `status`, `engain_task_id` columns to queue2
+- Update sender to record sends
+- Add duplicate send check
+- Add status polling from Engain
+
+**Step 3: Full Safety (8-12 hours)**
+- Port all transparency gates from production
+- Add rate limiting and pacing
+- Add rule checks
+- Add parent verification
+- Add comprehensive logging
+
+### Alternative: Use Production System
+
+Instead of extending the dev server, consider:
+- Dev server generates queue2 items as drafts
+- Export to production `experiment_messages` table
+- Use existing production sender (`api/_messages.js`)
+- All safety gates already present
+
+This avoids duplicating the transparency enforcement stack.
+
+---
+
+## Summary
+
+**Can queue2 items be sent to Engain?**
+
+### Thread Comments
+- **Technical capability:** ✅ YES (URL format compatible)
+- **Production ready:** ❌ NO (missing account, disclosure, safety gates)
+- **Status:** **PARTIALLY SUPPORTED**
+
+### Replies to Comments  
+- **Technical capability:** ✅ YES (URL format compatible)
+- **Production ready:** ❌ NO (missing account, disclosure, safety gates)
+- **Status:** **PARTIALLY SUPPORTED**
+
+### Critical Gaps
+1. No `userAccountId` (cannot choose posting account)
+2. No placeholder detection (would send "Placeholder message:" to Reddit)
+3. No disclosure enforcement (transparency violation risk)
+4. No status tracking (duplicate send risk)
+5. No rate limiting (could trigger Reddit/Engain limits)
+6. No safety gates (transparency, rules, duplicate checks)
+
+### Recommended Next Step
+Build minimal proof-of-concept sender with placeholder rejection and disclosure check. Add status tracking. Do NOT auto-send anything until all safety gates are ported from production.
+
+**Estimated work:** 12-16 hours for production-ready queue2 sender with full safety.
