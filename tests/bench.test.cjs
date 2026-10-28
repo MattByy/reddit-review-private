@@ -60,6 +60,7 @@ test('cleanText drops reasoning tags and wrapping quotes; flags spot the usual t
   assert.deepStrictEqual(flags('I work at Geonode, fwiw. Try sticky sessions.').list,['opens with disclosure']);
   assert.deepStrictEqual(flags("Sounds really frustrating — I'm seeing that too 😊").list.sort(),['em-dash','emoji','no disclosure','possible invented claim','stock opener']);
   assert.deepStrictEqual(flags("Try sticky sessions, rotating per request looks odd. (I work at Geonode)").list,[]);
+  assert.ok(flags('The user wants a Reddit comment. I work at Geonode.').list.includes('reasoning instead of a comment'));
   assert.ok(NATURAL_PROMPTS.comment.includes('same person'));
 });
 
@@ -105,7 +106,7 @@ test('model test: drafts every item with every model, hides names until a pick, 
     assert.strictEqual(lb['good/model'].picked,1);assert.strictEqual(lb['good/model'].judged,2);assert.strictEqual(lb['good/model'].pick_rate,50);
     assert.strictEqual(lb['anthropic/claude-sonnet-5.5'].picked,0);assert.strictEqual(lb['anthropic/claude-sonnet-5.5'].prompt,'Default (built-in)');
     assert.strictEqual(lb['good/model'].prompt,'Natural (built-in)');assert.strictEqual(lb['good/model'].disclosure_kept,100);
-    assert.ok(lb['good/model'].authenticity_risk!=null&&lb['good/model'].human_pct!=null);
+    assert.ok(lb['good/model'].authenticity_risk!=null&&lb['good/model'].human_pct>=0&&lb['good/model'].human_pct<=100);
     assert.strictEqual(lb['skip/model'].skipped,items);assert.strictEqual(lb['bad/model'].failed,items);
     assert.strictEqual(s.leaderboard[0].model,'good/model','most picked first');
 

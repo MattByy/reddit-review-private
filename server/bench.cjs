@@ -38,6 +38,8 @@ function init(db){
     create index if not exists bench_drafts_run on bench_drafts(run_id);
     create table if not exists bench_picks(run_id integer not null,item_key text not null,draft_id integer,at text not null,primary key(run_id,item_key));`);
   // A test cannot keep drafting across a restart; finish whatever was left when the server starts.
+  // Scoring is not resumed: mark it so its button works again.
+  db.prepare("update bench_runs set score_status='interrupted',score_error='The server restarted during scoring; score again to finish.' where score_status='running'").run();
   return db.prepare("select id from bench_runs where status='running'").all().map(r=>r.id);
 }
 
@@ -59,6 +61,8 @@ function flags(text){
   if(/https?:\/\//.test(t))out.push('link');
   if(/^(great|good) (question|point)|^sounds (really )?(frustrating|rough)|^(totally|absolutely) (get|understand)/i.test(t.trim()))out.push('stock opener');
   if(words>110)out.push('long');
+  // Some models (GLM) sometimes answer with their reasoning instead of the comment.
+  if(/^(let me think|the user (wants|is asking)|okay,? (so|let me)|we need to|i need to write|alright,? let me)/i.test(t.trim()))out.push('reasoning instead of a comment');
   return {words,list:out};
 }
 
@@ -225,7 +229,7 @@ function leaderboard(store,runId){
     judged:r.judged,picked:r.picked,pick_rate:pct(r.picked,r.judged),
     disclosure_kept:pct(r.written-(r.flag_counts['no disclosure']||0),r.written),invented:pct(r.flag_counts['possible invented claim']||0,r.written),
     flag_counts:r.flag_counts,avg_words:avg(r._words),avg_seconds:r._lat.length?Math.round(avg(r._lat)/100)/10:null,
-    scored:r._scored,authenticity_risk:avg(r._auth),human_pct:r._human.length?Math.round(avg(r._human)*100):null,ai_pct:pct(r._ai,r._scored),
+    scored:r._scored,authenticity_risk:avg(r._auth),human_pct:avg(r._human.map(x=>x*100)),ai_pct:pct(r._ai,r._scored),
     marketing_risk:avg(r._mkt),removal_risk:avg(r._rem)}))
     .sort((a,b)=>(b.pick_rate??-1)-(a.pick_rate??-1)||(a.authenticity_risk??999)-(b.authenticity_risk??999));
 }
