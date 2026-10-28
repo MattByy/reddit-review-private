@@ -77,6 +77,30 @@ All models below are confirmed in Featherless `GET /v1/models` (22,391 models). 
 
 Sources: Featherless `/v1/models`; Hugging Face model cards; [Enhancing Human-Like Responses in LLMs (arXiv 2501.05032)](https://arxiv.org/abs/2501.05032); [antislop paper (arXiv 2510.15061)](https://arxiv.org/abs/2510.15061); [EQ-Bench Creative Writing v3](https://eqbench.com/creative_writing.html).
 
+## First model tests (2026-10-28, on live Queue 1 items, nothing posted)
+
+**Test 1:** 18 models × 12 items with the first natural prompt. **Test 2:** the top 7 with the fixed natural prompt. Both are on the Model test tab, waiting for Matas's blind picks. Test 2 Engain scores (lower is better except Disclosure):
+
+| Model · prompt | AI-sounding | Marketing | Removal | Disclosure | Words |
+| --- | --- | --- | --- | --- | --- |
+| Claude Sonnet 5.5 · natural | **21.8** | **42** | **51** | 100% | 100 |
+| MiniMax-M3 · natural | 24.9 | 58 | 64 | 100% | 63 |
+| Kimi-K2.6 · natural | 28.2 | 64 | 69 | 100% | 80 |
+| Claude Sonnet 5.5 · default (today's writer) | 28.4 | 43 | 51 | 100% | 118 |
+| Qwen3.8-27B · natural | 30.6 | 72 | 71 | 92% | 62 |
+| Kimi-K3 · natural | 31.3 | 68 | 74 | 100% | 66 |
+| Qwen3.8-27B-Humanlike · natural | 33.0 | 71 | 74 | 67% | 60 |
+
+What we learned:
+- **The prompt matters more than the model.** The same Sonnet scores 28 → 22 with the natural prompt.
+- **Best Featherless model: MiniMax-M3.** It is shorter and always discloses, but Engain rates it more promotional than Sonnet. Kimi-K2.6 comes next.
+- Open models mention Geonode's product more pushily (Marketing 58–72 vs 42), which raises the removal risk.
+- Pangram rates nearly every draft "human", so it doesn't separate models. Engain's AI-sounding score does.
+- In test 1, weaker results came from Celeste, gemma-antislop, Mistral-Nemo, Euryale (invented experience in 50% of drafts), Hermes-4 and gpt-oss. GLM-5.3 sometimes answers with its reasoning.
+- Prompt lessons: models copy any example phrase ("oh and", "I work at Geonode, fwiw") as their opener, and many write "we at Geonode", which fails the disclosure check. The natural prompts now ask for "I work at Geonode", in those words, not at the start.
+
+Caveat: these are an AI judge's scores on 12 items. Matas's blind picks decide.
+
 ## How to use it (built)
 
 1. **Model test** tab: pick models (shortlist, or search all Featherless models), a prompt style (Natural, Default or a saved prompt) and a temperature. Then Start test. It drafts the same Queue 1 items with every model, four drafts at a time (`BENCH_CONCURRENCY` changes this). Queue 1 is not touched.
