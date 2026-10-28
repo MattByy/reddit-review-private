@@ -19,12 +19,18 @@ const digest=s=>createHash('sha256').update(String(s)).digest();
 const bearer=(req,secret)=>timingSafeEqual(digest(String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'')),digest(secret));
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
-function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectId=process.env.ENGAIN_PROJECT_ID,
+function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,accountsKey=process.env.ENGAIN_ACCOUNTS_API_KEY,projectId=process.env.ENGAIN_PROJECT_ID,
   agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,openrouter={},log=console.log}={}){
   // OpenRouter settings for the writer; tests pass {fetchImpl,apiKey}. Defaults come from the environment.
   const writerOpts={...openrouter};
   const store=open(dbFile||path.join(root,'.data',mock?'dev-mock.db':'dev.db'));
   const engain=client(mock?{apiKey:'mock',fetchImpl:require('./mock.cjs').mockFetch,limits:false,log}:{apiKey,log});
+  // Engain keys are workspace-scoped. Own (rented) accounts can live in a different workspace from
+  // the projects, so ENGAIN_ACCOUNTS_API_KEY, when set, is used for every accounts-beta call.
+  if(!mock&&accountsKey&&accountsKey!==apiKey){
+    const accounts=client({apiKey:accountsKey,log});
+    for(const m of ['betaAccounts','betaCreateComment','betaComments','betaThreadCheck','betaCancelComment'])engain[m]=accounts[m];
+  }
   const live=new Map();let active=null,projectName=null;
 
   async function project(){
@@ -151,7 +157,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     // answers 404, which is reported as "not enabled" rather than as an error.
     'GET /api/agent/beta-accounts':async()=>{
       try{const r=await engain.betaAccounts();return {available:true,accounts:Array.isArray(r)?r:r.accounts||[]};}
-      catch(e){if(e.status===404||e.status===403)return {available:false,accounts:[],reason:`Engain Accounts (beta) is not enabled for this API key (HTTP ${e.status}). Ask your Engain account manager to enable it.`};throw e;}
+      catch(e){if(e.status===404||e.status===403)return {available:false,accounts:[],reason:`Engain Accounts (beta) is not available to ${accountsKey&&accountsKey!==apiKey?'ENGAIN_ACCOUNTS_API_KEY':'this API key'} (HTTP ${e.status}). Set ENGAIN_ACCOUNTS_API_KEY in .env.local to the key of the workspace that holds your accounts.`};throw e;}
     },
     'GET /api/agent/project-id':async()=>({projectId:await project()}),
     'GET /api/agent/queue':async()=>{const v=queue.queueView(store,{history:0});return {count:v.count,items:v.items.map(({item_id,kind,position,score})=>({item_id,kind,position,score}))};},
@@ -177,7 +183,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
 
     'GET /api/status':async()=>{
       if(!projectId&&(mock||apiKey))await project().catch(()=>{});
-      return {mock,engain_key:mock||!!apiKey,project_id:projectId||null,project_name:projectName,sources:SOURCES,active_run:active,
+      return {mock,engain_key:mock||!!apiKey,project_id:projectId||null,project_name:projectName,accounts_key:!!(accountsKey&&accountsKey!==apiKey),sources:SOURCES,active_run:active,
         threads:store.threads().length,comments:store.comments().length,published:store.published().length,queued:store.queued().length,agent_auth:!!agentKey,cron_auth:!!cronSecret};
     },
     'GET /api/settings':async()=>queue.settings(store),

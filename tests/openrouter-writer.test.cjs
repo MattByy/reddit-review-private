@@ -147,8 +147,22 @@ test('a pooled send can pick the poster account; own accounts are reported when 
   off.engain.betaAccounts=async()=>{throw Object.assign(Error('Non-JSON response'),{status:404});};
   try{
     const b=(await call(off,'GET','/api/agent/beta-accounts')).body;
-    assert.strictEqual(b.available,false);assert.match(b.reason,/not enabled/);
+    assert.strictEqual(b.available,false);assert.match(b.reason,/not available.*ENGAIN_ACCOUNTS_API_KEY/);
   }finally{off.close();}
+});
+
+test('ENGAIN_ACCOUNTS_API_KEY is used for own-account calls, the main key for everything else',async()=>{
+  const seen=[],real=global.fetch;
+  global.fetch=async(url,opts)=>{seen.push({path:new URL(url).pathname,key:opts.headers['X-API-Key']});
+    return new Response(JSON.stringify(new URL(url).pathname.includes('accounts-beta')?{accounts:[{userAccountId:'a1',usable:true}]}:{userId:'u',projects:[{id:'p',name:'geonode.com'}]}),{status:200,headers:{'Content-Type':'application/json'}});};
+  const a=createApp({dbFile:':memory:',log:()=>{},apiKey:'main-key',accountsKey:'accounts-key',agentKey:'',cronSecret:''});
+  try{
+    const b=(await call(a,'GET','/api/agent/beta-accounts')).body;
+    assert.strictEqual(b.available,true);assert.strictEqual(b.accounts[0].userAccountId,'a1');
+    await call(a,'GET','/api/projects');
+    assert.deepStrictEqual(seen.map(s=>[s.path,s.key]),[['/api/v1/accounts-beta/accounts','accounts-key'],['/api/v1/me','main-key']]);
+    assert.strictEqual((await call(a,'GET','/api/status')).body.accounts_key,true);
+  }finally{global.fetch=real;a.close();}
 });
 
 test('prompts are visible and editable per type, and the edited one is used',async()=>{
