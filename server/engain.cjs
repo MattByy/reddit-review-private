@@ -14,7 +14,8 @@ class Bucket{
 }
 
 function client({apiKey,fetchImpl=fetch,limits=true,log=()=>{}}={}){
-  const buckets={general:new Bucket(30),smart:new Bucket(5)};
+  // Rule-check allows 5 calls and 50 items a minute; two full batches of 25 stay inside both.
+  const buckets={general:new Bucket(30),smart:new Bucket(5),rule:new Bucket(2)};
   async function call(method,path,{query,body,bucket='general'}={}){
     if(!apiKey)throw Object.assign(Error('ENGAIN_API_KEY is not set (put it in .env.local, or run npm run dev:mock)'),{status:503});
     const url=BASE+path+(query?'?'+new URLSearchParams(Object.entries(query).filter(([,v])=>v!=null&&v!=='')):'');
@@ -43,6 +44,8 @@ function client({apiKey,fetchImpl=fetch,limits=true,log=()=>{}}={}){
     smartSearchResults:q=>call('GET','/api/v1/smart-search/results',{query:q}),
     smartSearchHistory:q=>call('GET','/api/v1/smart-search/history',{query:q}),
     subredditStats:subreddit=>call('GET','/api/v1/subreddit-stats',{query:{subreddit}}),
+    // Advisory draft check (rules, authenticity, Pangram AI detection). Posts nothing.
+    ruleCheckBatch:body=>call('POST','/api/v1/rule-check/batch',{body,bucket:'rule'}),
     
     // Pooled delivery (main API)
     createCommentTask:body=>call('POST','/api/v1/tasks/comment',{body}),

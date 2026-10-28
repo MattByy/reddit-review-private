@@ -62,6 +62,12 @@ async function mockFetch(url,options={}){
     return json({keyword,searchMode:'web_ranking',totalResults:results.length,totalTraffic:0,googleTraffic:0,redditTraffic:0,results,
       ...(method==='POST'?{quotaRemaining:42}:{fetchedAt:new Date().toISOString(),isStale:false})});
   }
+  if(u.pathname==='/api/v1/rule-check/batch'&&method==='POST'){
+    const body=JSON.parse(options.body);
+    return json({verdicts:body.items.map(it=>{const h=[...it.content].reduce((a,c)=>a+c.charCodeAt(0),0);
+      return {key:it.key,verdict:{verdict:'pass',removalRisk:[5,15,25,38][h%4],marketingIntentRisk:h%60,authenticityRisk:h%100,naturalnessAdvice:[],
+        aiDetection:{status:'ok',predictionShort:h%2?'Human':'AI',fractionHuman:(h%10)/10,fractionAi:1-(h%10)/10}}};})});
+  }
   if(u.pathname==='/api/v1/subreddit-stats'){
     const s=q.get('subreddit'),h=[...s].reduce((a,c)=>a+c.charCodeAt(0),0);
     return json({subreddit:s,buckets:[{contentType:'comment',mediaType:'link',sampleCount:h%40,...(h%40>=10?{removalRate:(h%30)/100}:{}),windowEnd:new Date().toISOString()}],

@@ -14,6 +14,7 @@ const {collect,SOURCES}=require('./collect.cjs');
 const queue=require('./queue.cjs');
 const writer=require('./writer.cjs');
 const tracker=require('./tracker.cjs');
+const bench=require('./bench.cjs');
 
 const LOOPBACK=new Set(['127.0.0.1','::1','::ffff:127.0.0.1']);
 const digest=s=>createHash('sha256').update(String(s)).digest();
@@ -22,11 +23,20 @@ const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
 function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectId=process.env.ENGAIN_PROJECT_ID,
   agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,openrouter={},log=console.log}={}){
-  // OpenRouter settings for the writer; tests pass {fetchImpl,apiKey}. Defaults come from the environment.
+  // Writer settings; tests pass {fetchImpl,apiKey,featherlessKey}. Defaults come from the environment.
   const writerOpts={...openrouter};
+  const llmKeys=()=>({openrouter:writerOpts.apiKey??process.env.OPENROUTER_API_KEY,featherless:writerOpts.featherlessKey??process.env.FEATHERLESS_API_KEY});
   const store=open(dbFile||path.join(root,'.data',mock?'dev-mock.db':'dev.db'));
   const engain=client(mock?{apiKey:'mock',fetchImpl:require('./mock.cjs').mockFetch,limits:false,log}:{apiKey,log});
   const live=new Map();let active=null,projectName=null;
+  // Model tests run in the background; one drafting pass per test at a time.
+  const benchBusy=new Set();
+  function startBench(id,what,fn){
+    if(benchBusy.has(id+what))return false;benchBusy.add(id+what);
+    fn().catch(e=>log(`model test ${id} ${what} failed: ${e.message}`)).finally(()=>benchBusy.delete(id+what));return true;
+  }
+  const draftBench=id=>startBench(id,'draft',()=>bench.draftRun(store,id,{keys:llmKeys(),fetchImpl:writerOpts.fetchImpl,concurrency:Number(process.env.BENCH_CONCURRENCY)||4,log}));
+  for(const id of bench.init(store.db))draftBench(id);
 
   async function project(){
     if(projectId)return projectId;
@@ -182,10 +192,25 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       return {...sent,account:account&&{id:account.userAccountId,username:account.username||null,niche:account.niche||null},queue2:queue.queue2Item(store,id)};
     },
     // Prompt variants per type with their percentages, and how each one has done so far.
-    'GET /api/prompts':async()=>({variants:writer.variants(store),stats:promptStats(),defaults:writer.DEFAULT_PROMPTS,variables:writer.VARIABLES,
-      model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,openrouter_key:!!(writerOpts.apiKey??process.env.OPENROUTER_API_KEY)}),
+    'GET /api/prompts':async()=>({variants:writer.variants(store),stats:promptStats(),defaults:writer.DEFAULT_PROMPTS,natural:writer.NATURAL_PROMPTS,variables:writer.VARIABLES,
+      model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,openrouter_key:!!llmKeys().openrouter,featherless_key:!!llmKeys().featherless,shortlist:bench.SHORTLIST}),
     // Replace one type's prompt list: {"type":"thread","variants":[{"id"?,"name","text","weight"}]} (weights add up to 100).
     'POST /api/prompts':async(_,body)=>({type:body?.type,variants:writer.saveVariants(store,body?.type,body?.variants)}),
+    // Model test: the same Queue 1 items drafted by several models, compared blind. Never posts.
+    'GET /api/bench':async()=>({runs:bench.runList(store),shortlist:bench.SHORTLIST,styles:Object.fromEntries(Object.entries(bench.STYLES).map(([k,v])=>[k,v.label])),
+      saved_prompts:[...new Set(Object.values(writer.variants(store)).flat().map(v=>v.name))],keys:{openrouter:!!llmKeys().openrouter,featherless:!!llmKeys().featherless}}),
+    'GET /api/bench/models':async q=>bench.searchModels(q.q),
+    // {"name","threads":12,"comments":8,"contestants":[{"provider","model","prompt":"natural","temperature":0.8}]}
+    'POST /api/bench':async(_,body)=>{const id=bench.createRun(store,body,queue.queueView(store,{history:0}));draftBench(id);return bench.runView(store,id);},
+    'GET /api/bench/:id':async(_,__,id)=>bench.runView(store,Number(id)),
+    'GET /api/bench/:id/compare':async(_,__,id)=>({run:bench.runView(store,Number(id)),items:bench.compare(store,Number(id))}),
+    'POST /api/bench/:id/pick':async(_,body,id)=>bench.pick(store,Number(id),body),
+    // Engain rule-check scores (authenticity, Pangram AI detection, removal risk). Reads only.
+    'POST /api/bench/:id/score':async(_,__,id)=>{const v=bench.runView(store,Number(id)),pid=await project();
+      startBench(v.id,'score',()=>bench.scoreRun(store,engain,pid,v.id,{log}));return {started:true};},
+    'POST /api/bench/:id/resume':async(_,__,id)=>{const v=bench.runView(store,Number(id));
+      store.db.prepare("update bench_drafts set status='pending' where run_id=? and status='failed'").run(v.id);
+      store.db.prepare("update bench_runs set status='running',finished_at=null where id=?").run(v.id);draftBench(v.id);return bench.runView(store,v.id);},
     'GET /api/agent/queue2':async()=>queue.queue2List(store),
     'POST /api/agent/queue2/:id':async(_,body,id)=>queue.setQueue2Message(store,id,body?.message),
     'POST /api/agent/queue2/:id/send':async(_,body,id)=>{

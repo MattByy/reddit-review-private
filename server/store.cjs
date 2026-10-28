@@ -46,7 +46,7 @@ function open(file){
   createPacingTable(db);
   // Drafting and approval: which prompt and model wrote the message, and who approved it.
   for(const [col,type] of [['prompt_used','text'],['model','text'],['write_status','text'],['write_error','text'],['written_at','text'],['approved_at','text'],['approved_by','text'],['prompt_variant_id','text'],['prompt_variant_name','text'],
-    ['engain_status','text'],['status_checked_at','text'],['status_changed_at','text'],['settled','integer']])
+    ['engain_status','text'],['status_checked_at','text'],['status_changed_at','text'],['settled','integer'],['provider','text']])
     if(!db.prepare("select 1 from pragma_table_info('queue2') where name=?").get(col))db.exec(`alter table queue2 add column ${col} ${type}`);
   // Status history of everything sent from Queue 2 (the tracking list).
   db.exec(`create table if not exists queue2_events(id integer primary key autoincrement,queue2_id integer not null,from_status text,to_status text not null,at text not null);
@@ -182,12 +182,12 @@ function open(file){
     // Any change to the text withdraws an earlier approval.
     // A person's edit also clears a draft's truncated/skipped mark: the text is now theirs.
     setQueue2Message(id,message,source){return db.prepare("update queue2 set message=?,message_source=?,approved_at=null,approved_by=null,write_status=case when write_status in ('truncated','skipped') then 'edited' else write_status end,write_error=null,updated_at=? where id=?").run(message,source,new Date().toISOString(),Number(id)).changes>0;},
-    setQueue2Draft(id,{message,prompt_used,model,write_status,write_error,prompt_variant_id,prompt_variant_name}){
+    setQueue2Draft(id,{message,prompt_used,model,provider,write_status,write_error,prompt_variant_id,prompt_variant_name}){
       const now=new Date().toISOString();
-      if(message!=null)db.prepare(`update queue2 set message=?,message_source='openrouter',prompt_used=?,model=?,write_status=?,write_error=?,written_at=?,approved_at=null,approved_by=null,
+      if(message!=null)db.prepare(`update queue2 set message=?,message_source='openrouter',prompt_used=?,model=?,provider=?,write_status=?,write_error=?,written_at=?,approved_at=null,approved_by=null,
           prompt_variant_id=?,prompt_variant_name=?,updated_at=? where id=?`)
-        .run(message,prompt_used,model,write_status,write_error??null,now,prompt_variant_id??null,prompt_variant_name??null,now,Number(id));
-      else db.prepare('update queue2 set write_status=?,write_error=?,prompt_used=?,model=?,updated_at=? where id=?').run(write_status,write_error??null,prompt_used??null,model??null,now,Number(id));
+        .run(message,prompt_used,model,provider??'openrouter',write_status,write_error??null,now,prompt_variant_id??null,prompt_variant_name??null,now,Number(id));
+      else db.prepare('update queue2 set write_status=?,write_error=?,prompt_used=?,model=?,provider=?,updated_at=? where id=?').run(write_status,write_error??null,prompt_used??null,model??null,provider??'openrouter',now,Number(id));
     },
     // Drafts per prompt variant of one item kind, for the weighted split.
     variantCounts(kind){return Object.fromEntries(db.prepare('select prompt_variant_id id,count(*) n from queue2 where kind=? and prompt_variant_id is not null group by prompt_variant_id').all(kind).map(r=>[r.id,r.n]));},

@@ -31,6 +31,11 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .flag{font-size:12px;color:var(--warn)}details{font-size:12px;color:var(--muted)}
 blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);background:var(--chip);border-radius:0 6px 6px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .done{opacity:.55}
+.drafts{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:10px}
+.draft{border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px}.draft.win{border-color:var(--good);box-shadow:0 0 0 1px var(--good)}
+.draft .txt{white-space:pre-wrap;overflow-wrap:anywhere;flex:1}.draft .lbl{font-weight:650;color:var(--accent)}
+table.lb{width:100%;font-size:12px;border-collapse:collapse}table.lb th{text-align:left;color:var(--muted);font-weight:500;padding:4px}table.lb td{border-top:1px solid var(--line);padding:4px;vertical-align:top}
+.contestant{display:grid;grid-template-columns:120px minmax(0,1fr) 170px 70px auto;gap:6px;align-items:center;margin-bottom:6px}@media(max-width:700px){.contestant{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
@@ -61,7 +66,7 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
 </section>
 </aside>
 <section>
-  <div class="tabs"><button data-tab="queue" class="on">Queue 1</button><button data-tab="queue2">Queue 2 (with message)</button><button data-tab="sent">Sent (tracking)</button><button data-tab="prompts">Prompts</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="ours">Our comments</button><button data-tab="history">Taken / removed</button></div>
+  <div class="tabs"><button data-tab="queue" class="on">Queue 1</button><button data-tab="queue2">Queue 2 (with message)</button><button data-tab="sent">Sent (tracking)</button><button data-tab="prompts">Prompts</button><button data-tab="bench">Model test</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="ours">Our comments</button><button data-tab="history">Taken / removed</button></div>
   <div id="tab-queue">
     <div class="filters"><span class="muted" id="qcount"></span><button id="checkpub" class="ghost">Check published now</button><button id="refreshq" class="ghost">Refresh queue</button><button id="rebuild" class="ghost">Rebuild from scratch</button><button id="takewrite">Get next item &amp; write with OpenRouter</button><button id="take" class="ghost">Get next item (placeholder)</button></div>
     <pre id="taken" hidden></pre>
@@ -94,6 +99,21 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
     <p class="muted" id="promptinfo"></p>
     <div id="prompts"></div>
   </div>
+  <div id="tab-bench" hidden>
+    <p class="muted">Draft the same real Queue 1 items with several models, then pick the most human draft without seeing which model wrote it. Nothing is posted, and Queue 1 is left as it is.</p>
+    <div id="benchruns"></div>
+    <details id="benchnew" style="margin:10px 0"><summary style="font-size:14px;color:var(--ink);cursor:pointer"><b>New test</b></summary>
+      <div class="filters" style="margin-top:8px"><input type="text" id="bname" placeholder="Name (optional)"><label style="flex:0;white-space:nowrap;margin:0">Threads <input type="number" id="bthreads" value="12" min="0" max="40" style="width:70px"></label><label style="flex:0;white-space:nowrap;margin:0">Our comments <input type="number" id="bcomments" value="8" min="0" max="40" style="width:70px"></label></div>
+      <div class="meta" style="margin-bottom:6px"><span>Provider · model · prompt · temperature</span><span id="bkeys"></span></div>
+      <div id="bcont"></div>
+      <div class="filters"><button class="ghost" id="baddone">+ Add model</button><button class="ghost" id="baddshort">Add the whole shortlist</button><button class="ghost" id="bclear">Clear</button>
+        <input type="text" id="bsearch" placeholder="Search all Featherless models (e.g. qwen 27b)"></div>
+      <div id="bresults" class="meta" style="margin-bottom:8px"></div>
+      <button id="bstart">Start test</button> <span class="muted" id="bplan"></span>
+    </details>
+    <div id="benchrun"></div>
+  </div>
+  <datalist id="modellist"></datalist>
   <div id="tab-ours" hidden>
     <div class="filters"><select id="verdict"><option value="">All</option><option>approved</option><option>disapproved</option><option>pending</option><option>failed</option><option>cancelled</option></select><span class="muted" id="ourcounts"></span></div>
     <div id="ours"></div>
@@ -107,7 +127,7 @@ const cls=s=>s>=60?'hi':s>=35?'mid':'lo',fmt=n=>n==null?'–':Math.round(n).toLo
 async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j;}
 const LABELS={tracker_every_minutes:'Sent-status checker every (min)',queue_target:'Queue size (threads fill up to this)',threads_every_minutes:'Threads job every (min)',comments_every_minutes:'Comments job every (min)',thread_collect_minutes:'Ask Engain for threads if older than (min)',comment_limit:'New comments per refresh',comment_position:'Insert comments at',max_age_days:'Max age (days)',min_comments:'Min thread comments',min_thread_score:'Min thread score',min_comment_score:'Min comment score',mention_comments:'Competitor mentions (0 off, 1 on)'};
 let tab='queue';
-for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','queue2','sent','prompts','comments','threads','ours','history'])$('#tab-'+t).hidden=t!==tab;refresh();};
+for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','queue2','sent','prompts','bench','comments','threads','ours','history'])$('#tab-'+t).hidden=t!==tab;refresh();};
 
 async function status(){const s=await api('/api/status');$('#mode').textContent=s.mock?'mock data':'live Engain'+(s.project_name?' · '+s.project_name:'');
   $('#count').textContent=`${s.threads} threads · ${s.comments} mention comments · ${s.queued} queued`;
@@ -156,7 +176,7 @@ async function loadThreads(){
     ${t.rank.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}${t.eligibility.reasons.map(f=>`<div class="flag">✕ ${esc(f)}</div>`).join('')}
     <details><summary>Why this score</summary>${why(t.rank.parts)}${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}</details></div></div>`).join('');
 }
-async function refresh(){status();try{await({queue:loadQueue,queue2:loadQueue2,sent:loadSent,prompts:loadPrompts,comments:loadComments,threads:loadThreads,ours:loadOurs,history:loadHistory})[tab]();loadJobs();}catch(e){$('#progress').textContent='Error: '+e.message;}}
+async function refresh(){status();try{await({queue:loadQueue,queue2:loadQueue2,sent:loadSent,prompts:loadPrompts,bench:loadBench,comments:loadComments,threads:loadThreads,ours:loadOurs,history:loadHistory})[tab]();loadJobs();}catch(e){$('#progress').textContent='Error: '+e.message;}}
 
 async function runJob(name,btn){
   btn.disabled=true;$('#progress').textContent='Running '+name+' job… (a thread collection takes a few minutes)';
@@ -259,7 +279,8 @@ let PV=null;
 const PTYPES={thread:'Thread prompts: first comment in a thread',comment:'Comment prompts: follow-up under our own published comment',mention:'Mention prompts: reply to a competitor mention (only when mentions are on)'};
 async function loadPrompts(){
   const p=await api('/api/prompts');PV=p;
-  $('#promptinfo').innerHTML=`Model: <b>${esc(p.model)}</b> · OpenRouter key ${p.openrouter_key?'found':'<span class="flag">missing (OPENROUTER_API_KEY)</span>'}. Each type can have several prompts; set what percentage of drafts each one writes (they must add up to 100%). 0% pauses a prompt. Prompts are sent exactly as shown, with {{variables}} filled in.`;
+  $('#promptinfo').innerHTML=`Default model: <b>${esc(p.model)}</b> (OpenRouter) · OpenRouter key ${p.openrouter_key?'found':'<span class="flag">missing (OPENROUTER_API_KEY)</span>'} · Featherless key ${p.featherless_key?'found':'<span class="flag">missing (FEATHERLESS_API_KEY)</span>'}. Each prompt can use its own provider, model and temperature. Each type can have several prompts; set what percentage of drafts each one writes (they must add up to 100%). 0% pauses a prompt. Prompts are sent exactly as shown, with {{variables}} filled in. {{style_examples}} pastes 2–3 real comments from the same subreddit as tone examples.`;
+  modelList(p.shortlist);
   renderPrompts();
 }
 function renderPrompts(){
@@ -272,8 +293,11 @@ function renderPrompts(){
       <div class="filters" style="margin-bottom:6px"><input type="text" value="${esc(v.name)}" oninput="PV.variants.${t}[${i}].name=this.value" placeholder="Prompt name" maxlength="60">
         <label style="flex:0;white-space:nowrap;margin:0"><input type="number" min="0" max="100" value="${v.weight}" style="width:70px" oninput="PV.variants.${t}[${i}].weight=Number(this.value);renderTotals()"> %</label>
         ${list.length>1?`<button class="ghost" onclick="PV.variants.${t}.splice(${i},1);renderPrompts()">Remove</button>`:''}</div>
+      <div class="filters" style="margin-bottom:6px"><select style="max-width:130px" onchange="PV.variants.${t}[${i}].provider=this.value"><option value="openrouter">OpenRouter</option><option value="featherless" ${v.provider==='featherless'?'selected':''}>Featherless</option></select>
+        <input type="text" list="modellist" value="${esc(v.model||'')}" placeholder="${v.provider==='featherless'?'Featherless model':'Model (empty = '+esc(p.model)+')'}" oninput="PV.variants.${t}[${i}].model=this.value">
+        <label style="flex:0;white-space:nowrap;margin:0">temp <input type="number" min="0" max="2" step="0.05" value="${v.temperature??''}" placeholder="0.7" style="width:70px" oninput="PV.variants.${t}[${i}].temperature=this.value"></label></div>
       <textarea rows="10" style="font:12px ui-monospace,monospace" oninput="PV.variants.${t}[${i}].text=this.value">${esc(v.text)}</textarea></div>`).join('')}
-    <div class="meta" style="margin-top:8px"><button class="ghost" onclick="addPrompt('${t}')">+ Add prompt</button><button class="ghost" onclick="splitEven('${t}')">Split evenly</button><button onclick="savePrompts('${t}')">Save ${t} prompts</button></div>
+    <div class="meta" style="margin-top:8px"><button class="ghost" onclick="addPrompt('${t}')">+ Add prompt</button><button class="ghost" onclick="addPrompt('${t}',true)">+ Add natural-style prompt</button><button class="ghost" onclick="splitEven('${t}')">Split evenly</button><button onclick="savePrompts('${t}')">Save ${t} prompts</button></div>
     <table style="width:100%;margin-top:10px;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--muted)">
       <th>Prompt</th><th>Target</th><th>Drafted</th><th>Sent</th><th>Published</th><th>Removed</th><th>Failed</th><th>Cancelled</th><th>Pending</th><th>Publish rate</th></tr></thead><tbody>
       ${st.prompts.map(r=>`<tr style="border-top:1px solid var(--line)${r.deleted?';color:var(--muted)':''}"><td>${esc(r.name)}${r.deleted?' (deleted)':''}</td><td>${r.deleted?'–':r.weight+'%'}</td>
@@ -285,7 +309,9 @@ function renderPrompts(){
 }
 // Re-render after a percentage change without losing the field being typed in.
 function renderTotals(){const el=document.activeElement,pos=el&&el.selectionStart;const path=el&&[...document.querySelectorAll('#prompts input,#prompts textarea')].indexOf(el);renderPrompts();if(path>=0){const n=document.querySelectorAll('#prompts input,#prompts textarea')[path];if(n){n.focus();try{n.setSelectionRange(pos,pos);}catch{}}}}
-window.addPrompt=t=>{const l=PV.variants[t];if(l.length>=10){$('#progress').textContent='At most 10 prompts per type';return;}l.push({name:'Prompt '+(l.length+1),text:PV.defaults[t],weight:0});renderPrompts();};
+window.addPrompt=(t,natural)=>{const l=PV.variants[t];if(l.length>=10){$('#progress').textContent='At most 10 prompts per type';return;}
+  l.push(natural?{name:'Natural '+(l.length+1),text:PV.natural[t],weight:0,provider:'featherless',model:'LessThanThreeAI/Qwen3.8-27B-Humanlike-Chat-2.0',temperature:0.8}:{name:'Prompt '+(l.length+1),text:PV.defaults[t],weight:0});renderPrompts();};
+function modelList(short){$('#modellist').innerHTML=(short||[]).map(m=>`<option value="${esc(m.model)}">${esc(m.note)} (${esc(m.provider)})</option>`).join('');}
 window.splitEven=t=>{const l=PV.variants[t],base=Math.floor(100/l.length);l.forEach((v,i)=>v.weight=base+(i<100-base*l.length?1:0));renderPrompts();};
 window.savePrompts=t=>q2('Saving '+t+' prompts',async()=>{const r=await api('/api/prompts',{type:t,variants:PV.variants[t]});return `${t} prompts saved: `+r.variants.map(v=>`${v.name} ${v.weight}%`).join(', ');});
 $('#takewrite').onclick=async()=>{$('#takewrite').disabled=true;$('#taken').hidden=false;$('#taken').textContent='Taking #1 and writing with OpenRouter…';
@@ -308,6 +334,73 @@ $('#go').onclick=async()=>{
   $('#go').disabled=false;refresh();
 };
 let t;for(const id of ['#q','#sub','#source','#avail','#cq','#cbrand','#cavail','#cmin'])$(id).addEventListener('input',()=>{clearTimeout(t);t=setTimeout(refresh,200);});
+// Model test: blind comparison of drafts from several models on the same items.
+let BENCH=null,BRUN=null,BITEM=0,BCONT=null;
+const shortName=m=>String(m).split('/').pop();
+async function loadBench(){
+  BENCH=await api('/api/bench');modelList(BENCH.shortlist);
+  if(!BCONT)BCONT=BENCH.shortlist.filter(m=>['LessThanThreeAI/Qwen3.8-27B-Humanlike-Chat-2.0','moonshotai/Kimi-K2-Instruct-0905','anthropic/claude-sonnet-5.5'].includes(m.model)).map(m=>({provider:m.provider,model:m.model,prompt:'natural',temperature:0.8}));
+  $('#bkeys').innerHTML=`Featherless key ${BENCH.keys.featherless?'found':'<span class="flag">missing</span>'} · OpenRouter key ${BENCH.keys.openrouter?'found':'<span class="flag">missing</span>'}`;
+  $('#benchruns').innerHTML=BENCH.runs.length?`<table class="lb"><tr><th>Test</th><th>Status</th><th>Drafts</th><th>Picked</th><th>Scored</th><th></th></tr>${BENCH.runs.map(r=>`<tr><td>${esc(r.name)}<div class="muted">${esc(String(r.created_at).slice(0,16).replace('T',' '))} · ${r.config.contestants.length} models · ${r.items} items</div></td>
+    <td>${esc(r.status)}${r.progress.pending?` (${r.progress.total-r.progress.pending}/${r.progress.total})`:''}</td><td>${r.progress.counts.written||0} written${r.progress.counts.failed?`, <span class="flag">${r.progress.counts.failed} failed</span>`:''}</td>
+    <td>${r.picked}/${r.items}</td><td>${r.scored}</td><td><button class="ghost" onclick="openRun(${r.id})">${BRUN===r.id?'Open ✓':'Open'}</button></td></tr>`).join('')}</table>`:'<p class="muted">No tests yet. Start one below.</p>';
+  $('#benchnew').open=$('#benchnew').open||!BENCH.runs.length;
+  renderCont();
+  if(BRUN)await renderRun();
+}
+function renderCont(){
+  const opts=c=>Object.entries(BENCH.styles).map(([k,l])=>`<option value="${esc(k)}" ${c.prompt===k?'selected':''}>${esc(l)}</option>`).join('')+BENCH.saved_prompts.map(n=>`<option value="${esc(n)}" ${c.prompt===n?'selected':''}>Saved: ${esc(n)}</option>`).join('');
+  $('#bcont').innerHTML=BCONT.map((c,i)=>`<div class="contestant"><select onchange="BCONT[${i}].provider=this.value"><option value="featherless">Featherless</option><option value="openrouter" ${c.provider==='openrouter'?'selected':''}>OpenRouter</option></select>
+    <input type="text" list="modellist" value="${esc(c.model)}" oninput="BCONT[${i}].model=this.value"><select onchange="BCONT[${i}].prompt=this.value">${opts(c)}</select>
+    <input type="number" min="0" max="2" step="0.05" value="${c.temperature}" oninput="BCONT[${i}].temperature=this.value"><button class="ghost" onclick="BCONT.splice(${i},1);renderCont()">✕</button></div>`).join('')||'<p class="muted">No models yet.</p>';
+  const n=Number($('#bthreads').value)+Number($('#bcomments').value);
+  $('#bplan').textContent=`${BCONT.length} models × up to ${n} items = up to ${BCONT.length*n} drafts`;
+}
+window.openRun=async id=>{BRUN=id;BITEM=0;await loadBench();};
+$('#baddone').onclick=()=>{BCONT.push({provider:'featherless',model:'',prompt:'natural',temperature:0.8});renderCont();};
+$('#baddshort').onclick=()=>{for(const m of BENCH.shortlist)if(!BCONT.some(c=>c.model===m.model))BCONT.push({provider:m.provider,model:m.model,prompt:'natural',temperature:0.8});renderCont();};
+$('#bclear').onclick=()=>{BCONT=[];renderCont();};
+for(const id of ['#bthreads','#bcomments'])$(id).addEventListener('input',renderCont);
+let bt;$('#bsearch').addEventListener('input',()=>{clearTimeout(bt);bt=setTimeout(async()=>{const q=$('#bsearch').value.trim();if(!q){$('#bresults').innerHTML='';return;}
+  try{const r=await api('/api/bench/models?q='+encodeURIComponent(q));$('#bresults').innerHTML=r.models.length?r.models.map(m=>`<button class="ghost" onclick="addModel('${esc(m.id)}')">+ ${esc(m.id)}${m.gated?' (gated)':''} · cost ${m.cost??'?'}</button>`).join(''):`No match among ${r.total} models`;}
+  catch(e){$('#bresults').textContent='Error: '+e.message;}},300);});
+window.addModel=id=>{BCONT.push({provider:'featherless',model:id,prompt:'natural',temperature:0.8});renderCont();};
+$('#bstart').onclick=()=>q2('Starting model test',async()=>{const r=await api('/api/bench',{name:$('#bname').value,threads:Number($('#bthreads').value),comments:Number($('#bcomments').value),
+  contestants:BCONT.map(c=>({...c,temperature:Number(c.temperature)}))});BRUN=r.id;BITEM=0;$('#benchnew').open=false;
+  return `Model test "${r.name}" started: ${r.progress.total} drafts (${r.items} items × ${r.config.contestants.length} models). Drafts appear as they are written.`;});
+async function renderRun(){
+  const c=await api(`/api/bench/${BRUN}/compare`),r=c.run,items=c.items;
+  const pct=v=>v==null?'–':v+'%',n=v=>v==null?'–':v;
+  const lb=`<table class="lb"><tr><th>Model · prompt</th><th title="How often you picked it, of the items you judged">Your picks</th><th title="Engain: how machine-written it reads (lower is better)">AI-sounding</th><th title="Pangram: share judged human-written">Human (Pangram)</th><th title="Engain: reads as marketing (lower is better)">Marketing</th><th title="Engain: chance of removal">Removal</th><th>Disclosure</th><th title="Made-up experience, like 'I had the same issue'">Invented?</th><th>Words</th><th>Secs</th><th>Skip / fail</th></tr>
+    ${r.leaderboard.map(x=>`<tr><td><b>${esc(shortName(x.model))}</b><div class="muted">${esc(x.provider)} · ${esc(x.prompt)} · t${x.temperature}</div></td><td>${x.judged?`${x.picked}/${x.judged} (${pct(x.pick_rate)})`:'–'}</td>
+      <td>${n(x.authenticity_risk)}</td><td>${pct(x.human_pct)}</td><td>${n(x.marketing_risk)}</td><td>${n(x.removal_risk)}</td><td class="${x.disclosure_kept<100?'lo':''}">${pct(x.disclosure_kept)}</td><td class="${x.invented?'mid':''}">${pct(x.invented)}</td>
+      <td>${n(x.avg_words)}</td><td>${n(x.avg_seconds)}</td><td>${x.skipped} / <span class="${x.failed?'lo':''}">${x.failed}</span></td></tr>`).join('')}</table>`;
+  const head=`<div class="filters" style="margin-top:14px"><strong style="flex:1">${esc(r.name)}</strong>
+    <span class="muted" style="flex:0;white-space:nowrap">${r.status==='running'?`drafting ${r.progress.total-r.progress.pending}/${r.progress.total}…`:'drafts done'} · picked ${r.picked}/${r.items} · scored ${r.scored}${r.score_status==='running'?' (scoring…)':''}</span>
+    <button class="ghost" onclick="benchScore()" ${r.status==='running'||r.score_status==='running'?'disabled':''}>Score with Engain rule-check</button>${r.progress.counts.failed?'<button class="ghost" onclick="benchResume()">Retry failed</button>':''}</div>
+    ${r.score_error?`<div class="flag">${esc(r.score_error)}</div>`:''}${lb}
+    <div class="meta">Scores show after you pick, so they don't sway you. "AI-sounding", Marketing and Removal are Engain's 0–100 judgements; Human is Pangram's share of human-written text. "Invented?" flags drafts that may claim experience nobody gave them; treat those as a fail.</div>`;
+  if(!items.length){$('#benchrun').innerHTML=head;return;}
+  BITEM=Math.min(BITEM,items.length-1);const it=items[BITEM],open=items.findIndex(x=>!x.picked);
+  const drafts=it.drafts.map(d=>`<div class="draft ${it.pick===d.id?'win':''}"><div class="lbl">${d.label}${it.picked&&d.model?` · <span style="color:var(--ink)">${esc(shortName(d.model))}</span> <span class="muted">${esc(d.prompt)}</span>`:''}</div>
+    <div class="txt">${d.status==='written'||d.status==='truncated'?esc(d.text):d.status==='skipped'?'<span class="muted">(skipped: the model had nothing to add)</span>':d.status==='pending'?'<span class="muted">writing…</span>':`<span class="flag">failed: ${esc(d.error)}</span>`}</div>
+    ${it.picked?`<div class="meta">${(d.flags?.list||[]).map(f=>`<span class="flag">${esc(f)}</span>`).join('')}${d.flags?`<span>${d.flags.words} words</span>`:''}${d.latency_ms?`<span>${(d.latency_ms/1000).toFixed(1)}s</span>`:''}</div>
+      ${d.rule_check?`<div class="meta"><span>AI-sounding ${n(d.rule_check.authenticity_risk)}</span><span>Pangram ${esc(d.rule_check.ai_prediction||'–')}${d.rule_check.human!=null?' ('+Math.round(d.rule_check.human*100)+'% human)':''}</span><span>marketing ${n(d.rule_check.marketing_risk)}</span><span>removal ${n(d.rule_check.removal_risk)}</span></div>${d.rule_check.advice?.length?`<details><summary>Engain's advice</summary>${d.rule_check.advice.map(esc).join('<br>')}</details>`:''}`:''}`:''}
+    ${d.status==='written'?`<button class="${it.pick===d.id?'':'ghost'}" onclick="benchPick('${esc(it.key)}',${d.id})">${it.pick===d.id?'Picked':'Most human: '+d.label}</button>`:''}</div>`).join('');
+  $('#benchrun').innerHTML=head+`<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+    <div class="filters"><button class="ghost" onclick="benchGo(-1)" ${BITEM?'':'disabled'}>← Previous</button><span class="muted" style="flex:0;white-space:nowrap">Item ${BITEM+1} of ${items.length}</span><button class="ghost" onclick="benchGo(1)" ${BITEM<items.length-1?'':'disabled'}>Next →</button>
+      ${open>=0?`<button class="ghost" onclick="BITEM=${open};renderRun()">Next unpicked</button>`:'<span class="muted">All items picked</span>'}<span></span></div>
+    <div class="kind ${it.kind}">${it.kind==='comment'?'Follow-up under our comment':'Comment on thread'}</div>
+    <a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.title||it.url)}</a> <span class="muted">r/${esc(it.subreddit)}</span>
+    ${it.body?`<details><summary>Thread text</summary><blockquote>${esc(it.body)}</blockquote></details>`:''}${it.our_comment?`<blockquote>${esc(it.our_comment)}</blockquote>`:''}
+    <div class="drafts">${drafts}</div>
+    <div class="meta" style="margin-top:8px"><button class="ghost" onclick="benchPick('${esc(it.key)}',null)">${it.picked&&it.pick==null?'Picked: none are good':'None are good'}</button>${it.picked?`<button class="ghost" onclick="benchPick('${esc(it.key)}',null,true)">Undo pick</button>`:''}</div></div>`;
+  if(r.status==='running'||r.score_status==='running'){clearTimeout(window.benchTimer);window.benchTimer=setTimeout(()=>{if(tab==='bench')loadBench();},3000);}
+}
+window.benchGo=d=>{BITEM+=d;renderRun();};
+window.benchPick=async(key,id,undo)=>{try{await api(`/api/bench/${BRUN}/pick`,{item_key:key,draft_id:id,undo:!!undo});await renderRun();}catch(e){$('#progress').textContent='Error: '+e.message;}};
+window.benchScore=()=>q2('Starting Engain rule-check',async()=>{await api(`/api/bench/${BRUN}/score`,{});return 'Scoring started. Engain allows about 50 drafts a minute, so a big test takes a few minutes.';});
+window.benchResume=()=>q2('Retrying failed drafts',async()=>{await api(`/api/bench/${BRUN}/resume`,{});return 'Retrying failed drafts.';});
 loadSettings();refresh();
 </script>
 </body>
