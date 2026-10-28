@@ -194,3 +194,125 @@ The server listens on `127.0.0.1` by default. `HOST=0.0.0.0` (for a remote agent
 - **Queue:** 70 items. Threads at #1–4, 20 competitor comments at #5–24, then threads.
 
 Comments come only from Engain mentions. Reddit's own JSON returns 403 to a plain local client, so comments that name no brand are not covered.
+
+---
+
+## Queue 2: Manual Sending to Engain
+
+After an agent claims an item from Queue 1 and generates a message, it moves to **Queue 2** (`queue2` SQLite table). Queue 2 holds items ready to be sent to Engain using either:
+
+1. **Pooled Delivery** (main API, `X-API-Key`): posts from a managed pool of accounts
+2. **Accounts Beta** (beta API): posts from a specific user-claimed account
+
+### Queue 2 Database Schema
+
+The `queue2` table tracks:
+
+- **Original fields:** `id`, `item_id`, `kind` (`thread`/`comment`/`mention`), `url`, `thread_url`, `title`, `message`, `message_source`, `item` (JSON), `created_by`, `created_at`, `updated_at`
+- **Delivery fields:** `delivery_mode` (`pool`|`beta`), `user_account_id` (beta), `poster_account` (pooled, 1–40), `send_status` (`ready`|`sending`|`submitted`|`published`|`failed`|`cancelled`), `engain_task_id`, `reddit_url`, `send_error`, `send_reason`
+- **Timestamps:** `reserved_at`, `sent_at`, `published_at`, `failed_at`, `last_status_check`
+- **Overrides:** `thread_check_override` (for beta when account already commented)
+
+### Engain API Mapping
+
+| Queue2 kind | Pooled (main API) | Accounts Beta |
+| --- | --- | --- |
+| `thread` | `POST /api/v1/tasks/comment {projectId, url, content, posterAccount?}` | `POST /api/v1/accounts-beta/comments {userAccountId, targetUrl, body}` |
+| `comment` or `mention` | `POST /api/v1/tasks/reply {projectId, url, content, posterAccount?}` | `POST /api/v1/accounts-beta/comments {userAccountId, targetUrl, body}` |
+
+- **Pooled:** `url` is the thread or comment permalink; `posterAccount` 1–40 (optional, >=2 requires multi-account entitlement)
+- **Beta:** `targetUrl` is the thread or comment permalink; `userAccountId` from `GET /api/v1/accounts-beta/accounts` (must be `usable` / `isReadyForSelection`)
+
+### Safety Guards (Enforced Before Send)
+
+1. **Placeholder Rejection:** Refuses `message_source === 'random'` or message starting with `"Placeholder message:"`
+2. **Disclosure Requirement:** Message body must mention "GeoNode" and include disclosure language (e.g., "disclosure", "I work for")
+3. **Idempotency:** Entry status must be `ready`; reservation locks prevent duplicate sends
+4. **Beta Thread-Check:** `GET /api/v1/accounts-beta/comments/thread-check?userAccountId&threadUrl` blocks if account already commented (unless `thread_check_override` is set)
+5. **Pacing Limits:**
+   - 45 minutes between any two sends (global)
+   - 24 hours between sends to same subreddit
+   - 20 sends per UTC day
+
+### Manual Send Routes
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/agent/beta-accounts` | List accounts-beta accounts (username, karma, usable, isReadyForSelection) |
+| `GET /api/agent/project-id` | Get pooled projectId from config or `GET /api/v1/me` |
+| `POST /api/agent/queue2/:id/send {mode, userAccountId?, posterAccount?}` | Send one queue2 entry. `mode` = `pool` or `beta`. Beta requires `userAccountId`; pooled accepts optional `posterAccount` (1–40, default 1). |
+| `POST /api/agent/queue2/:id/poll {}` | Poll Engain for status and save Reddit URL when published |
+| `POST /api/agent/queue2/:id/override {field, value}` | Set `thread_check_override` to bypass beta duplicate comment check |
+
+### Dashboard: Queue 2 Tab
+
+The web dashboard (`http://127.0.0.1:3000/`) shows Queue 2 items with:
+
+- **Status icons:** ⚪ ready, 🔵 sending, 🟡 submitted, 🟢 published, 🔴 failed, ⚫ cancelled
+- **Send controls** (for `ready` items with non-placeholder message):
+  - Mode selector: Pooled or Beta
+  - Account selector (beta) or poster number input (pooled, 1–40)
+  - Send button
+- **Refresh status button** (for submitted items) to poll Engain and fetch Reddit URL
+
+### Example Send Workflow
+
+1. **Collect threads:** `POST /api/collect {sources, keywords}`
+2. **Claim item:** `POST /api/agent/task {agent: "dashboard"}` moves #1 from Queue 1 to Queue 2 with a message
+3. **Review message:** Check Queue 2 tab; replace placeholder if needed: `POST /api/agent/queue2/:id {message: "..."}`
+4. **Send:** On Queue 2 tab, select mode (pooled or beta), choose account (if beta), click Send
+5. **Poll status:** Click "Refresh status" until `send_status` becomes `published` and `reddit_url` appears
+6. **Verify:** Open the `reddit_url` link to confirm the comment is live on Reddit
+
+### Mock Mode Testing
+
+Run `npm run dev:mock` to test sends against a simulated Engain that never touches real Reddit. Mock Engain:
+
+- Returns fake task IDs and immediately marks tasks as `published`
+- Provides 3 mock beta accounts (`acct_mock_1`, `acct_mock_2`, `acct_mock_3`)
+- Accepts both pooled and beta requests without credentials
+
+### Before First Live Send
+
+1. Set `ENGAIN_API_KEY` in `.env.local` (real API key, not mock)
+2. Verify every message includes GeoNode disclosure (e.g., "Disclosure: I work for GeoNode")
+3. Test in mock mode first (`npm run dev:mock`)
+4. Choose appropriate delivery mode:
+   - **Pooled:** faster, multi-account support, less control over which account posts
+   - **Beta:** full account control, thread-check gate, requires account selection
+5. Respect pacing limits to avoid exceeding Reddit's natural rate and Engain's rate limits
+
+### Pacing State
+
+Global pacing state is tracked in the `queue2_pacing` table (single row, `id=1`):
+
+- `last_send_global`: ISO timestamp of last send (any subreddit)
+- `sends_today_utc`: count of sends in current UTC day
+- `today_utc_date`: current UTC date (`YYYY-MM-DD`)
+- `subreddit_last_send`: JSON object mapping subreddit name to last send timestamp
+
+Pacing resets:
+
+- Global 45min floor resets after each send
+- Per-subreddit 24h floor resets per subreddit
+- Daily 20-send cap resets at UTC midnight
+
+### Dry-Run Script
+
+`scripts/q2-dry-run.cjs` reads the `queue2` table and shows what WOULD be sent (both pooled and beta payloads) without actually sending anything:
+
+```bash
+node scripts/q2-dry-run.cjs
+node scripts/q2-dry-run.cjs --db .data/dev.db
+node scripts/q2-dry-run.cjs --limit 5
+node scripts/q2-dry-run.cjs --show-placeholders
+```
+
+Displays:
+
+- Queue2 item details (id, url, message, message_source)
+- URL analysis (valid Reddit format, subreddit, thread ID)
+- Disclosure check result
+- Both pooled and beta Engain payloads
+- Send blockers (placeholder, missing disclosure, invalid URL)
+- Safety gate status (implemented vs missing)

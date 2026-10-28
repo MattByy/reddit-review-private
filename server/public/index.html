@@ -175,14 +175,84 @@ $('#take').onclick=async()=>{const r=await api('/api/agent/task',{agent:'dashboa
   $('#taken').textContent=r.status==='empty'?r.message:`Moved ${r.task_id} to Queue 2 (#${r.queue2.queue2_id})\nurl: ${r.queue2.url}\nthread_url: ${r.queue2.thread_url}\nmessage (${r.queue2.message_source}): ${r.queue2.message}`;refresh();};
 async function loadQueue2(){
   const r=await api('/api/agent/queue2');$('#q2count').textContent=r.count+' items with a message';
-  $('#queue2').innerHTML=r.items.map(x=>`<div class="item"><div class="score" style="font-size:12px">#${x.queue2_id}</div><div>
-    <div class="kind ${esc(x.status)}">${esc(KIND[x.status]||x.status)}</div>
+  
+  let accounts=[],projectId='';
+  try{accounts=await api('/api/agent/beta-accounts');}catch{}
+  try{projectId=(await api('/api/agent/project-id')).projectId;}catch{}
+  
+  const STATUS_EMOJI={ready:'⚪',sending:'🔵',submitted:'🟡',published:'🟢',failed:'🔴',cancelled:'⚫'};
+  
+  $('#queue2').innerHTML=r.items.map(x=>{
+    const canSend=x.send_status==='ready'&&!/^placeholder message:/i.test(x.message)&&x.message_source!=='random';
+    const statusDisplay=STATUS_EMOJI[x.send_status]||'⚪';
+    
+    return `<div class="item"><div class="score" style="font-size:12px">#${x.queue2_id}</div><div>
+    <div class="kind ${esc(x.send_status||'ready')}">${statusDisplay} ${esc(x.send_status||'ready')}${x.delivery_mode?' ('+x.delivery_mode+')':''}</div>
     <div class="meta"><span>url:</span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.url)}</a></div>
     <div class="meta"><span>thread:</span><a href="${esc(x.thread_url)}" target="_blank" rel="noopener">${esc(x.title||x.thread_url)}</a></div>
     <blockquote>${esc(x.message)}</blockquote>
     <div class="meta"><span>message: ${esc(x.message_source)}</span><span>from ${esc(x.item_id)}</span><span>${esc(String(x.created_at).slice(0,16).replace('T',' '))}</span>${x.created_by?`<span>by ${esc(x.created_by)}</span>`:''}</div>
-  </div></div>`).join('')||'<p class="muted">Empty. Use “Get next item” on Queue 1.</p>';
+    ${x.reddit_url?`<div class="meta">✓ <a href="${esc(x.reddit_url)}" target="_blank" rel="noopener">Published on Reddit</a></div>`:''}
+    ${x.send_error?`<div class="flag">Error: ${esc(x.send_error)}</div>`:''}
+    ${x.send_reason?`<div class="meta">Reason: ${esc(x.send_reason)}</div>`:''}
+    ${x.engain_task_id?`<div class="meta">Engain task: ${esc(x.engain_task_id)}</div>`:''}
+    ${canSend?`<div class="meta" style="margin-top:8px">
+      <select id="mode-${x.queue2_id}" style="max-width:100px">
+        <option value="pool">Pooled</option>
+        <option value="beta">Beta</option>
+      </select>
+      <select id="account-${x.queue2_id}" style="max-width:200px" hidden>
+        ${accounts.filter(a=>a.usable).map(a=>`<option value="${esc(a.userAccountId)}">${esc(a.username)} (${a.karma}k)</option>`).join('')}
+      </select>
+      <input type="number" id="poster-${x.queue2_id}" min="1" max="40" value="1" placeholder="Poster 1-40" style="max-width:100px">
+      <button class="ghost" onclick="sendQ2(${x.queue2_id})">Send</button>
+    </div>`:''}
+    ${x.engain_task_id&&!x.reddit_url?`<button class="ghost" onclick="pollQ2(${x.queue2_id})" style="margin-top:4px">Refresh status</button>`:''}
+  </div></div>`;
+  }).join('')||'<p class="muted">Empty. Use "Get next item" on Queue 1.</p>';
+  
+  r.items.filter(x=>x.send_status==='ready').forEach(x=>{
+    const modeSelect=$(`#mode-${x.queue2_id}`);
+    const accountSelect=$(`#account-${x.queue2_id}`);
+    const posterInput=$(`#poster-${x.queue2_id}`);
+    if(modeSelect){
+      modeSelect.onchange=()=>{
+        const isBeta=modeSelect.value==='beta';
+        if(accountSelect)accountSelect.hidden=!isBeta;
+        if(posterInput)posterInput.style.display=isBeta?'none':'inline-block';
+      };
+    }
+  });
 }
+window.sendQ2=async function(id){
+  const mode=$(`#mode-${id}`)?.value||'pool';
+  const body={mode};
+  if(mode==='beta'){
+    body.userAccountId=$(`#account-${id}`)?.value;
+    if(!body.userAccountId){alert('Select an account');return;}
+  }else{
+    const poster=Number($(`#poster-${id}`)?.value||1);
+    if(poster>=2)body.posterAccount=poster;
+  }
+  try{
+    $('#progress').textContent='Sending...';
+    const r=await api(`/api/agent/queue2/${id}/send`,body);
+    $('#progress').textContent=`✓ Sent #${id}: task ${r.taskId} (${r.mode})`;
+    refresh();
+  }catch(e){
+    $('#progress').textContent=`Error sending #${id}: ${e.message}`;
+  }
+};
+window.pollQ2=async function(id){
+  try{
+    $('#progress').textContent='Polling status...';
+    const r=await api(`/api/agent/queue2/${id}/poll`,{});
+    $('#progress').textContent=`Status for #${id}: ${r.status}${r.redditUrl?' → '+r.redditUrl:''}${r.reason?' ('+r.reason+')':''}`;
+    refresh();
+  }catch(e){
+    $('#progress').textContent=`Error polling #${id}: ${e.message}`;
+  }
+};
 $('#save').onclick=async()=>{const body={};for(const i of document.querySelectorAll('[data-k]'))body[i.dataset.k]=Number(i.value);
   try{await api('/api/settings',body);await api('/api/queue/refresh',{});}catch(e){$('#progress').textContent='Error: '+e.message;}loadSettings();refresh();};
 $('#go').onclick=async()=>{

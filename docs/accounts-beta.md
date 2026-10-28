@@ -15,11 +15,12 @@ Accounts Beta is the repository's existing integration for private Reddit accoun
 
 ## Existing adapter contract
 
-The public [Engain OpenAPI](https://docs.engain.io/api/openapi.json) reviewed on 2026-10-11 does not document `accounts-beta`. These are the repository's established integration details, not a guarantee of public API support:
+The [Engain Accounts Beta OpenAPI](https://docs.engain.io/api/engain-accounts-openapi.json) is now publicly documented (as of 2026-10). The repository's existing integration uses:
 
-- `GET /api/v1/accounts-beta/accounts`: returns `accounts` with `userAccountId`, `profileUsername` and `usable`.
-- `POST /api/v1/accounts-beta/comments`: uses `{userAccountId, targetUrl, body}` for a comment or reply.
-- `GET /api/v1/accounts-beta/comments`: paginated `page`, `isDone`, `continueCursor`; task `_id`, `status`, `resultUrl`.
+- `GET /api/v1/accounts-beta/accounts`: returns `accounts` with `userAccountId`, `username`, `karma`, `accountAge`, `usable`, `isReadyForSelection` and `status`.
+- `POST /api/v1/accounts-beta/comments`: uses `{userAccountId, targetUrl, body, scheduledFor?}` for a comment or reply.
+- `GET /api/v1/accounts-beta/comments`: paginated `page`, `isDone`, `continueCursor`; task `taskId`, `status`, `resultUrl`.
+- `GET /api/v1/accounts-beta/comments/thread-check?userAccountId&threadUrl`: returns `hasExistingComment` (true if account already commented on thread).
 - `POST /api/v1/accounts-beta/comments/{id}/cancel`: cancellation request.
 
 The shared queue still owns message IDs, parents, task persistence, verification and duplicate prevention. Private identities do not permit disguising affiliated participation as independent customers. Account availability is not evidence of disclosure or permission to participate in a community.

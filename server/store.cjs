@@ -37,6 +37,11 @@ function open(file){
       url text, thread_url text, title text, message text not null, message_source text not null,
       item text not null, created_by text, created_at text not null, updated_at text not null);
   `);
+  
+  // Run queue2 send migration AFTER tables are created
+  const {migrateQueue2,createPacingTable}=require('./migrate-queue2.cjs');
+  migrateQueue2(db);
+  createPacingTable(db);
   // The first published-only table is folded into our_tasks.
   if(db.prepare("select 1 from sqlite_master where name='published'").get()){
     db.exec(`insert or ignore into our_tasks(task_id,type,status,verdict,reddit_url,thread_url,thread_id,content,subreddit,published_at,parent_task_id,labels,first_seen,last_seen,status_changed_at,published_seen_at)
@@ -172,6 +177,62 @@ function open(file){
     settings(defaults){const r=db.prepare("select value from settings where key='queue'").get();return {...defaults,...(r?JSON.parse(r.value):{})};},
     saveSettings(value){db.prepare("insert or replace into settings(key,value) values('queue',?)").run(JSON.stringify(value));},
     run(id){const r=id==='latest'?db.prepare('select * from runs order by id desc limit 1').get():db.prepare('select * from runs where id=?').get(Number(id));return r&&{...r,input:JSON.parse(r.input),summary:r.summary&&JSON.parse(r.summary)};},
+    
+    // Queue2 send methods
+    reserveQueue2Send(id,mode,account){
+      const now=new Date().toISOString();
+      const r=db.prepare(`update queue2 set send_status='sending',delivery_mode=?,
+        ${mode==='beta'?'user_account_id':'poster_account'}=?,reserved_at=?,updated_at=?
+        where id=? and send_status='ready'`).run(mode,account??null,now,now,Number(id));
+      if(r.changes===0)return null;
+      const parse=r=>r&&{...r,item:JSON.parse(r.item)};
+      return parse(db.prepare('select * from queue2 where id=?').get(Number(id)));
+    },
+    recordQueue2Send(id,taskId,response){
+      const now=new Date().toISOString();
+      db.prepare(`update queue2 set send_status='submitted',engain_task_id=?,sent_at=?,updated_at=?
+        where id=?`).run(taskId,now,now,Number(id));
+    },
+    failQueue2Send(id,reason,error){
+      const now=new Date().toISOString();
+      db.prepare(`update queue2 set send_status='failed',send_reason=?,send_error=?,failed_at=?,updated_at=?
+        where id=?`).run(reason??null,error??null,now,now,Number(id));
+    },
+    updateQueue2Status(id,status,redditUrl,reason){
+      const now=new Date().toISOString();
+      const updates=['last_status_check=?','updated_at=?'];
+      const values=[now,now];
+      if(status==='published'){
+        updates.push('send_status=?','reddit_url=?','published_at=?');
+        values.push('published',redditUrl??null,now);
+      }else if(status==='failed'||status==='cancelled'){
+        updates.push('send_status=?','send_reason=?');
+        values.push(status,reason??null);
+        if(status==='failed')updates.push('failed_at=?'),values.push(now);
+      }
+      values.push(Number(id));
+      db.prepare(`update queue2 set ${updates.join(',')} where id=?`).run(...values);
+    },
+    setQueue2Override(id,field,value){
+      db.prepare(`update queue2 set ${field}=?,updated_at=? where id=?`)
+        .run(value?1:0,new Date().toISOString(),Number(id));
+    },
+    queue2Pacing(){
+      let p=db.prepare('select * from queue2_pacing where id=1').get();
+      if(!p)return {last_send_global:null,sends_today_utc:0,today_utc_date:null,subreddit_last_send:{}};
+      return {...p,subreddit_last_send:JSON.parse(p.subreddit_last_send)};
+    },
+    recordQueue2Pace(subreddit){
+      const now=new Date().toISOString();
+      const today=now.slice(0,10);
+      const p=db.prepare('select * from queue2_pacing where id=1').get();
+      const subs=p?JSON.parse(p.subreddit_last_send):{};
+      subs[subreddit]=now;
+      const sends=(!p||p.today_utc_date!==today)?1:(p.sends_today_utc||0)+1;
+      db.prepare(`insert or replace into queue2_pacing(id,last_send_global,sends_today_utc,today_utc_date,subreddit_last_send,updated_at)
+        values(1,?,?,?,?,?)`).run(now,sends,today,JSON.stringify(subs),now);
+    },
+    
     close:()=>db.close(),
   };
 }

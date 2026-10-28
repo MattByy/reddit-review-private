@@ -42,6 +42,19 @@ function client({apiKey,fetchImpl=fetch,limits=true,log=()=>{}}={}){
     smartSearchResults:q=>call('GET','/api/v1/smart-search/results',{query:q}),
     smartSearchHistory:q=>call('GET','/api/v1/smart-search/history',{query:q}),
     subredditStats:subreddit=>call('GET','/api/v1/subreddit-stats',{query:{subreddit}}),
+    
+    // Pooled delivery (main API)
+    createCommentTask:body=>call('POST','/api/v1/tasks/comment',{body}),
+    createReplyTask:body=>call('POST','/api/v1/tasks/reply',{body}),
+    getTask:taskId=>call('GET',`/api/v1/tasks/${taskId}`),
+    cancelTask:taskId=>call('POST',`/api/v1/tasks/${taskId}/cancel`),
+    
+    // Accounts beta
+    betaAccounts:()=>call('GET','/api/v1/accounts-beta/accounts'),
+    betaCreateComment:body=>call('POST','/api/v1/accounts-beta/comments',{body}),
+    betaComments:q=>call('GET','/api/v1/accounts-beta/comments',{query:q}),
+    betaThreadCheck:q=>call('GET','/api/v1/accounts-beta/comments/thread-check',{query:q}),
+    betaCancelComment:taskId=>call('POST',`/api/v1/accounts-beta/comments/${taskId}/cancel`),
   };
 }
 

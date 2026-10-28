@@ -108,6 +108,22 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'POST /api/agent/task':async(_,body)=>queue.claimNext(store,body?.agent?String(body.agent).slice(0,80):null,{message:body?.message}),
     'GET /api/agent/queue2':async()=>queue.queue2List(store),
     'POST /api/agent/queue2/:id':async(_,body,id)=>queue.setQueue2Message(store,id,body?.message),
+    'POST /api/agent/queue2/:id/send':async(_,body,id)=>{
+      const {sendQueue2}=require('./send-queue2.cjs');
+      return sendQueue2({id,mode:body?.mode,userAccountId:body?.userAccountId,posterAccount:body?.posterAccount,override:body?.override},
+        {engain,store,projectId:await project(),log});
+    },
+    'POST /api/agent/queue2/:id/poll':async(_,__,id)=>{
+      const {pollQueue2Status}=require('./send-queue2.cjs');
+      return pollQueue2Status(id,{engain,store,log});
+    },
+    'POST /api/agent/queue2/:id/override':async(_,body,id)=>{
+      if(!body?.field||!['thread_check_override'].includes(body.field))fail(422,'field must be thread_check_override');
+      store.setQueue2Override(id,body.field,!!body.value);
+      return {ok:true,id:Number(id),field:body.field,value:!!body.value};
+    },
+    'GET /api/agent/beta-accounts':async()=>engain.betaAccounts(),
+    'GET /api/agent/project-id':async()=>({projectId:await project()}),
     'GET /api/agent/queue':async()=>{const v=queue.queueView(store,{history:0});return {count:v.count,items:v.items.map(({item_id,kind,position,score})=>({item_id,kind,position,score}))};},
     // Cron: the two jobs. They wait for the work to finish (a thread collection takes minutes).
     'POST /api/cron/threads':async()=>runJob('threads'),
