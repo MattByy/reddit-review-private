@@ -144,25 +144,46 @@ test('a pooled send can pick the poster account; own accounts are reported when 
     assert.strictEqual(b.available,true);assert.ok(b.accounts.length>0);
   }finally{mock.tasks.splice(saved);a.close();}
   const off=createApp({dbFile:':memory:',log:()=>{},apiKey:'k',projectId:'p',agentKey:'',cronSecret:''});
-  off.engain.betaAccounts=async()=>{throw Object.assign(Error('Non-JSON response'),{status:404});};
+  off.engain.v2Accounts=async()=>{throw Object.assign(Error('Forbidden'),{status:403,body:{error:{code:'DEDICATED_ACCOUNTS_NOT_ENABLED'}}});};
   try{
     const b=(await call(off,'GET','/api/agent/beta-accounts')).body;
-    assert.strictEqual(b.available,false);assert.match(b.reason,/not available.*ENGAIN_ACCOUNTS_API_KEY/);
+    assert.strictEqual(b.available,false);assert.match(b.reason,/DEDICATED_ACCOUNTS_NOT_ENABLED/);
   }finally{off.close();}
 });
 
-test('ENGAIN_ACCOUNTS_API_KEY is used for own-account calls, the main key for everything else',async()=>{
-  const seen=[],real=global.fetch;
-  global.fetch=async(url,opts)=>{seen.push({path:new URL(url).pathname,key:opts.headers['X-API-Key']});
-    return new Response(JSON.stringify(new URL(url).pathname.includes('accounts-beta')?{accounts:[{userAccountId:'a1',usable:true}]}:{userId:'u',projects:[{id:'p',name:'geonode.com'}]}),{status:200,headers:{'Content-Type':'application/json'}});};
-  const a=createApp({dbFile:':memory:',log:()=>{},apiKey:'main-key',accountsKey:'accounts-key',agentKey:'',cronSecret:''});
+test('dedicated accounts (Engain v2): list, post a thread comment, once per thread, never replies',async()=>{
+  const mock=require('../server/mock.cjs'),saved=mock.tasks.length;
+  const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
   try{
+    await ready(a);
     const b=(await call(a,'GET','/api/agent/beta-accounts')).body;
-    assert.strictEqual(b.available,true);assert.strictEqual(b.accounts[0].userAccountId,'a1');
-    await call(a,'GET','/api/projects');
-    assert.deepStrictEqual(seen.map(s=>[s.path,s.key]),[['/api/v1/accounts-beta/accounts','accounts-key'],['/api/v1/me','main-key']]);
-    assert.strictEqual((await call(a,'GET','/api/status')).body.accounts_key,true);
-  }finally{global.fetch=real;a.close();}
+    assert.strictEqual(b.available,true);
+    assert.deepStrictEqual(b.accounts.map(x=>[x.userAccountId,x.username,x.usable]),[['sn_mock_1','mockglen101',true],['sn_mock_2','mockrose202',true],['sn_mock_3',null,false]]);
+
+    const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
+    assert.strictEqual(q.status,'thread');
+    let r=await call(a,'POST',`/api/agent/queue2/${q.queue2_id}/approve`,{mode:'dedicated',userAccountId:'sn_mock_1'});
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));
+    const t=mock.tasks.at(-1);
+    assert.strictEqual(t.postedFrom,'dedicated');assert.strictEqual(t.accountId,'sn_mock_1');assert.strictEqual(t.threadUrl,q.url);assert.strictEqual(t.content,q.message);
+    assert.strictEqual(r.body.queue2.user_account_id,'sn_mock_1');
+    assert.strictEqual((await call(a,'POST',`/api/agent/queue2/${q.queue2_id}/poll`,{})).body.engainStatus,'in_review','status comes from /api/v2/tasks/:id');
+
+    // A second item in the same thread from the same account is refused by the v2 thread check.
+    a.store.db.prepare(`insert into queue2(item_id,kind,thread_id,url,thread_url,title,message,message_source,item,created_at,updated_at)
+      values('t_dup','thread',?,?,?,'dup','Disclosure: I work at Geonode. Another note.','given','{}',datetime('now'),datetime('now'))`).run(q.item.thread.id,q.url,q.thread_url);
+    const dup=a.store.db.prepare("select id from queue2 where item_id='t_dup'").get().id;
+    r=await call(a,'POST',`/api/agent/queue2/${dup}/approve`,{mode:'dedicated',userAccountId:'sn_mock_1'});
+    assert.strictEqual(r.status,409);assert.match(r.body.error,/already has 1 comment/);
+    r=await call(a,'POST',`/api/agent/queue2/${dup}/approve`,{mode:'dedicated',userAccountId:'sn_mock_2'});
+    assert.strictEqual(r.status,200,'another account may comment');
+
+    // Replies (comment items) cannot come from a dedicated account.
+    let c;for(let i=0;i<10;i++){c=(await call(a,'POST','/api/agent/task',{write:true})).body;if(c.status==='comment')break;}
+    assert.strictEqual(c.status,'comment');
+    r=await call(a,'POST',`/api/agent/queue2/${c.queue2.queue2_id}/approve`,{mode:'dedicated',userAccountId:'sn_mock_1'});
+    assert.strictEqual(r.status,422);assert.match(r.body.error,/cannot post replies/);
+  }finally{mock.tasks.splice(saved);a.close();}
 });
 
 test('prompts are visible and editable per type, and the edited one is used',async()=>{

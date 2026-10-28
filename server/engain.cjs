@@ -49,12 +49,12 @@ function client({apiKey,fetchImpl=fetch,limits=true,log=()=>{}}={}){
     getTask:taskId=>call('GET',`/api/v1/tasks/${taskId}`),
     cancelTask:taskId=>call('POST',`/api/v1/tasks/${taskId}/cancel`),
     
-    // Accounts beta
-    betaAccounts:()=>call('GET','/api/v1/accounts-beta/accounts'),
-    betaCreateComment:body=>call('POST','/api/v1/accounts-beta/comments',{body}),
-    betaComments:q=>call('GET','/api/v1/accounts-beta/comments',{query:q}),
-    betaThreadCheck:q=>call('GET','/api/v1/accounts-beta/comments/thread-check',{query:q}),
-    betaCancelComment:taskId=>call('POST',`/api/v1/accounts-beta/comments/${taskId}/cancel`),
+    // API v2: dedicated accounts and one tasks API for pool and dedicated tasks.
+    // (/api/v1/accounts-beta/* was removed by Engain in favour of these.)
+    v2Accounts:projectId=>call('GET','/api/v2/accounts',{query:{projectId}}),
+    v2CreateComment:body=>call('POST','/api/v2/tasks/comment',{body}),
+    v2ThreadCheck:(accountId,q)=>call('GET',`/api/v2/accounts/${encodeURIComponent(accountId)}/thread-check`,{query:q}),
+    v2GetTask:taskId=>call('GET',`/api/v2/tasks/${encodeURIComponent(taskId)}`),
   };
 }
 

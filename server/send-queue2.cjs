@@ -62,60 +62,60 @@ async function sendQueue2({id,mode,userAccountId,posterAccount,override},
     fail(422,`Transparency violation: ${disclosure.reason}`);
   }
   
-  // Validate mode and account
-  if(!['pool','beta'].includes(mode))fail(422,'mode must be pool or beta');
-  if(mode==='beta'&&!userAccountId)fail(422,'userAccountId required for beta mode');
+  // Delivery: 'pool' (Engain's posters) or 'dedicated' (one of our accounts, Engain API v2).
+  // 'beta' is accepted as the old name and stored as 'beta' (the column's CHECK predates v2).
+  if(mode==='dedicated')mode='beta';
+  if(!['pool','beta'].includes(mode))fail(422,'mode must be pool or dedicated');
+  const accountId=userAccountId;
+  if(mode==='beta'){
+    if(!accountId)fail(422,'accountId (userAccountId) is required to post from a dedicated account');
+    // Engain v2: dedicated accounts post comments on threads, not replies to comments.
+    if(item.kind!=='thread')fail(422,'Dedicated accounts cannot post replies (Engain API v2). Send this one through the pool.');
+  }
   if(mode==='pool'&&posterAccount&&(typeof posterAccount!=='number'||posterAccount<1||posterAccount>40)){
     fail(422,'posterAccount must be 1-40');
   }
-  
+
   // Extract subreddit
   const subreddit=subredditFromUrl(item.url||item.thread_url);
   if(!subreddit)fail(422,'Cannot extract subreddit from URL');
-  
-  
-  // Guard: beta thread-check
+
+  // Guard: a dedicated account comments on a thread at most once (unless overridden).
   if(mode==='beta'&&!override?.thread_check){
-    try{
-      const threadUrl=item.thread_url||item.url;
-      const check=await engain.betaThreadCheck({userAccountId,threadUrl});
-      if(check.hasExistingComment){
-        fail(409,`Account ${userAccountId} already has a comment on this thread. Use thread_check_override to bypass.`);
-      }
-    }catch(e){
-      if(e.status!==404)log(`Thread check failed (non-fatal): ${e.message}`);
-    }
+    let check=null;
+    try{check=await engain.v2ThreadCheck(accountId,{projectId,threadUrl:item.thread_url||item.url});}
+    catch(e){log(`Thread check failed (non-fatal): ${e.message}`);}
+    if(check?.exists)fail(409,`This account already has ${check.count||1} comment(s) on this thread. Pick another account or set override.thread_check.`);
   }
-  
+
   // Reserve for sending (idempotency)
-  const reserved=store.reserveQueue2Send(id,mode,mode==='beta'?userAccountId:posterAccount);
+  const reserved=store.reserveQueue2Send(id,mode,mode==='beta'?accountId:posterAccount);
   if(!reserved){
     fail(409,'Failed to reserve entry (already sending or not ready)');
   }
-  
+
   try{
     let response,taskId;
-    
+
     if(mode==='pool'){
       // Pooled: comment vs reply endpoint
       const payload={projectId,url:item.url,content:item.message};
       if(posterAccount)payload.posterAccount=posterAccount;
-      
+
       if(item.kind==='thread'){
         response=await engain.createCommentTask(payload);
       }else{
         // kind=comment or mention -> reply
         response=await engain.createReplyTask(payload);
       }
-      
+
       taskId=response.id||response._id||response.taskId;
     }else{
-      // Beta: one endpoint for all
-      const payload={userAccountId,targetUrl:item.url,body:item.message};
-      response=await engain.betaCreateComment(payload);
-      taskId=response.taskId||response.id||response._id;
+      // Dedicated account: POST /api/v2/tasks/comment with accountId
+      response=await engain.v2CreateComment({projectId,url:item.url,content:item.message,accountId});
+      taskId=response._id||response.id;
     }
-    
+
     if(!taskId){
       store.failQueue2Send(id,'No task ID in response',JSON.stringify(response).slice(0,500));
       return {ok:false,status:'unknown',reason:'No task ID in Engain response',response};
@@ -144,16 +144,9 @@ async function pollQueue2Status(id,{engain,store,log=console.log}){
   if(!item.delivery_mode)fail(409,'No delivery mode recorded');
   
   try{
-    let task;
-    if(item.delivery_mode==='pool'){
-      task=await engain.getTask(item.engain_task_id);
-    }else{
-      // Beta: list and find
-      const page=await engain.betaComments({limit:100});
-      task=page.find(t=>(t.taskId||t.id||t._id)===item.engain_task_id);
-      if(!task)return {status:'not_found',reason:'Task not found in beta comments list'};
-    }
-    
+    // GET /api/v2/tasks/{id} serves pool and dedicated-account tasks alike.
+    const task=await engain.v2GetTask(item.engain_task_id);
+
     const status=String(task.status||'unknown').toLowerCase();
     const redditUrl=task.redditUrl||task.resultUrl||null;
     

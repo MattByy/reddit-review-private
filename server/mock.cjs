@@ -130,6 +130,32 @@ async function mockFetch(url,options={}){
     return json({ok:true,status:'cancelled'});
   }
   
+  // Engain API v2: dedicated accounts and one tasks API for pool and dedicated tasks.
+  if(u.pathname==='/api/v2/accounts'&&method==='GET'){
+    if(!q.get('projectId'))return json({error:{code:'PROJECT_ID_REQUIRED'}},400);
+    return json({accounts:[
+      {userAccountId:'sn_mock_1',username:'mockglen101',niche:'Proxy',isReadyForSelection:true,isKarmaBuilding:false,lifecycleStatus:'active'},
+      {userAccountId:'sn_mock_2',username:'u/mockrose202',niche:'Scraping',isReadyForSelection:true,isKarmaBuilding:false,lifecycleStatus:'active'},
+      {userAccountId:'sn_mock_3',niche:'Developer',isReadyForSelection:false,isKarmaBuilding:true,lifecycleStatus:'warming'},
+    ]});
+  }
+  if(u.pathname==='/api/v2/tasks/comment'&&method==='POST'){
+    const body=JSON.parse(options.body),tid='task_v2_'+Date.now()+'_'+tasks.length;
+    const task={_id:tid,type:'comment',status:'in_review',threadUrl:body.url,content:body.content,projectId:body.projectId,accountId:body.accountId||null,
+      postedFrom:body.accountId?'dedicated':'pool',account:body.accountId?{id:body.accountId,handle:'mock'}:null,subreddit:body.url?.split('/')[4]||'unknown',creationDate:new Date().toISOString()};
+    tasks.push(task);
+    return json(task,201);
+  }
+  const v2check=u.pathname.match(/^\/api\/v2\/accounts\/([^/]+)\/thread-check$/);
+  if(v2check&&method==='GET'){
+    const n=tasks.filter(t=>t.accountId===decodeURIComponent(v2check[1])&&t.threadUrl===q.get('threadUrl')).length;
+    return json({exists:n>0,count:n});
+  }
+  const v2task=u.pathname.match(/^\/api\/v2\/tasks\/([^/]+)$/);
+  if(v2task&&method==='GET'){
+    const t=tasks.find(t=>(t._id||t.id)===decodeURIComponent(v2task[1]));
+    return t?json({...t,postedFrom:t.postedFrom||'pool',account:t.account||null}):json({error:{code:'TASK_NOT_FOUND'}},404);
+  }
   return json({error:'Not mocked: '+u.pathname},404);
 }
 

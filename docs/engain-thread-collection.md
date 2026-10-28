@@ -153,6 +153,23 @@ Queue 2 messages are written by OpenRouter (`OPENROUTER_API_KEY` in `.env.local`
 - Messages without the disclosure.
 - OpenRouter drafts that nobody approved.
 
+## Own (dedicated) accounts: Engain API v2
+
+Engain removed `/api/v1/accounts-beta/*`; every call there now answers `404 No matching routes found`. Dedicated accounts moved to **API v2** (spec: `https://docs.engain.io/openapi-v2.yaml`), which uses the same key and `X-API-Key` header.
+
+| What | v2 call |
+| --- | --- |
+| List our accounts | `GET /api/v2/accounts?projectId=` (`isReadyForSelection` = ready to post) |
+| Post a thread comment from one | `POST /api/v2/tasks/comment {projectId,url,content,accountId}` |
+| Has it already commented here? | `GET /api/v2/accounts/{accountId}/thread-check?projectId&threadUrl` → `{exists,count}` |
+| Task status (pool or dedicated) | `GET /api/v2/tasks/{taskId}` |
+
+**Limit:** dedicated accounts **cannot post replies** (`/api/v2/tasks/reply` refuses `accountId`). Thread items can go to one of our accounts or to the pool; comment and mention items always go to the pool.
+
+On the Queue 2 tab, "Approve & send" offers **My account** (with a picker of ready accounts) on thread items. The server refuses a dedicated send when that account already commented on the thread, unless `override.thread_check` is set.
+
+`/api/agent/beta-accounts` (the name is kept for compatibility) returns `{available, accounts:[{userAccountId, username, niche, usable, …}]}`. Approve with `{"mode":"dedicated","userAccountId":"…"}`; `mode:"beta"` is still accepted and is what the database stores.
+
 ## Scheduled jobs
 
 `npm run dev` runs two jobs inside the server (`JOBS=off` disables them). Each is also an HTTP route, so an outside cron can call it instead. Intervals are queue settings.
