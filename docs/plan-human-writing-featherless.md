@@ -1,6 +1,6 @@
 # Plan: pick a Featherless model that writes like a person
 
-Status: **model research done 2026-10-28** (see "Research results"); bench not built yet. Saved 2026-10-28 so the work can resume in a later session.
+Status: **steps 1–3 built 2026-10-28.** Each prompt can use its own provider and model, natural-style prompts exist, and the dashboard has a **Model test** tab with blind picks, Engain scores and a leaderboard. Step 4 (live A/B) is done from the Prompts tab once a winner is clear. Saved 2026-10-28 so the work can resume in a later session.
 
 ## Goal
 
@@ -76,6 +76,14 @@ All models below are confirmed in Featherless `GET /v1/models` (22,391 models). 
 - Some models need one user message with no system message, so the writer should support both.
 
 Sources: Featherless `/v1/models`; Hugging Face model cards; [Enhancing Human-Like Responses in LLMs (arXiv 2501.05032)](https://arxiv.org/abs/2501.05032); [antislop paper (arXiv 2510.15061)](https://arxiv.org/abs/2510.15061); [EQ-Bench Creative Writing v3](https://eqbench.com/creative_writing.html).
+
+## How to use it (built)
+
+1. **Model test** tab: pick models (shortlist, or search all Featherless models), a prompt style (Natural, Default or a saved prompt) and a temperature. Then Start test. It drafts the same Queue 1 items with every model, four drafts at a time (`BENCH_CONCURRENCY` changes this). Queue 1 is not touched.
+2. For each item, read drafts A, B, C… without model names and click **Most human**, or **None are good**. Names and scores show only after you pick.
+3. Click **Score with Engain rule-check** for AI-sounding risk, the Pangram human share, and marketing and removal risk. This is advisory and posts nothing.
+4. The leaderboard ranks models by your picks, then by Engain's AI-sounding score. "Invented?" flags drafts that claim experience nobody gave them.
+5. On the **Prompts** tab, give the winners their own prompts ("+ Add natural-style prompt" defaults to the Humanlike model) and split the percentages. That is the live A/B test.
 
 ## Steps
 
