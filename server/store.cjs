@@ -8,11 +8,6 @@ const JSON_COLS=['sources','keywords','reasons','mentions','ranking_keywords'];
 function open(file){
   if(file!==':memory:')fs.mkdirSync(path.dirname(file),{recursive:true});
   const db=new DatabaseSync(file);
-  
-  // Run queue2 send migration
-  const {migrateQueue2,createPacingTable}=require('./migrate-queue2.cjs');
-  migrateQueue2(db);
-  createPacingTable(db);
   db.exec(`
     create table if not exists threads(
       thread_id text primary key, url text not null, subreddit text, title text, body text, author text,
@@ -42,6 +37,11 @@ function open(file){
       url text, thread_url text, title text, message text not null, message_source text not null,
       item text not null, created_by text, created_at text not null, updated_at text not null);
   `);
+  
+  // Run queue2 send migration AFTER tables are created
+  const {migrateQueue2,createPacingTable}=require('./migrate-queue2.cjs');
+  migrateQueue2(db);
+  createPacingTable(db);
   // The first published-only table is folded into our_tasks.
   if(db.prepare("select 1 from sqlite_master where name='published'").get()){
     db.exec(`insert or ignore into our_tasks(task_id,type,status,verdict,reddit_url,thread_url,thread_id,content,subreddit,published_at,parent_task_id,labels,first_seen,last_seen,status_changed_at,published_seen_at)

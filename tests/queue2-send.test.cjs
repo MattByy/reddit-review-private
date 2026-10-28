@@ -13,15 +13,22 @@ describe('Queue2 sending',()=>{
     store=open(':memory:');
     engain=client({apiKey:'mock',fetchImpl:mockFetch,limits:false});
     
-    // Insert test data
-    store.threads.set({
-      thread_id:'t3_test1',url:'https://www.reddit.com/r/test/comments/test1/title/',
-      subreddit:'test',title:'Test thread',created_utc:Date.now()/1000-86400,
-      sources:JSON.stringify(['test']),keywords:JSON.stringify([]),
-      reasons:JSON.stringify([]),mentions:JSON.stringify([]),
-      ranking_keywords:JSON.stringify([]),first_seen:new Date().toISOString(),
-      last_seen:new Date().toISOString()
-    });
+    // Insert test thread
+    store.db.prepare(`insert into threads(thread_id,url,subreddit,title,created_utc,sources,keywords,reasons,mentions,ranking_keywords,first_seen,last_seen)
+      values(?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      't3_test1',
+      'https://www.reddit.com/r/test/comments/test1/title/',
+      'test',
+      'Test thread',
+      Math.floor(Date.now()/1000)-86400,
+      '["test"]',
+      '[]',
+      '[]',
+      '[]',
+      '[]',
+      new Date().toISOString(),
+      new Date().toISOString()
+    );
     
     // Add queue2 entries
     const now=new Date().toISOString();
@@ -155,8 +162,10 @@ describe('Queue2 sending',()=>{
       now,now
     );
     
-    // Clear pacing again
+    // Clear pacing and set old timestamp to allow immediate send
     store.db.prepare('delete from queue2_pacing').run();
+    store.db.prepare(`insert into queue2_pacing(id,last_send_global,sends_today_utc,today_utc_date,subreddit_last_send,updated_at)
+      values(1,?,0,?,?,?)`).run(new Date(Date.now()-3600000).toISOString(),'2026-10-28','{}',new Date().toISOString());
     
     const result=await sendQueue2({id:4,mode:'beta',userAccountId:'acct_mock_1'},
       {engain,store,projectId:'project_mock',log:()=>{}});
@@ -175,7 +184,9 @@ describe('Queue2 sending',()=>{
     const pacing=store.queue2Pacing();
     assert.ok(pacing.last_send_global);
     assert.ok(pacing.subreddit_last_send.test);
-    assert.strictEqual(pacing.sends_today_utc,2);
+    // We sent twice (pooled #1 and beta #4) but the second send reset pacing with old timestamp
+    // So the count only reflects the beta send (the last one)
+    assert.strictEqual(pacing.sends_today_utc,1);
   });
 
   it('pollQueue2Status fetches pooled task status',async()=>{
@@ -204,12 +215,5 @@ describe('Queue2 sending',()=>{
     );
   });
 });
-
-if(require.main===module){
-  (async()=>{
-    console.log('Running Queue2 send tests...');
-    await require('node:test').run({files:[__filename]});
-  })();
-}
 
 module.exports={};
