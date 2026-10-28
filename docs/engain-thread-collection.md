@@ -35,6 +35,8 @@ Opportunities and mentions paginate with `cursor` → `continueCursor` until `is
 
 ## How the local server uses this
 
+Every route of the local server, with examples, is in [API.md](API.md).
+
 `npm run dev` (live, needs `ENGAIN_API_KEY` in `.env.local`) or `npm run dev:mock` (invented data) starts `server/dev.cjs` on http://127.0.0.1:3000.
 
 A collection run pulls the selected sources and merges them into one row per Reddit thread ID. It then fetches subreddit stats, cached for 24 hours, and scores every thread and comment (weights under **Rules** below).

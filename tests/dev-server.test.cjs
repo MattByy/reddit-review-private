@@ -261,7 +261,7 @@ test('auth: agent and cron need their secrets; the dashboard is local only',asyn
     assert.strictEqual((await call(a,'POST','/api/agent/task',{},{token:'agent-secret',ip:'10.0.0.9'})).status,200);
     assert.strictEqual((await call(a,'POST','/api/cron/refresh',{collect:false},{token:'agent-secret'})).status,401);
     assert.strictEqual((await call(a,'POST','/api/cron/refresh',{collect:false},{token:'cron-secret',ip:'10.0.0.9'})).status,200);
-    assert.strictEqual((await call(a,'GET','/api/queue',null,{ip:'10.0.0.9'})).status,403);
+    assert.strictEqual((await call(a,'GET','/api/queue',null,{ip:'10.0.0.9'})).status,401,'remote dashboard API calls need AGENT_API_KEY');
     const open=app();
     assert.strictEqual((await call(open,'POST','/api/agent/task',{},{ip:'10.0.0.9'})).status,401,'no key configured: remote calls refused');
     assert.strictEqual((await call(open,'POST','/api/agent/task',{})).status,200,'no key configured: local calls allowed');

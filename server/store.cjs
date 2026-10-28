@@ -189,6 +189,8 @@ function open(file){
         .run(message,prompt_used,model,provider??'openrouter',write_status,write_error??null,now,prompt_variant_id??null,prompt_variant_name??null,now,Number(id));
       else db.prepare('update queue2 set write_status=?,write_error=?,prompt_used=?,model=?,provider=?,updated_at=? where id=?').run(write_status,write_error??null,prompt_used??null,model??null,provider??'openrouter',now,Number(id));
     },
+    // An unsent Queue 2 entry can be thrown away; its Queue 1 item stays taken.
+    discardQueue2(id){return db.prepare("delete from queue2 where id=? and coalesce(send_status,'ready')='ready' and engain_task_id is null").run(Number(id)).changes>0;},
     // Drafts per prompt variant of one item kind, for the weighted split.
     variantCounts(kind){return Object.fromEntries(db.prepare('select prompt_variant_id id,count(*) n from queue2 where kind=? and prompt_variant_id is not null group by prompt_variant_id').all(kind).map(r=>[r.id,r.n]));},
     // Outcome per prompt variant. Engain's verdict (our_tasks) wins over Queue 2's own send status.

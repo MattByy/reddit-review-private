@@ -176,6 +176,45 @@ function saveVariants(store,type,list){
   store.setKv('prompt_variants',{...variants(store),[type]:clean});
   return clean;
 }
+// One prompt at a time, for the API. A new prompt starts at 0% (paused) unless weights are given,
+// so the type's total stays 100%; percentages change together through setWeights.
+function findVariant(store,id){
+  for(const [type,list] of Object.entries(variants(store))){const v=list.find(v=>v.id===id);if(v)return {type,variant:v,list};}
+  fail(404,'No prompt with id '+id);
+}
+function addVariant(store,body){
+  const type=body?.type;if(!TYPES.includes(type))fail(422,'type must be thread, comment or mention');
+  const text=body.text??(body.style==='natural'?NATURAL_PROMPTS[type]:body.style==='default'||body.style==null?DEFAULT_PROMPTS[type]:fail(422,'style must be natural or default'));
+  const list=variants(store)[type],added={...body,text,weight:0,id:undefined};delete added.type;delete added.style;
+  const saved=saveVariants(store,type,[...list,added]);
+  return {type,variant:saved[saved.length-1],variants:saved};
+}
+function updateVariant(store,id,body){
+  const {type,variant,list}=findVariant(store,id);
+  if(body?.weight!=null&&Number(body.weight)!==variant.weight)fail(422,'Change percentages with POST /api/prompts/weights, so the total stays 100%');
+  const next={...variant};
+  for(const k of ['name','text','provider','model','temperature'])if(body&&k in body)next[k]=body[k];
+  if(next.provider==='openrouter'&&body&&'provider' in body&&!('model' in body))delete next.model;
+  const saved=saveVariants(store,type,list.map(v=>v.id===id?next:v));
+  return {type,variant:saved.find(v=>v.id===id),variants:saved};
+}
+function deleteVariant(store,id){
+  const {type,variant,list}=findVariant(store,id);
+  if(list.length===1)fail(409,'A type needs at least one prompt');
+  if(variant.weight>0)fail(409,`"${variant.name}" still writes ${variant.weight}% of drafts; set it to 0% first`);
+  return {type,variants:saveVariants(store,type,list.filter(v=>v.id!==id))};
+}
+// weights: {"<id or name>": percent, ...}; prompts not named go to 0%.
+function setWeights(store,type,weights){
+  if(!TYPES.includes(type))fail(422,'type must be thread, comment or mention');
+  if(!weights||typeof weights!=='object')fail(422,'weights must be an object like {"Default":50,"Natural 2":50}');
+  const list=variants(store)[type],used=new Set();
+  const next=list.map(v=>{const k=v.id in weights?v.id:v.name in weights?v.name:null;if(k)used.add(k);return {...v,weight:k?Number(weights[k]):0};});
+  const unknown=Object.keys(weights).filter(k=>!used.has(k));
+  if(unknown.length)fail(422,'No '+type+' prompt called: '+unknown.join(', '));
+  return {type,variants:saveVariants(store,type,next)};
+}
+
 // Exact split, not a dice roll: the next draft goes to the prompt furthest below its share of all
 // drafts of this type so far (60/40 over 10 drafts gives exactly 6 and 4). A redraft keeps the
 // prompt it was given, so rewrites do not skew the split.
@@ -269,4 +308,4 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   return store.queue2(id);
 }
 
-module.exports={DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};
+module.exports={DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};

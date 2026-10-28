@@ -141,6 +141,23 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     fail(409,`All ${ready.length} of your ready accounts already commented in this thread.`);
   }
 
+  // The item and prompt for /api/prompts/preview and /try. Item: {"queue2_id"} or {"item_id"} from
+  // Queue 1, else the first Queue 1 item of the type. Prompt: {"variant_id"}, {"text"} or {"style"}.
+  function tryTarget(body){
+    let entry;
+    if(body?.queue2_id!=null){const r=store.queue2(body.queue2_id);if(!r)fail(404,'No such queue 2 entry');entry={kind:r.kind,url:r.url,thread_url:r.thread_url,title:r.title,item:r.item};}
+    else{
+      const v=body?.variant_id?writer.findVariant(store,body.variant_id):null,type=body?.type||v?.type||'thread';
+      const items=queue.queueView(store,{history:0}).items,x=body?.item_id?items.find(i=>i.item_id===body.item_id):items.find(i=>i.kind===type);
+      if(!x)fail(404,body?.item_id?'That item is not in Queue 1':`Queue 1 has no ${type} item to try this on`);
+      entry={kind:x.kind,url:x.url,thread_url:x.thread_url,title:x.thread?.title||null,item:{item_id:x.item_id,thread:x.thread,comment:x.comment,mention:x.mention}};
+    }
+    const variant=body?.variant_id?writer.findVariant(store,body.variant_id).variant:null;
+    const text=variant?.text??body?.text??(body?.style==='default'?writer.DEFAULT_PROMPTS:writer.NATURAL_PROMPTS)[entry.kind];
+    if(typeof text!=='string'||!text.trim())fail(422,'Give variant_id, text or style');
+    return {entry,variant,prompt:writer.render(text,writer.variables(entry,store,text))};
+  }
+
   // Per type: each prompt's target %, drafts, sends and Engain outcomes, with shares and rates.
   // Prompts that were deleted but still have drafts are listed with deleted:true.
   function promptStats(){
@@ -196,6 +213,28 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,openrouter_key:!!llmKeys().openrouter,featherless_key:!!llmKeys().featherless,shortlist:bench.SHORTLIST}),
     // Replace one type's prompt list: {"type":"thread","variants":[{"id"?,"name","text","weight"}]} (weights add up to 100).
     'POST /api/prompts':async(_,body)=>({type:body?.type,variants:writer.saveVariants(store,body?.type,body?.variants)}),
+    // One prompt at a time. Add: {"type","name","text"? or "style":"natural"|"default","provider","model","temperature"} (starts at 0%).
+    'POST /api/prompt-variants':async(_,body)=>writer.addVariant(store,body),
+    'GET /api/prompt-variants/:id':async(_,__,id)=>{const f=writer.findVariant(store,id);return {type:f.type,variant:f.variant};},
+    // Change any of name, text, provider, model, temperature. Percentages go through /api/prompts/weights.
+    'POST /api/prompt-variants/:id':async(_,body,id)=>writer.updateVariant(store,id,body),
+    'POST /api/prompt-variants/:id/delete':async(_,__,id)=>writer.deleteVariant(store,id),
+    // {"type":"thread","weights":{"<id or name>":60,"<id or name>":40}}; prompts not named go to 0%.
+    'POST /api/prompts/weights':async(_,body)=>writer.setWeights(store,body?.type,body?.weights),
+    // The prompt exactly as a model would get it, filled in with a real item. No model call.
+    'POST /api/prompts/preview':async(_,body)=>{const t=tryTarget(body);return {type:t.entry.kind,item:t.entry,prompt:t.prompt};},
+    // One draft from a prompt and model on a real item, without saving it anywhere or sending it.
+    'POST /api/prompts/try':async(_,body)=>{
+      const t=tryTarget(body),provider=body?.provider||t.variant?.provider||'openrouter';
+      const model=body?.model||t.variant?.model||(provider==='openrouter'?writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL:fail(422,'Give a Featherless model'));
+      const temperature=body?.temperature!=null?Number(body.temperature):t.variant?.temperature??0.7;
+      const r=await writer.complete({provider,model,prompt:t.prompt,temperature,maxTokens:provider==='featherless'?3000:1500,keys:llmKeys(),fetchImpl:writerOpts.fetchImpl});
+      return {type:t.entry.kind,item:t.entry,provider,model,temperature,prompt:t.prompt,text:r.text,finish_reason:r.finish_reason,latency_ms:r.latency_ms,
+        skipped:/^skip\.?$/i.test(r.text),disclosure:writer.checkDisclosure(r.text),flags:bench.flags(r.text).list};
+    },
+    // Models: the shortlist, plus a search of Featherless's public list with ?q=.
+    'GET /api/models':async q=>({default_openrouter_model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,shortlist:bench.SHORTLIST,
+      keys:{openrouter:!!llmKeys().openrouter,featherless:!!llmKeys().featherless},...(q.q?{featherless:await bench.searchModels(q.q)}:{})}),
     // Model test: the same Queue 1 items drafted by several models, compared blind. Never posts.
     'GET /api/bench':async()=>({runs:bench.runList(store),shortlist:bench.SHORTLIST,styles:Object.fromEntries(Object.entries(bench.STYLES).map(([k,v])=>[k,v.label])),
       saved_prompts:[...new Set(Object.values(writer.variants(store)).flat().map(v=>v.name))],keys:{openrouter:!!llmKeys().openrouter,featherless:!!llmKeys().featherless}}),
@@ -212,6 +251,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       store.db.prepare("update bench_drafts set status='pending' where run_id=? and status='failed'").run(v.id);
       store.db.prepare("update bench_runs set status='running',finished_at=null where id=?").run(v.id);draftBench(v.id);return bench.runView(store,v.id);},
     'GET /api/agent/queue2':async()=>queue.queue2List(store),
+    'GET /api/agent/queue2/:id':async(_,__,id)=>queue.queue2Item(store,id)||fail(404,'No such queue 2 entry'),
+    // Throw away an unsent Queue 2 entry (its Queue 1 item does not come back).
+    'POST /api/agent/queue2/:id/discard':async(_,__,id)=>{if(!store.discardQueue2(id))fail(409,'Only an existing, unsent entry can be discarded');return {ok:true,discarded:Number(id)};},
     'POST /api/agent/queue2/:id':async(_,body,id)=>queue.setQueue2Message(store,id,body?.message),
     'POST /api/agent/queue2/:id/send':async(_,body,id)=>{
       const {sendQueue2}=require('./send-queue2.cjs');
@@ -261,6 +303,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       return {counts,total:rows.length,items:rows.slice(0,lim).map(r=>({...r,history:store.taskEvents(r.task_id)}))};
     },
 
+    // Every route, for anyone driving this from a script. Full guide: docs/API.md.
+    'GET /api':async()=>({guide:'docs/API.md',auth:agentKey?'Authorization: Bearer <AGENT_API_KEY> (not needed on this machine for dashboard routes)':'This machine only (set AGENT_API_KEY to allow remote calls)',
+      routes:Object.keys(routes).sort((a,b)=>a.split(' ')[1].localeCompare(b.split(' ')[1]))}),
     'GET /api/status':async()=>{
       if(!projectId&&(mock||apiKey))await project().catch(()=>{});
       return {mock,engain_key:mock||!!apiKey,project_id:projectId||null,project_name:projectName,sources:SOURCES,active_run:active,
@@ -283,14 +328,19 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   };
 
   // Agent and cron routes need their bearer secret when one is configured, and always when
-  // called from another machine. Everything else (the dashboard) answers loopback only.
+  // called from another machine. The other API routes answer this machine freely and another
+  // machine with AGENT_API_KEY. The dashboard page itself is this machine only.
   function authorize(req,pathname){
     const local=LOOPBACK.has(req.socket?.remoteAddress);
     const secret=pathname.startsWith('/api/agent/')?agentKey:pathname.startsWith('/api/cron/')?cronSecret:undefined;
     if(pathname.startsWith('/api/agent/')||pathname.startsWith('/api/cron/')){
       if(secret){if(!bearer(req,secret))fail(401,'Missing or wrong bearer token');}
       else if(!local)fail(401,(pathname.startsWith('/api/agent/')?'AGENT_API_KEY':'CRON_SECRET')+' must be set to accept remote calls');
-    }else if(!local)fail(403,'The dashboard API only answers on this machine');
+    }else if(!local){
+      // Everything else is the dashboard's API: from another machine it needs AGENT_API_KEY.
+      if(!agentKey)fail(403,'The dashboard API only answers on this machine (set AGENT_API_KEY to allow remote calls)');
+      if(!bearer(req,agentKey))fail(401,'Missing or wrong bearer token');
+    }
   }
 
   async function handle(req,res){
