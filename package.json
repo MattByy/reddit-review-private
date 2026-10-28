@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "node --watch-path=server server/dev.cjs",
     "dev:mock": "node --watch-path=server server/dev.cjs --mock",
+    "setup:autonomous": "node scripts/setup-autonomous.js",
+    "auto-approve": "node scripts/auto-approve.js",
+    "auto-approve:dry": "DRY_RUN=true node scripts/auto-approve.js",
     "test:server": "node --test tests/dev-server.test.cjs",
     "test": "node checkrules.js && node checkpages.js && node --test tests/workflow.test.cjs tests/playbooks.test.cjs tests/automatic.test.cjs tests/session.test.cjs tests/messages.test.cjs tests/queued-decisions.test.cjs tests/writer.test.cjs tests/live-work.test.cjs tests/pool-check.test.cjs tests/pooled-smoke.test.cjs tests/library.test.cjs tests/transparency-unit.test.cjs tests/staged-conversation.test.cjs tests/pooled-blocking.test.cjs tests/human-review.test.cjs",
     "simulate": "node simulation/transparency-flow.cjs",
