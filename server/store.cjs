@@ -42,6 +42,9 @@ function open(file){
   const {migrateQueue2,createPacingTable}=require('./migrate-queue2.cjs');
   migrateQueue2(db);
   createPacingTable(db);
+  // Drafting and approval: which prompt and model wrote the message, and who approved it.
+  for(const [col,type] of [['prompt_used','text'],['model','text'],['write_status','text'],['write_error','text'],['written_at','text'],['approved_at','text'],['approved_by','text']])
+    if(!db.prepare("select 1 from pragma_table_info('queue2') where name=?").get(col))db.exec(`alter table queue2 add column ${col} ${type}`);
   // The first published-only table is folded into our_tasks.
   if(db.prepare("select 1 from sqlite_master where name='published'").get()){
     db.exec(`insert or ignore into our_tasks(task_id,type,status,verdict,reddit_url,thread_url,thread_id,content,subreddit,published_at,parent_task_id,labels,first_seen,last_seen,status_changed_at,published_seen_at)
@@ -167,7 +170,16 @@ function open(file){
       const parse=r=>r&&{...r,item:JSON.parse(r.item)};
       return id==null?db.prepare('select * from queue2 order by id desc').all().map(parse):parse(db.prepare('select * from queue2 where id=?').get(Number(id)));
     },
-    setQueue2Message(id,message,source){return db.prepare('update queue2 set message=?,message_source=?,updated_at=? where id=?').run(message,source,new Date().toISOString(),Number(id)).changes>0;},
+    // Any change to the text withdraws an earlier approval.
+    // A person's edit also clears a draft's truncated/skipped mark: the text is now theirs.
+    setQueue2Message(id,message,source){return db.prepare("update queue2 set message=?,message_source=?,approved_at=null,approved_by=null,write_status=case when write_status in ('truncated','skipped') then 'edited' else write_status end,write_error=null,updated_at=? where id=?").run(message,source,new Date().toISOString(),Number(id)).changes>0;},
+    setQueue2Draft(id,{message,prompt_used,model,write_status,write_error}){
+      const now=new Date().toISOString();
+      if(message!=null)db.prepare(`update queue2 set message=?,message_source='openrouter',prompt_used=?,model=?,write_status=?,write_error=?,written_at=?,approved_at=null,approved_by=null,updated_at=? where id=?`)
+        .run(message,prompt_used,model,write_status,write_error??null,now,now,Number(id));
+      else db.prepare('update queue2 set write_status=?,write_error=?,prompt_used=?,model=?,updated_at=? where id=?').run(write_status,write_error??null,prompt_used??null,model??null,now,Number(id));
+    },
+    approveQueue2(id,by){return db.prepare("update queue2 set approved_at=?,approved_by=?,updated_at=? where id=? and send_status='ready'").run(new Date().toISOString(),by??null,new Date().toISOString(),Number(id)).changes>0;},
     setQueueStatus(id,status,note){
       const r=db.prepare('update queue set status=?,note=?,updated_at=?,position=case when ?=\'queued\' then 1e9 else null end where item_id=?').run(status,note??null,new Date().toISOString(),status,id);
       return r.changes>0;

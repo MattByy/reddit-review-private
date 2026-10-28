@@ -192,8 +192,15 @@ function cleanMessage(m){
   const s=m.trim();if(!s)return null;if(s.length>10000)fail(422,'message is longer than 10000 characters');
   return s;
 }
+// Queue 2 entry as the API and dashboard see it: the item, its message and how it was written,
+// approval, and delivery state. `disclosure` is the same check the send step enforces.
 const queue2Entry=r=>r&&{queue2_id:r.id,item_id:r.item_id,status:r.kind,url:r.url,thread_url:r.thread_url,title:r.title,
-  message:r.message,message_source:r.message_source,created_by:r.created_by,created_at:r.created_at,updated_at:r.updated_at,item:r.item};
+  message:r.message,message_source:r.message_source,disclosure:require('./send-queue2.cjs').checkDisclosure(r.message),
+  write_status:r.write_status??null,write_error:r.write_error??null,model:r.model??null,prompt_used:r.prompt_used??null,written_at:r.written_at??null,
+  approved_at:r.approved_at??null,approved_by:r.approved_by??null,
+  send_status:r.send_status??'ready',delivery_mode:r.delivery_mode??null,poster_account:r.poster_account??null,user_account_id:r.user_account_id??null,
+  engain_task_id:r.engain_task_id??null,reddit_url:r.reddit_url??null,send_error:r.send_error??null,send_reason:r.send_reason??null,sent_at:r.sent_at??null,
+  created_by:r.created_by,created_at:r.created_at,updated_at:r.updated_at,item:r.item};
 
 // "Get next item": drop stale items, then move #1 from queue 1 to queue 2 with a message
 // (the one given, or a random placeholder). Nothing is added to queue 1 here; the jobs refill it.
@@ -255,4 +262,5 @@ function commentList(store,{q,brand,own,min_score=40,available,limit=100,offset=
 }
 const publishedList=store=>evaluate(store).published;
 
-module.exports={DEFAULTS,settings,saveSettings,evaluate,refreshQueue,claimNext,queue2List,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};
+const queue2Item=(store,id)=>queue2Entry(store.queue2(id));
+module.exports={DEFAULTS,settings,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};

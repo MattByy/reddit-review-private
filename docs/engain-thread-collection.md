@@ -128,6 +128,32 @@ An empty queue 1 returns `{"status":"empty","remaining":0}`.
 | `POST /api/agent/queue2/:id {"message":"…"}` | Replace an entry's message (`message_source` becomes `given`) |
 | `GET /api/agent/queue` | Queue 1 IDs, kinds and positions without moving anything |
 
+## Writing with OpenRouter, approving and sending
+
+Queue 2 messages are written by OpenRouter (`OPENROUTER_API_KEY` in `.env.local`; model `anthropic/claude-sonnet-5.5`, or `OPENROUTER_MODEL`). Nothing is sent until a person approves.
+
+**Prompts.** There is one prompt per item type: **thread** (a top-level comment), **comment** (a follow-up under our own published comment) and **mention** (a reply to a competitor-mention comment).
+
+- **Where to see and edit them:** the dashboard's **Prompts** tab, `GET`/`POST /api/prompts`, or `{"thread":null}` to reset one.
+- **What each prompt requires:** the Geonode disclosure ("I work at Geonode"), an on-topic and specific answer, no invented experiences or numbers, and no posing as an independent user.
+- **What the model sees:** the prompt is sent as the only message, with `{{variables}}` filled from the item. There is no hidden system prompt.
+- **Saved with each draft:** the exact filled-in prompt (`prompt_used`) and the model. The Queue 2 tab shows it under "Prompt used".
+
+**Flow.**
+
+1. `POST /api/agent/task {"write":true}` (the "Get next item & write with OpenRouter" button) moves #1 to Queue 2 and drafts its message. `POST /api/agent/queue2/:id/write` drafts or redrafts an existing entry.
+2. Review the draft on the Queue 2 tab. Editing it (`POST /api/agent/queue2/:id {"message"}`) withdraws any approval.
+3. `POST /api/agent/queue2/:id/approve {"mode":"pool"|"beta","userAccountId"?}` ("Approve & send") records the approval and sends to Engain through the existing send guards.
+
+**What can never be approved or sent:**
+
+- Placeholder messages.
+- Skipped drafts (the model answered SKIP).
+- Truncated drafts (`finish_reason: length`), until they are rewritten or edited.
+- Messages without the disclosure.
+- OpenRouter drafts that nobody approved.
+- Anything outside the posting limits (45 minutes between sends, 24 hours per subreddit, 20 per day).
+
 ## Scheduled jobs
 
 `npm run dev` runs two jobs inside the server (`JOBS=off` disables them). Each is also an HTTP route, so an outside cron can call it instead. Intervals are queue settings.

@@ -12,6 +12,7 @@ const {client}=require('./engain.cjs');
 const {open}=require('./store.cjs');
 const {collect,SOURCES}=require('./collect.cjs');
 const queue=require('./queue.cjs');
+const writer=require('./writer.cjs');
 
 const LOOPBACK=new Set(['127.0.0.1','::1','::ffff:127.0.0.1']);
 const digest=s=>createHash('sha256').update(String(s)).digest();
@@ -19,7 +20,9 @@ const bearer=(req,secret)=>timingSafeEqual(digest(String(req.headers?.authorizat
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
 function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectId=process.env.ENGAIN_PROJECT_ID,
-  agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,log=console.log}={}){
+  agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,openrouter={},log=console.log}={}){
+  // OpenRouter settings for the writer; tests pass {fetchImpl,apiKey}. Defaults come from the environment.
+  const writerOpts={...openrouter};
   const store=open(dbFile||path.join(root,'.data',mock?'dev-mock.db':'dev.db'));
   const engain=client(mock?{apiKey:'mock',fetchImpl:require('./mock.cjs').mockFetch,limits:false,log}:{apiKey,log});
   const live=new Map();let active=null,projectName=null;
@@ -105,7 +108,29 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   const routes={
     // Agent: take the next item off the queue. POST because every call removes an item.
     // Moves #1 of queue 1 into queue 2 with body.message, or a random placeholder message.
-    'POST /api/agent/task':async(_,body)=>queue.claimNext(store,body?.agent?String(body.agent).slice(0,80):null,{message:body?.message}),
+    // With {"write":true}, OpenRouter then drafts the message from the item's prompt (never sends).
+    'POST /api/agent/task':async(_,body)=>{
+      const r=queue.claimNext(store,body?.agent?String(body.agent).slice(0,80):null,{message:body?.message});
+      if(body?.write&&r.queue2){
+        try{await writer.writeQueue2(store,r.queue2.queue2_id,writerOpts);}catch(e){r.write_error=e.message;}
+        r.queue2=queue.queue2Item(store,r.queue2.queue2_id);
+      }
+      return r;
+    },
+    'POST /api/agent/queue2/:id/write':async(_,__,id)=>{await writer.writeQueue2(store,id,writerOpts);return queue.queue2Item(store,id);},
+    // Approve and send in one step: records who approved, then the send guards run as usual.
+    'POST /api/agent/queue2/:id/approve':async(_,body,id)=>{
+      const item=store.queue2(id);if(!item)fail(404,'No such queue 2 entry');
+      if(item.message_source==='random'||['skipped','truncated'].includes(item.write_status))fail(422,item.write_status==='truncated'?'This message is cut off. Rewrite or edit it first.':'There is no real message to approve. Write one first.');
+      if(!store.approveQueue2(id,body?.approved_by?String(body.approved_by).slice(0,80):'dashboard'))fail(409,'Only a ready item can be approved');
+      const {sendQueue2}=require('./send-queue2.cjs');
+      const sent=await sendQueue2({id,mode:body?.mode||'pool',userAccountId:body?.userAccountId,posterAccount:body?.posterAccount,override:body?.override},
+        {engain,store,projectId:await project(),log});
+      return {...sent,queue2:queue.queue2Item(store,id)};
+    },
+    'GET /api/prompts':async()=>({prompts:writer.prompts(store),defaults:writer.DEFAULT_PROMPTS,variables:writer.VARIABLES,
+      model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,openrouter_key:!!(writerOpts.apiKey??process.env.OPENROUTER_API_KEY)}),
+    'POST /api/prompts':async(_,body)=>writer.savePrompts(store,body),
     'GET /api/agent/queue2':async()=>queue.queue2List(store),
     'POST /api/agent/queue2/:id':async(_,body,id)=>queue.setQueue2Message(store,id,body?.message),
     'POST /api/agent/queue2/:id/send':async(_,body,id)=>{
@@ -185,8 +210,15 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         if(!LOOPBACK.has(req.socket?.remoteAddress))fail(403,'The dashboard only answers on this machine');
         return send(200,fs.readFileSync(path.join(__dirname,'public/index.html')),'text/html; charset=utf-8');
       }
-      const parts=u.pathname.split('/');let route=routes[req.method+' '+u.pathname],param;
-      if(!route&&parts.length>=4){route=routes[req.method+' '+parts.slice(0,-1).join('/')+'/:id'];param=decodeURIComponent(parts.at(-1));}
+      // Exact path first, then patterns with one :id segment anywhere (…/queue2/:id/send).
+      let route=routes[req.method+' '+u.pathname],param;
+      if(!route){
+        const parts=u.pathname.split('/');
+        for(let i=3;i<parts.length&&!route;i++){
+          const key=req.method+' '+[...parts.slice(0,i),':id',...parts.slice(i+1)].join('/');
+          if(routes[key]){route=routes[key];param=decodeURIComponent(parts[i]);}
+        }
+      }
       if(!route)return send(404,{error:'Not found'});
       authorize(req,u.pathname);
       let body=null;

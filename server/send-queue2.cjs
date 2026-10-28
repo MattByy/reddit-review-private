@@ -81,6 +81,11 @@ async function sendQueue2({id,mode,userAccountId,posterAccount,override},
     fail(422,'Cannot send: message starts with "Placeholder message:". Replace with real message first.');
   }
   
+  // Guard: an OpenRouter draft goes out only after a person approves it (editing withdraws approval).
+  if(item.write_status==='skipped')fail(422,'The writer skipped this item; there is no message to send.');
+  if(item.write_status==='truncated')fail(422,'This message was cut off at the length limit. Rewrite or edit it first.');
+  if(item.message_source==='openrouter'&&!item.approved_at)fail(409,'Approve this message before sending it.');
+
   // Guard: disclosure
   const disclosure=checkDisclosure(item.message);
   if(!disclosure.ok){
