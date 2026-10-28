@@ -178,10 +178,11 @@ $('#rebuild').onclick=async()=>{await api('/api/queue/refresh',{reset:true});ref
 $('#take').onclick=async()=>{const r=await api('/api/agent/task',{agent:'dashboard'});$('#taken').hidden=false;
   $('#taken').textContent=r.status==='empty'?r.message:`Moved ${r.task_id} to Queue 2 (#${r.queue2.queue2_id})\nurl: ${r.queue2.url}\nthread_url: ${r.queue2.thread_url}\nmessage (${r.queue2.message_source}): ${r.queue2.message}`;refresh();};
 const STATUS_EMOJI={ready:'⚪',sending:'🔵',submitted:'🟡',published:'🟢',failed:'🔴',cancelled:'⚫'};
-let betaAccounts=null;
+let betaAccounts=null,betaNote='';
 async function loadQueue2(){
   const r=await api('/api/agent/queue2');$('#q2count').textContent=r.count+' items';
-  if(betaAccounts===null){try{betaAccounts=((await api('/api/agent/beta-accounts')).accounts||[]).filter(a=>a.usable);}catch{betaAccounts=[];}}
+  if(betaAccounts===null){try{const b=await api('/api/agent/beta-accounts');betaAccounts=(b.accounts||[]).filter(a=>a.usable);betaNote=b.available?(betaAccounts.length?'':'No usable accounts in Engain Accounts.'):b.reason;}catch(e){betaAccounts=[];betaNote='Could not load your accounts: '+e.message;}}
+  $('#q2count').textContent=r.count+' items'+(betaNote?' · Own accounts unavailable: '+betaNote:'');
   $('#queue2').innerHTML=r.items.map(x=>{
     const id=x.queue2_id,ready=x.send_status==='ready',real=x.message_source!=='random'&&!['skipped','truncated'].includes(x.write_status);
     const canApprove=ready&&real&&x.disclosure.ok;
@@ -201,8 +202,9 @@ async function loadQueue2(){
     ${ready?`<div class="meta" style="margin-top:8px">
       <button class="ghost" onclick="writeQ2(${id})">${x.write_status==='written'?'Rewrite':'Write'} with OpenRouter</button>
       <button class="ghost" onclick="editQ2(${id})">Save edit</button>
-      ${canApprove?`<select id="mode-${id}" style="max-width:110px" onchange="document.getElementById('account-${id}').hidden=this.value!=='beta'"><option value="pool">Pooled</option>${betaAccounts.length?'<option value="beta">My account</option>':''}</select>
+      ${canApprove?`<select id="mode-${id}" style="max-width:130px" onchange="document.getElementById('account-${id}').hidden=this.value!=='beta';document.getElementById('poster-${id}').hidden=this.value!=='pool'"><option value="pool">Pooled</option>${betaAccounts.length?'<option value="beta">My account</option>':''}</select>
         <select id="account-${id}" style="max-width:200px" hidden>${betaAccounts.map(a=>`<option value="${esc(a.userAccountId)}">${esc(a.profileUsername||a.username||a.userAccountId)}</option>`).join('')}</select>
+        <label id="poster-${id}" style="display:inline;margin:0" title="Engain poster account 1-40 (2+ needs Engain's multi-account plan)">account # <input type="number" id="posternum-${id}" min="1" max="40" value="1" style="width:64px"></label>
         <button onclick="approveQ2(${id})">Approve &amp; send</button>`:`<span class="muted">${x.write_status==='truncated'?'Cut off: rewrite or edit it before approving':!real?'Write a message to approve it':!x.disclosure.ok?'Needs the Geonode disclosure before it can be approved':''}</span>`}
     </div>`:''}
     ${x.engain_task_id&&!x.reddit_url?`<button class="ghost" onclick="pollQ2(${id})" style="margin-top:4px">Refresh status</button>`:''}
@@ -216,6 +218,7 @@ window.approveQ2=id=>q2('Sending #'+id+' to Engain',async()=>{
   if(ta&&cur&&ta.value!==cur.message)throw Error('You edited the text: click “Save edit” first, then approve.');
   const mode=$('#mode-'+id)?.value||'pool',body={mode,approved_by:'dashboard'};
   if(mode==='beta')body.userAccountId=$('#account-'+id)?.value;
+  else{const n=Number($('#posternum-'+id)?.value||1);if(!Number.isInteger(n)||n<1||n>40)throw Error('Account # must be 1 to 40');if(n>=2)body.posterAccount=n;}
   const r=await api(`/api/agent/queue2/${id}/approve`,body);return `✓ Approved and sent #${id}: Engain task ${r.taskId} (${r.mode})`;});
 window.pollQ2=id=>q2('Checking #'+id,async()=>{const r=await api(`/api/agent/queue2/${id}/poll`,{});return `#${id}: ${r.status}${r.redditUrl?' → '+r.redditUrl:''}${r.reason?' ('+r.reason+')':''}`;});
 async function loadPrompts(){

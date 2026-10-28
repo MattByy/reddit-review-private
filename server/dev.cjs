@@ -147,7 +147,12 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       store.setQueue2Override(id,body.field,!!body.value);
       return {ok:true,id:Number(id),field:body.field,value:!!body.value};
     },
-    'GET /api/agent/beta-accounts':async()=>engain.betaAccounts(),
+    // Accounts-beta is a closed beta: when Engain has not enabled it for this key every route
+    // answers 404, which is reported as "not enabled" rather than as an error.
+    'GET /api/agent/beta-accounts':async()=>{
+      try{const r=await engain.betaAccounts();return {available:true,accounts:Array.isArray(r)?r:r.accounts||[]};}
+      catch(e){if(e.status===404||e.status===403)return {available:false,accounts:[],reason:`Engain Accounts (beta) is not enabled for this API key (HTTP ${e.status}). Ask your Engain account manager to enable it.`};throw e;}
+    },
     'GET /api/agent/project-id':async()=>({projectId:await project()}),
     'GET /api/agent/queue':async()=>{const v=queue.queueView(store,{history:0});return {count:v.count,items:v.items.map(({item_id,kind,position,score})=>({item_id,kind,position,score}))};},
     // Cron: the two jobs. They wait for the work to finish (a thread collection takes minutes).

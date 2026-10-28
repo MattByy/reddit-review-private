@@ -130,6 +130,27 @@ test('no sending limits: back-to-back sends to the same subreddit both go throug
   }finally{a.close();}
 });
 
+test('a pooled send can pick the poster account; own accounts are reported when unavailable',async()=>{
+  const mock=require('../server/mock.cjs'),saved=mock.tasks.length;
+  const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
+  try{
+    await ready(a);
+    const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
+    const r=await call(a,'POST',`/api/agent/queue2/${q.queue2_id}/approve`,{mode:'pool',posterAccount:7});
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));
+    assert.strictEqual(r.body.queue2.poster_account,7);
+    assert.strictEqual(mock.tasks.at(-1).posterAccount,7,'Engain received posterAccount 7');
+    const b=(await call(a,'GET','/api/agent/beta-accounts')).body;
+    assert.strictEqual(b.available,true);assert.ok(b.accounts.length>0);
+  }finally{mock.tasks.splice(saved);a.close();}
+  const off=createApp({dbFile:':memory:',log:()=>{},apiKey:'k',projectId:'p',agentKey:'',cronSecret:''});
+  off.engain.betaAccounts=async()=>{throw Object.assign(Error('Non-JSON response'),{status:404});};
+  try{
+    const b=(await call(off,'GET','/api/agent/beta-accounts')).body;
+    assert.strictEqual(b.available,false);assert.match(b.reason,/not enabled/);
+  }finally{off.close();}
+});
+
 test('prompts are visible and editable per type, and the edited one is used',async()=>{
   const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
   try{

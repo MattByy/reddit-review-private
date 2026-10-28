@@ -100,11 +100,12 @@ async function mockFetch(url,options={}){
   
   // Accounts beta
   if(u.pathname==='/api/v1/accounts-beta/accounts'&&method==='GET'){
-    return json([
-      {userAccountId:'acct_mock_1',username:'geonode_agent',karma:1337,accountAge:180,usable:true,isReadyForSelection:true,status:'active'},
-      {userAccountId:'acct_mock_2',username:'geonode_dev',karma:42,accountAge:90,usable:true,isReadyForSelection:true,status:'active'},
-      {userAccountId:'acct_mock_3',username:'geonode_test',karma:10,accountAge:7,usable:false,isReadyForSelection:false,status:'warming_up'}
-    ]);
+    // Shape per docs.engain.io (engain-accounts-openapi.json): {accounts:[…]}
+    return json({accounts:[
+      {userAccountId:'acct_mock_1',profileUsername:'geonode_agent',profileKarma:1337,profileAccountAgeDays:180,usable:true,isReadyForSelection:true,lifecycleStatus:'active',niche:'tech',isKarmaBuilding:false,tags:[]},
+      {userAccountId:'acct_mock_2',profileUsername:'geonode_dev',profileKarma:42,profileAccountAgeDays:90,usable:true,isReadyForSelection:true,lifecycleStatus:'active',niche:'tech',isKarmaBuilding:false,tags:[]},
+      {userAccountId:'acct_mock_3',profileUsername:'geonode_test',profileKarma:10,profileAccountAgeDays:7,usable:false,isReadyForSelection:false,lifecycleStatus:'warming',niche:'tech',isKarmaBuilding:true,tags:[]}
+    ]});
   }
   if(u.pathname==='/api/v1/accounts-beta/comments'&&method==='POST'){
     const body=JSON.parse(options.body);
