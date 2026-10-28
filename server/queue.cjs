@@ -148,7 +148,15 @@ function threadInfo(t){
     google_position:t.google_position,keywords:t.keywords,engain_reasons:t.reasons,
     subreddit_rules:t.subreddit_stats&&{moderation_level:t.subreddit_stats.moderationLevel??null,flags:t.subreddit_stats.ruleFlags||null,bot_bouncer:t.subreddit_stats.botBouncerStatus??null}};
 }
+// Every item carries `url` (exactly where the message goes: the thread, our comment or the
+// competitor comment) and `thread_url`, in both queues.
 function describe(q,ev){
+  const d=describeKind(q,ev);
+  const url=q.kind==='comment'?d.comment?.reddit_url:q.kind==='mention'?d.mention?.permalink:d.thread?.url;
+  const thread_url=q.kind==='comment'?d.comment?.thread_url||d.thread?.url:d.thread?.url;
+  return {url:url??null,thread_url:thread_url??null,...d};
+}
+function describeKind(q,ev){
   const t=ev.threadById[q.thread_id];
   if(q.kind==='comment'){
     const p=ev.publishedById[q.comment_id];
@@ -167,14 +175,47 @@ function describe(q,ev){
   return {status:'thread',action:'comment_on_thread',score:t?.rank.score??q.score_at_add,why:t&&{parts:t.rank.parts,flags:t.rank.flags},thread:threadInfo(t)};
 }
 
-// Agent entry point: drop stale items, take #1 off the queue and describe it. Claiming never
-// adds anything; the threads and comments jobs refill the queue.
-function claimNext(store,agent){
+// Stand-in messages until a writer supplies real ones. They are marked message_source 'random'
+// and say they are placeholders, so nothing downstream mistakes one for a reply to post.
+const PLACEHOLDERS=[
+  'Placeholder message: thanks for sharing this, useful thread.',
+  'Placeholder message: interesting point, worth testing before deciding.',
+  'Placeholder message: we ran into the same thing and solved it a different way.',
+  'Placeholder message: good question, the answer depends on volume.',
+  'Placeholder message: agreed on the main point, one detail to add.',
+  'Placeholder message: this matches what we have seen in practice.',
+];
+const randomMessage=()=>PLACEHOLDERS[Math.floor(Math.random()*PLACEHOLDERS.length)];
+function cleanMessage(m){
+  if(m==null||m==='')return null;
+  if(typeof m!=='string')fail(422,'message must be a string');
+  const s=m.trim();if(!s)return null;if(s.length>10000)fail(422,'message is longer than 10000 characters');
+  return s;
+}
+const queue2Entry=r=>r&&{queue2_id:r.id,item_id:r.item_id,status:r.kind,url:r.url,thread_url:r.thread_url,title:r.title,
+  message:r.message,message_source:r.message_source,created_by:r.created_by,created_at:r.created_at,updated_at:r.updated_at,item:r.item};
+
+// "Get next item": drop stale items, then move #1 from queue 1 to queue 2 with a message
+// (the one given, or a random placeholder). Nothing is added to queue 1 here; the jobs refill it.
+function claimNext(store,agent,{message}={}){
+  const given=cleanMessage(message);
   const {ev}=refreshQueue(store,{addThreads:false,addComments:false});
-  const item=store.claimFirst(agent);
+  let described;
+  const item=store.moveFirstToQueue2(agent,first=>{
+    described=describe(first,ev);
+    return {url:described.url,thread_url:described.thread_url,title:described.thread?.title??null,
+      message:given??randomMessage(),message_source:given?'given':'random',item:{item_id:first.item_id,...described}};
+  });
   store.writeQueue(store.queued());
-  if(!item)return {status:'empty',remaining:0,message:'The queue is empty. Run a collection or loosen the queue settings.'};
-  return {task_id:item.item_id,...describe(item,ev),claimed_at:item.claimed_at,claimed_by:item.claimed_by,remaining:store.queued().length};
+  if(!item)return {status:'empty',remaining:0,message:'Queue 1 is empty. The threads and comments jobs refill it.'};
+  return {task_id:item.item_id,...described,claimed_at:item.claimed_at,claimed_by:item.claimed_by,remaining:store.queued().length,
+    queue2:queue2Entry(store.queue2(item.queue2_id))};
+}
+const queue2List=store=>{const rows=store.queue2();return {count:rows.length,items:rows.map(queue2Entry)};};
+function setQueue2Message(store,id,message){
+  const m=cleanMessage(message);if(!m)fail(422,'message is required');
+  if(!store.setQueue2Message(id,m,'given'))fail(404,'No such queue 2 entry');
+  return queue2Entry(store.queue2(id));
 }
 
 function queueView(store,{history=30}={}){
@@ -214,4 +255,4 @@ function commentList(store,{q,brand,own,min_score=40,available,limit=100,offset=
 }
 const publishedList=store=>evaluate(store).published;
 
-module.exports={DEFAULTS,settings,saveSettings,evaluate,refreshQueue,claimNext,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};
+module.exports={DEFAULTS,settings,saveSettings,evaluate,refreshQueue,claimNext,queue2List,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};

@@ -94,24 +94,39 @@ Threads are added **at the end**, only while the queue holds fewer than `queue_t
 
 The `min_*` and `max_age_days` values are live settings, changed with `GET` or `POST /api/settings` or the dashboard.
 
-## Agent API
+## Agent API: queue 1 → queue 2
 
-`POST /api/agent/task` with optional body `{"agent":"writer-1"}`. It refreshes the queue, takes item #1 off it for good and returns it. Positions renumber, and a claimed thread never comes back. It is POST because every call removes an item, so a retry or link preview with GET must not consume work.
+There are two queues:
+
+- **Queue 1** is the work to do: threads, our published comments and (optionally) competitor mentions.
+- **Queue 2** holds items that have a message attached.
+
+Every item in both queues carries `url` and `thread_url`:
+
+| Type | `url` (where the message goes) | `thread_url` |
+| --- | --- | --- |
+| thread | the thread | the thread |
+| comment | our published comment | its thread |
+| mention | the competitor comment | its thread |
+
+`POST /api/agent/task` with optional body `{"agent":"writer-1","message":"…"}` drops stale items, then moves #1 of queue 1 into queue 2 with a message in one step. The message is the one given (`message_source: "given"`) or a random placeholder (`message_source: "random"`, text starting "Placeholder message:").
+
+The item never returns to queue 1; its history notes "Moved to queue 2 (#id)". An invalid message is rejected before anything moves.
 
 ```json
-{"task_id":"t_1x8eium","status":"thread","action":"comment_on_thread","score":35,
- "why":{"parts":{...},"flags":[...]},
- "thread":{"id","url","title","body","subreddit","created_at","age_days","num_comments","comments_per_day","visits_per_month","engain_reasons","subreddit_rules":{...}},
- "claimed_at":"…","remaining":69}
-
-{"task_id":"c_k17…","status":"comment","action":"reply_to_comment","score":92,
- "comment":{"id","permalink","body","author","brand","sentiment","created_at","age_days"},
- "thread":{…same as above…},"remaining":68}
-
-{"status":"empty","remaining":0,"message":"…"}
+{"task_id":"p_k976…","status":"comment","url":"https://reddit.com/r/langchain/comments/1gbl08x/comment/p9gtyiu",
+ "thread_url":"https://reddit.com/r/langchain/comments/1gbl08x/code_included_…","comment":{…},"thread":{…},"remaining":58,
+ "queue2":{"queue2_id":5,"status":"comment","url":"…","thread_url":"…","title":"Code included: …",
+   "message":"Placeholder message: …","message_source":"random","item":{…full queue 1 item…}}}
 ```
 
-`GET /api/agent/queue` lists the queued item IDs, kinds and positions without claiming anything.
+An empty queue 1 returns `{"status":"empty","remaining":0}`.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/agent/queue2` | Queue 2, newest first |
+| `POST /api/agent/queue2/:id {"message":"…"}` | Replace an entry's message (`message_source` becomes `given`) |
+| `GET /api/agent/queue` | Queue 1 IDs, kinds and positions without moving anything |
 
 ## Scheduled jobs
 

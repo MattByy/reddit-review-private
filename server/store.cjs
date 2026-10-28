@@ -32,6 +32,10 @@ function open(file){
     create table if not exists task_events(id integer primary key autoincrement, task_id text not null, from_status text, to_status text not null,
       from_verdict text, to_verdict text not null, at text not null);
     create index if not exists task_events_task on task_events(task_id);
+    create table if not exists queue2(
+      id integer primary key autoincrement, item_id text not null unique, kind text not null, thread_id text,
+      url text, thread_url text, title text, message text not null, message_source text not null,
+      item text not null, created_by text, created_at text not null, updated_at text not null);
   `);
   // The first published-only table is folded into our_tasks.
   if(db.prepare("select 1 from sqlite_master where name='published'").get()){
@@ -140,13 +144,25 @@ function open(file){
       }catch(e){db.exec('rollback');throw e;}
     },
     resetQueue(){db.exec("delete from queue where status='queued'");},
-    // Takes the first queued item off the queue; the caller refreshes positions afterwards.
-    claimFirst(agent){
+    // Moves the first queued item to queue 2 with a message, in one transaction. build(first)
+    // returns the queue 2 fields; the caller refreshes positions afterwards.
+    moveFirstToQueue2(agent,build){
       const first=db.prepare("select * from queue where status='queued' order by position limit 1").get();if(!first)return null;
-      const now=new Date().toISOString();
-      db.prepare("update queue set status='claimed',position=null,claimed_at=?,claimed_by=?,updated_at=? where item_id=? and status='queued'").run(now,agent??null,now,first.item_id);
-      return {...first,status:'claimed',claimed_at:now,claimed_by:agent??null};
+      const now=new Date().toISOString(),q2=build(first);
+      db.exec('begin');
+      try{
+        const id=Number(db.prepare(`insert into queue2(item_id,kind,thread_id,url,thread_url,title,message,message_source,item,created_by,created_at,updated_at)
+          values(?,?,?,?,?,?,?,?,?,?,?,?)`).run(first.item_id,first.kind,first.thread_id,q2.url??null,q2.thread_url??null,q2.title??null,q2.message,q2.message_source,JSON.stringify(q2.item),agent??null,now,now).lastInsertRowid);
+        db.prepare("update queue set status='claimed',position=null,claimed_at=?,claimed_by=?,updated_at=?,note=? where item_id=? and status='queued'").run(now,agent??null,now,'Moved to queue 2 (#'+id+')',first.item_id);
+        db.exec('commit');
+        return {...first,status:'claimed',claimed_at:now,claimed_by:agent??null,queue2_id:id};
+      }catch(e){db.exec('rollback');throw e;}
     },
+    queue2(id){
+      const parse=r=>r&&{...r,item:JSON.parse(r.item)};
+      return id==null?db.prepare('select * from queue2 order by id desc').all().map(parse):parse(db.prepare('select * from queue2 where id=?').get(Number(id)));
+    },
+    setQueue2Message(id,message,source){return db.prepare('update queue2 set message=?,message_source=?,updated_at=? where id=?').run(message,source,new Date().toISOString(),Number(id)).changes>0;},
     setQueueStatus(id,status,note){
       const r=db.prepare('update queue set status=?,note=?,updated_at=?,position=case when ?=\'queued\' then 1e9 else null end where item_id=?').run(status,note??null,new Date().toISOString(),status,id);
       return r.changes>0;

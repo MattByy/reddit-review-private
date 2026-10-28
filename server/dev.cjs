@@ -104,7 +104,10 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
 
   const routes={
     // Agent: take the next item off the queue. POST because every call removes an item.
-    'POST /api/agent/task':async(_,body)=>queue.claimNext(store,body?.agent?String(body.agent).slice(0,80):null),
+    // Moves #1 of queue 1 into queue 2 with body.message, or a random placeholder message.
+    'POST /api/agent/task':async(_,body)=>queue.claimNext(store,body?.agent?String(body.agent).slice(0,80):null,{message:body?.message}),
+    'GET /api/agent/queue2':async()=>queue.queue2List(store),
+    'POST /api/agent/queue2/:id':async(_,body,id)=>queue.setQueue2Message(store,id,body?.message),
     'GET /api/agent/queue':async()=>{const v=queue.queueView(store,{history:0});return {count:v.count,items:v.items.map(({item_id,kind,position,score})=>({item_id,kind,position,score}))};},
     // Cron: the two jobs. They wait for the work to finish (a thread collection takes minutes).
     'POST /api/cron/threads':async()=>runJob('threads'),
@@ -167,7 +170,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         return send(200,fs.readFileSync(path.join(__dirname,'public/index.html')),'text/html; charset=utf-8');
       }
       const parts=u.pathname.split('/');let route=routes[req.method+' '+u.pathname],param;
-      if(!route&&parts.length===4){route=routes[req.method+' '+parts.slice(0,3).join('/')+'/:id'];param=decodeURIComponent(parts[3]);}
+      if(!route&&parts.length>=4){route=routes[req.method+' '+parts.slice(0,-1).join('/')+'/:id'];param=decodeURIComponent(parts.at(-1));}
       if(!route)return send(404,{error:'Not found'});
       authorize(req,u.pathname);
       let body=null;

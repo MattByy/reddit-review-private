@@ -203,6 +203,39 @@ test('agent task: each call returns item #1 and removes it for good',async()=>{
   }finally{a.close();}
 });
 
+test('get next item moves #1 from queue 1 to queue 2 with a message and both URLs',async()=>{
+  const {a}=await collected();
+  try{
+    const before=await queued(a),first=before[0];
+    assert.ok(first.url&&first.thread_url,'queue 1 items carry their URL');
+    let r=(await call(a,'POST','/api/agent/task',{agent:'writer-1'})).body;
+    assert.strictEqual(r.task_id,first.item_id);
+    const q2=r.queue2;
+    assert.ok(q2.queue2_id);assert.strictEqual(q2.status,'thread');
+    assert.strictEqual(q2.url,first.url);assert.strictEqual(q2.url,first.thread.url);assert.strictEqual(q2.thread_url,first.thread_url);
+    assert.strictEqual(q2.message_source,'random');assert.match(q2.message,/^Placeholder message:/);
+    assert.strictEqual(q2.item.thread.title,first.thread.title);
+    assert.ok(!(await queued(a)).some(i=>i.item_id===first.item_id),'gone from queue 1');
+    const hist=(await call(a,'GET','/api/queue?history=10')).body.recent.find(i=>i.item_id===first.item_id);
+    assert.strictEqual(hist.note,'Moved to queue 2 (#'+q2.queue2_id+')');
+
+    for(let i=0;i<10&&r.status!=='comment';i++)r=(await call(a,'POST','/api/agent/task',{message:'  Our own words  '})).body;
+    assert.strictEqual(r.status,'comment');
+    assert.strictEqual(r.queue2.url,r.comment.reddit_url,'for a comment, the URL is our published comment');
+    assert.strictEqual(r.queue2.thread_url,r.comment.thread_url);
+    assert.strictEqual(r.queue2.message,'Our own words');assert.strictEqual(r.queue2.message_source,'given');
+
+    const list=(await call(a,'GET','/api/agent/queue2')).body;
+    assert.strictEqual(list.count,list.items.length);assert.ok(list.count>=2);
+    assert.strictEqual(list.items.at(-1).queue2_id,q2.queue2_id,'oldest last');
+    const upd=(await call(a,'POST','/api/agent/queue2/'+q2.queue2_id,{message:'Written by the agent'})).body;
+    assert.strictEqual(upd.message,'Written by the agent');assert.strictEqual(upd.message_source,'given');assert.strictEqual(upd.url,q2.url);
+    assert.strictEqual((await call(a,'POST','/api/agent/queue2/999',{message:'x'})).status,404);
+    assert.strictEqual((await call(a,'POST','/api/agent/queue2/'+q2.queue2_id,{message:'  '})).status,422);
+    assert.strictEqual((await call(a,'POST','/api/agent/task',{message:42})).status,422);
+  }finally{a.close();}
+});
+
 test('claims and refreshes never pull older backlog comments into the queue',async()=>{
   const {a}=await collected();
   try{
