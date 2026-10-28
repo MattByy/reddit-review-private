@@ -61,7 +61,7 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
 </section>
 </aside>
 <section>
-  <div class="tabs"><button data-tab="queue" class="on">Queue 1</button><button data-tab="queue2">Queue 2 (with message)</button><button data-tab="prompts">Prompts</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="ours">Our comments</button><button data-tab="history">Taken / removed</button></div>
+  <div class="tabs"><button data-tab="queue" class="on">Queue 1</button><button data-tab="queue2">Queue 2 (with message)</button><button data-tab="sent">Sent (tracking)</button><button data-tab="prompts">Prompts</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="ours">Our comments</button><button data-tab="history">Taken / removed</button></div>
   <div id="tab-queue">
     <div class="filters"><span class="muted" id="qcount"></span><button id="checkpub" class="ghost">Check published now</button><button id="refreshq" class="ghost">Refresh queue</button><button id="rebuild" class="ghost">Rebuild from scratch</button><button id="takewrite">Get next item &amp; write with OpenRouter</button><button id="take" class="ghost">Get next item (placeholder)</button></div>
     <pre id="taken" hidden></pre>
@@ -83,6 +83,12 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
     <div class="filters"><span class="muted" id="q2count"></span></div>
     <div id="queue2"></div>
   </div>
+  <div id="tab-sent" hidden>
+    <div class="filters"><select id="sentdays" style="max-width:160px"><option value="1">Last 24 hours</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="0">All time</option></select>
+      <span class="muted" id="sentinfo"></span><button id="checksent" class="ghost">Check statuses now</button></div>
+    <div id="senttiles" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:12px"></div>
+    <div id="sent"></div>
+  </div>
   <div id="tab-prompts" hidden>
     <p class="muted" id="promptinfo"></p>
     <div id="prompts"></div>
@@ -98,9 +104,9 @@ blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--cmt);backgr
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cls=s=>s>=60?'hi':s>=35?'mid':'lo',fmt=n=>n==null?'–':Math.round(n).toLocaleString();
 async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j;}
-const LABELS={queue_target:'Queue size (threads fill up to this)',threads_every_minutes:'Threads job every (min)',comments_every_minutes:'Comments job every (min)',thread_collect_minutes:'Ask Engain for threads if older than (min)',comment_limit:'New comments per refresh',comment_position:'Insert comments at',max_age_days:'Max age (days)',min_comments:'Min thread comments',min_thread_score:'Min thread score',min_comment_score:'Min comment score',mention_comments:'Competitor mentions (0 off, 1 on)'};
+const LABELS={tracker_every_minutes:'Sent-status checker every (min)',queue_target:'Queue size (threads fill up to this)',threads_every_minutes:'Threads job every (min)',comments_every_minutes:'Comments job every (min)',thread_collect_minutes:'Ask Engain for threads if older than (min)',comment_limit:'New comments per refresh',comment_position:'Insert comments at',max_age_days:'Max age (days)',min_comments:'Min thread comments',min_thread_score:'Min thread score',min_comment_score:'Min comment score',mention_comments:'Competitor mentions (0 off, 1 on)'};
 let tab='queue';
-for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','queue2','prompts','comments','threads','ours','history'])$('#tab-'+t).hidden=t!==tab;refresh();};
+for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','queue2','sent','prompts','comments','threads','ours','history'])$('#tab-'+t).hidden=t!==tab;refresh();};
 
 async function status(){const s=await api('/api/status');$('#mode').textContent=s.mock?'mock data':'live Engain'+(s.project_name?' · '+s.project_name:'');
   $('#count').textContent=`${s.threads} threads · ${s.comments} mention comments · ${s.queued} queued`;
@@ -149,7 +155,7 @@ async function loadThreads(){
     ${t.rank.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}${t.eligibility.reasons.map(f=>`<div class="flag">✕ ${esc(f)}</div>`).join('')}
     <details><summary>Why this score</summary>${why(t.rank.parts)}${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}</details></div></div>`).join('');
 }
-async function refresh(){status();try{await({queue:loadQueue,queue2:loadQueue2,prompts:loadPrompts,comments:loadComments,threads:loadThreads,ours:loadOurs,history:loadHistory})[tab]();loadJobs();}catch(e){$('#progress').textContent='Error: '+e.message;}}
+async function refresh(){status();try{await({queue:loadQueue,queue2:loadQueue2,sent:loadSent,prompts:loadPrompts,comments:loadComments,threads:loadThreads,ours:loadOurs,history:loadHistory})[tab]();loadJobs();}catch(e){$('#progress').textContent='Error: '+e.message;}}
 
 async function runJob(name,btn){
   btn.disabled=true;$('#progress').textContent='Running '+name+' job… (a thread collection takes a few minutes)';
@@ -217,6 +223,26 @@ window.approveQ2=id=>q2('Sending #'+id+' to Engain',async()=>{
   const r=await api(`/api/agent/queue2/${id}/approve`,{approved_by:'dashboard'});
   return `✓ Sent #${id}: Engain task ${r.taskId} · `+(r.account?`from your account ${r.account.username?'u/'+r.account.username:r.account.id}${r.account.niche?' ('+r.account.niche+')':''}`:'through the Engain pool');});
 window.pollQ2=id=>q2('Checking #'+id,async()=>{const r=await api(`/api/agent/queue2/${id}/poll`,{});return `#${id}: ${r.status}${r.redditUrl?' → '+r.redditUrl:''}${r.reason?' ('+r.reason+')':''}`;});
+// Sent (tracking): everything sent from Queue 2 with Engain's latest status. Pending items are
+// re-checked by the tracker job; settled ones keep their status.
+const BCOL={pending:'mid',published:'hi',automod_removed:'lo',mod_removed:'lo',deleted:'lo',parent_removed:'lo',cancelled:'',error:'lo'};
+async function loadSent(){
+  if(betaAccounts===null){try{const b=await api('/api/agent/beta-accounts');allAccounts=b.accounts||[];betaAccounts=allAccounts.filter(a=>a.usable);}catch{betaAccounts=[];}}
+  const v=await api('/api/sent?days='+$('#sentdays').value);
+  $('#sentinfo').textContent=`${v.total} sent`+(v.published_rate==null?'':` · ${v.published_rate}% of settled ones published`);
+  $('#senttiles').innerHTML=Object.entries(v.labels).map(([k,l])=>`<div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+    <div class="score ${BCOL[k]}" style="text-align:left">${v.counts[k]}</div><div class="muted" style="font-size:12px">${esc(l)}</div></div>`).join('');
+  const t=x=>x?esc(String(x).slice(0,16).replace('T',' ')):'–';
+  $('#sent').innerHTML=v.items.map(x=>`<div class="item"><div class="score ${BCOL[x.bucket]}" style="font-size:11px">${esc(x.bucket_label)}</div><div>
+    <div class="kind ${esc(x.kind)}">${esc(KIND[x.kind]||x.kind)} · #${x.queue2_id}${x.checking?' · <span class="mid">checking</span>':''}</div>
+    <div class="meta"><a href="${esc(x.thread_url||x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a>${x.reddit_url?` · <a href="${esc(x.reddit_url)}" target="_blank" rel="noopener">live comment</a>`:''}</div>
+    <div class="meta"><span>sent ${t(x.sent_at)}</span><span>${x.delivery_mode==='beta'?'from your account '+esc(accountName(x.user_account_id)):'Engain pool'}</span>${x.prompt_variant_name?`<span>prompt “${esc(x.prompt_variant_name)}”</span>`:''}<span>Engain: ${esc(x.engain_status||'–')}</span><span>last checked ${t(x.status_checked_at)}</span></div>
+    <div class="meta">${x.history.map(h=>`${t(h.at)} ${esc(h.from_status||'sent')} → ${esc(h.to_status)}`).join(' · ')}</div>
+  </div></div>`).join('')||'<p class="muted">Nothing sent in this period.</p>';
+}
+$('#sentdays').addEventListener('input',refresh);
+$('#checksent').onclick=()=>q2('Checking sent statuses with Engain',async()=>{const r=await api('/api/cron/tracker',{});
+  return r.action==='none'?r.reason:`Checked ${r.checked}: ${r.changed.length} changed, ${r.still_pending} still pending`+(r.errors?.length?' · errors: '+r.errors.join('; '):'');});
 // Prompt variants: several prompts per type, each with a percentage of the drafts.
 let PV=null;
 const PTYPES={thread:'Thread prompts: first comment in a thread',comment:'Comment prompts: follow-up under our own published comment',mention:'Mention prompts: reply to a competitor mention (only when mentions are on)'};

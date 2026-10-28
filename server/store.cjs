@@ -3,6 +3,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
 
+// Engain statuses that are not final yet; anything else settles a sent item.
+const PENDING_STATUSES=new Set(['submitted','pending','scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned']);
 const JSON_COLS=['sources','keywords','reasons','mentions','ranking_keywords'];
 
 function open(file){
@@ -43,8 +45,12 @@ function open(file){
   migrateQueue2(db);
   createPacingTable(db);
   // Drafting and approval: which prompt and model wrote the message, and who approved it.
-  for(const [col,type] of [['prompt_used','text'],['model','text'],['write_status','text'],['write_error','text'],['written_at','text'],['approved_at','text'],['approved_by','text'],['prompt_variant_id','text'],['prompt_variant_name','text']])
+  for(const [col,type] of [['prompt_used','text'],['model','text'],['write_status','text'],['write_error','text'],['written_at','text'],['approved_at','text'],['approved_by','text'],['prompt_variant_id','text'],['prompt_variant_name','text'],
+    ['engain_status','text'],['status_checked_at','text'],['status_changed_at','text'],['settled','integer']])
     if(!db.prepare("select 1 from pragma_table_info('queue2') where name=?").get(col))db.exec(`alter table queue2 add column ${col} ${type}`);
+  // Status history of everything sent from Queue 2 (the tracking list).
+  db.exec(`create table if not exists queue2_events(id integer primary key autoincrement,queue2_id integer not null,from_status text,to_status text not null,at text not null);
+    create index if not exists queue2_events_q on queue2_events(queue2_id);`);
   // v2 task list: where a task was posted from, and by which of our accounts.
   for(const col of ['posted_from','account_handle'])
     if(!db.prepare("select 1 from pragma_table_info('our_tasks') where name=?").get(col))db.exec(`alter table our_tasks add column ${col} text`);
@@ -219,11 +225,37 @@ function open(file){
       const parse=r=>r&&{...r,item:JSON.parse(r.item)};
       return parse(db.prepare('select * from queue2 where id=?').get(Number(id)));
     },
+    // A send enters the tracking list as pending with Engain's first status.
     recordQueue2Send(id,taskId,response){
-      const now=new Date().toISOString();
-      db.prepare(`update queue2 set send_status='submitted',engain_task_id=?,sent_at=?,updated_at=?
-        where id=?`).run(taskId,now,now,Number(id));
+      const now=new Date().toISOString(),status=String(response?.status||'submitted');
+      db.exec('begin');
+      try{
+        db.prepare(`update queue2 set send_status='submitted',engain_task_id=?,sent_at=?,engain_status=?,status_changed_at=?,status_checked_at=?,settled=0,updated_at=?
+          where id=?`).run(taskId,now,status,now,now,now,Number(id));
+        db.prepare('insert into queue2_events(queue2_id,from_status,to_status,at) values(?,?,?,?)').run(Number(id),null,status,now);
+        db.exec('commit');
+      }catch(e){db.exec('rollback');throw e;}
     },
+    // Records Engain's current status for a sent item. A change is appended to queue2_events; an
+    // item leaves the "to check" set once its status is final (it keeps the status, it is not removed).
+    trackStatus(id,status,redditUrl){
+      const row=db.prepare('select id,engain_status,status_changed_at from queue2 where id=?').get(Number(id));if(!row)return null;
+      const now=new Date().toISOString(),pending=PENDING_STATUSES.has(status),changed=row.engain_status!==status;
+      const send=status==='published'?'published':status==='cancelled'?'cancelled':pending?'submitted':'failed';
+      db.exec('begin');
+      try{
+        if(changed)db.prepare('insert into queue2_events(queue2_id,from_status,to_status,at) values(?,?,?,?)').run(row.id,row.engain_status??null,status,now);
+        db.prepare(`update queue2 set engain_status=?,settled=?,status_checked_at=?,status_changed_at=?,send_status=?,reddit_url=coalesce(?,reddit_url),
+            send_reason=case when ? in ('failed','cancelled') then ? else send_reason end,
+            published_at=case when ?='published' then coalesce(published_at,?) else published_at end,updated_at=? where id=?`)
+          .run(status,pending?0:1,now,changed?now:row.status_changed_at,send,redditUrl??null,send,'Engain status: '+status,status,now,now,row.id);
+        db.exec('commit');
+      }catch(e){db.exec('rollback');throw e;}
+      return {changed,from:row.engain_status??null,to:status};
+    },
+    toCheck:()=>db.prepare("select id,engain_task_id from queue2 where engain_task_id is not null and coalesce(settled,0)=0 order by sent_at").all(),
+    sentSince(since){return db.prepare('select * from queue2 where engain_task_id is not null and (? is null or sent_at>=?) order by sent_at desc').all(since,since).map(r=>({...r,item:JSON.parse(r.item)}));},
+    queue2Events:id=>db.prepare('select from_status,to_status,at from queue2_events where queue2_id=? order by id').all(Number(id)),
     failQueue2Send(id,reason,error){
       const now=new Date().toISOString();
       db.prepare(`update queue2 set send_status='failed',send_reason=?,send_error=?,failed_at=?,updated_at=?

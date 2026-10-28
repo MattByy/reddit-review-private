@@ -151,6 +151,11 @@ async function mockFetch(url,options={}){
     const n=tasks.filter(t=>t.accountId===decodeURIComponent(v2check[1])&&t.threadUrl===q.get('threadUrl')).length;
     return json({exists:n>0,count:n});
   }
+  if(u.pathname==='/api/v2/tasks/bulk'&&method==='GET'){
+    const ids=new Set(String(q.get('ids')||'').split(',').filter(Boolean));
+    if(!ids.size||ids.size>100)return json({error:{code:'VALIDATION_ERROR'}},400);
+    return json({page:tasks.filter(t=>ids.has(t._id||t.id)).map(t=>({postedFrom:t.accountId?'dedicated':'pool',account:null,...t}))});
+  }
   const v2task=u.pathname.match(/^\/api\/v2\/tasks\/([^/]+)$/);
   if(v2task&&method==='GET'){
     const t=tasks.find(t=>(t._id||t.id)===decodeURIComponent(v2task[1]));

@@ -1,0 +1,87 @@
+// The tracking list of everything sent from Queue 2, with the mock Engain.
+const test=require('node:test');
+const assert=require('node:assert');
+const {createApp}=require('../server/dev.cjs');
+const mock=require('../server/mock.cjs');
+
+async function call(a,method,url,body){
+  let status,out;const req=(async function*(){if(body)yield JSON.stringify(body);})();
+  Object.assign(req,{method,url,socket:{remoteAddress:'127.0.0.1'},headers:{}});
+  await a.handle(req,{writeHead(s){status=s;},end(v){out=JSON.parse(v);}});
+  return {status,body:out};
+}
+function sendFive(a){
+  const ids=[];
+  for(let n=0;n<5;n++){
+    a.store.db.prepare(`insert into queue2(item_id,kind,thread_id,url,thread_url,title,message,message_source,item,created_at,updated_at)
+      values(?,'thread',?,?,?,?,'Disclosure: I work at Geonode. A useful note.','given','{}',datetime('now'),datetime('now'))`)
+      .run('t_track'+n,'track'+n,`https://www.reddit.com/r/proxies/comments/track${n}/`,`https://www.reddit.com/r/proxies/comments/track${n}/`,'Thread '+n);
+    ids.push(a.store.db.prepare('select id from queue2 where item_id=?').get('t_track'+n).id);
+  }
+  return ids;
+}
+
+test('sent items are tracked until their status is final, and keep it afterwards',async()=>{
+  const saved=JSON.parse(JSON.stringify(mock.tasks));
+  const a=createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:''});
+  try{
+    assert.strictEqual((await call(a,'POST','/api/cron/tracker',{})).body.action,'none','nothing sent yet');
+    const ids=sendFive(a),task={};
+    for(const id of ids){
+      const r=await call(a,'POST',`/api/agent/queue2/${id}/approve`,{mode:'pool'});
+      assert.strictEqual(r.status,200,JSON.stringify(r.body));task[id]=r.body.taskId;
+    }
+    let v=(await call(a,'GET','/api/sent')).body;
+    assert.strictEqual(v.total,5);assert.strictEqual(v.counts.pending,5);assert.strictEqual(v.published_rate,null);
+    assert.ok(v.items.every(i=>i.checking&&i.history.length===1&&i.history[0].from_status===null));
+
+    // Engain's outcomes arrive.
+    const set=(id,status,extra={})=>Object.assign(mock.tasks.find(t=>t._id===task[id]||t.id===task[id]),{status,...extra});
+    set(ids[0],'published',{redditUrl:'https://www.reddit.com/r/proxies/comments/track0/x/ok1/'});
+    set(ids[1],'automod_removed');set(ids[2],'mod_removed');set(ids[3],'user_deleted');set(ids[4],'in_review');
+    let job=(await call(a,'POST','/api/cron/tracker',{})).body;
+    assert.strictEqual(job.action,'checked');assert.strictEqual(job.checked,5);assert.strictEqual(job.still_pending,1);
+    assert.deepStrictEqual(job.changed.map(c=>c.to).sort(),['automod_removed','in_review','mod_removed','published','user_deleted']);
+
+    v=(await call(a,'GET','/api/sent')).body;
+    assert.deepStrictEqual(v.counts,{pending:1,published:1,automod_removed:1,mod_removed:1,deleted:1,parent_removed:0,cancelled:0,error:0});
+    assert.strictEqual(v.total,5,'nothing leaves the list');assert.strictEqual(v.published_rate,25);
+    const pub=v.items.find(i=>i.queue2_id===ids[0]);
+    assert.strictEqual(pub.bucket_label,'Published');assert.strictEqual(pub.checking,false);assert.ok(pub.reddit_url);
+    assert.deepStrictEqual(pub.history.map(h=>h.to_status),[pub.history[0].to_status,'published']);
+    assert.strictEqual(v.items.find(i=>i.queue2_id===ids[1]).bucket_label,'Removed by AutoModerator');
+    const q2=(await call(a,'GET','/api/agent/queue2')).body.items.find(i=>i.queue2_id===ids[1]);
+    assert.strictEqual(q2.send_status,'failed');assert.match(q2.send_reason,/automod_removed/);
+
+    // Only the pending one is asked about again; it publishes later.
+    set(ids[4],'published',{redditUrl:'https://www.reddit.com/r/proxies/comments/track4/x/ok5/'});
+    job=(await call(a,'POST','/api/cron/tracker',{})).body;
+    assert.strictEqual(job.checked,1);assert.strictEqual(job.still_pending,0);
+    assert.strictEqual((await call(a,'POST','/api/cron/tracker',{})).body.action,'none');
+    v=(await call(a,'GET','/api/sent')).body;
+    assert.strictEqual(v.counts.published,2);assert.strictEqual(v.counts.pending,0);assert.strictEqual(v.published_rate,40);
+    assert.deepStrictEqual(v.items.find(i=>i.queue2_id===ids[4]).history.map(h=>h.to_status).slice(-2),['in_review','published']);
+
+    // The window counts by send time.
+    a.store.db.prepare("update queue2 set sent_at=? where id=?").run(new Date(Date.now()-10*86400000).toISOString(),ids[0]);
+    assert.strictEqual((await call(a,'GET','/api/sent?days=7')).body.total,4);
+    assert.strictEqual((await call(a,'GET','/api/sent?days=30')).body.total,5);
+    assert.strictEqual((await call(a,'GET','/api/sent?days=0')).body.total,5,'0 = all time');
+  }finally{mock.tasks.splice(0,mock.tasks.length,...saved);a.close();}
+});
+
+test('the comments job and the status button update the same tracking entry',async()=>{
+  const saved=JSON.parse(JSON.stringify(mock.tasks));
+  const a=createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:''});
+  try{
+    const [id]=sendFive(a);
+    const t=(await call(a,'POST',`/api/agent/queue2/${id}/approve`,{mode:'pool'})).body.taskId;
+    Object.assign(mock.tasks.find(x=>x.id===t||x._id===t),{status:'in_queue'});
+    assert.strictEqual((await call(a,'POST',`/api/agent/queue2/${id}/poll`,{})).body.status,'pending');
+    Object.assign(mock.tasks.find(x=>x.id===t||x._id===t),{status:'mod_removed'});
+    await call(a,'POST','/api/cron/comments',{});
+    const v=(await call(a,'GET','/api/sent')).body,i=v.items.find(x=>x.queue2_id===id);
+    assert.strictEqual(i.bucket,'mod_removed');assert.strictEqual(i.checking,false);
+    assert.deepStrictEqual(i.history.map(h=>h.to_status).slice(1),['in_queue','mod_removed']);
+  }finally{mock.tasks.splice(0,mock.tasks.length,...saved);a.close();}
+});

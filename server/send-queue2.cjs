@@ -149,27 +149,12 @@ async function pollQueue2Status(id,{engain,store,log=console.log}){
 
     const status=String(task.status||'unknown').toLowerCase();
     const redditUrl=task.redditUrl||task.resultUrl||null;
-    
-    // Map to our status
-    if(status==='published'&&redditUrl){
-      store.updateQueue2Status(id,'published',redditUrl,null);
-      log(`✓ Queue2 #${id} published: ${redditUrl}`);
-      return {status:'published',redditUrl,engainStatus:status};
-    }
-    
-    const failed=['automod_removed','mod_removed','user_deleted','main_comment_removed_deleted',
-      'error','failed','cancelled','canceled','rejected','post_url_broken','thread_archived_locked','subreddit_private_banned'];
-    
-    if(failed.includes(status)){
-      store.updateQueue2Status(id,'failed',null,`Engain status: ${status}`);
-      log(`✗ Queue2 #${id} failed: ${status}`);
-      return {status:'failed',reason:status,engainStatus:status};
-    }
-    
-    // Still pending
-    store.updateQueue2Status(id,'submitted',null,null);
-    return {status:'pending',engainStatus:status};
-    
+    const c=store.trackStatus(id,status,redditUrl);
+    if(c?.changed)log(`Queue2 #${id}: ${c.from||'sent'} -> ${status}`);
+    return {status:status==='published'?'published':['cancelled','canceled'].includes(status)?'cancelled':
+      ['scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned','pending'].includes(status)?'pending':'failed',
+      engainStatus:status,redditUrl,reason:status};
+
   }catch(e){
     log(`Poll error for queue2 #${id}: ${e.message}`);
     return {status:'error',reason:e.message};

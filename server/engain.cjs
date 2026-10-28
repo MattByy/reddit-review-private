@@ -56,6 +56,7 @@ function client({apiKey,fetchImpl=fetch,limits=true,log=()=>{}}={}){
     v2CreateComment:body=>call('POST','/api/v2/tasks/comment',{body}),
     v2ThreadCheck:(accountId,q)=>call('GET',`/api/v2/accounts/${encodeURIComponent(accountId)}/thread-check`,{query:q}),
     v2GetTask:taskId=>call('GET',`/api/v2/tasks/${encodeURIComponent(taskId)}`),
+    v2TasksBulk:(projectId,ids)=>call('GET','/api/v2/tasks/bulk',{query:{projectId,ids:ids.join(',')}}),
   };
 }
 

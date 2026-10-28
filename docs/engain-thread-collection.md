@@ -189,6 +189,28 @@ The response's `account` says which account posted, and the Queue 2 tab shows it
 
 `/api/agent/beta-accounts` (the name is kept for compatibility) returns `{available, accounts:[{userAccountId, username, niche, usable, …}]}`. Approve with `{"mode":"dedicated","userAccountId":"…"}`; `mode:"beta"` is still accepted and is what the database stores.
 
+## Sent (tracking list)
+
+Everything sent from Queue 2 goes on a tracking list with Engain's latest status. Items are never removed: an item whose status is final keeps that status and stops being checked.
+
+- **On send:** the item enters the list as pending with Engain's first status, and that is history event #1.
+- **Checker job (`tracker`):** runs every `tracker_every_minutes` (default 10). It asks Engain about every item not final yet, with `GET /api/v2/tasks/bulk?projectId&ids` (100 per call). Each status change is appended to `queue2_events`. The comments job and the "Refresh status" button record changes the same way.
+- **Outcome buckets:**
+
+| Bucket | Engain statuses |
+| --- | --- |
+| Pending | `in_review`, `in_queue`, `scheduled`, `waiting_for_mod_approval`, `waiting_for_parent_comment` |
+| Published | `published` |
+| Removed by AutoModerator | `automod_removed` |
+| Removed by moderators | `mod_removed` (the subreddit's mod team) |
+| Deleted (account or Engain) | `user_deleted` |
+| Parent comment removed | `main_comment_removed_deleted` |
+| Cancelled | `cancelled` |
+| Error / other | anything else |
+
+- **`GET /api/sent?days=7`** (`1`, `7`, `30`; `0` = all time) returns counts per bucket for items **sent** in that window, the publish rate (published ÷ settled), and every item with its history. `POST /api/cron/tracker` runs the checker now.
+- **Dashboard:** the **Sent (tracking)** tab shows the window selector, a count tile per bucket, and the list.
+
 ## Scheduled jobs
 
 `npm run dev` runs two jobs inside the server (`JOBS=off` disables them). Each is also an HTTP route, so an outside cron can call it instead. Intervals are queue settings.

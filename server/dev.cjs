@@ -13,6 +13,7 @@ const {open}=require('./store.cjs');
 const {collect,SOURCES}=require('./collect.cjs');
 const queue=require('./queue.cjs');
 const writer=require('./writer.cjs');
+const tracker=require('./tracker.cjs');
 
 const LOOPBACK=new Set(['127.0.0.1','::1','::ffff:127.0.0.1']);
 const digest=s=>createHash('sha256').update(String(s)).digest();
@@ -78,6 +79,13 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         added_comments:s.queue?.added_comments??0,removed_from_queue:s.queue?.removed??0,queued:store.queued().length,errors:s.errors||[]};
     },
   };
+  // Ask Engain about every sent item that has no final status yet (one bulk call per 100).
+  jobs.tracker=async()=>{
+    const open=store.toCheck().length;
+    if(!open)return {action:'none',reason:'Nothing sent is waiting for a final status'};
+    const r=await tracker.checkSent(store,engain,await project(),{log});
+    return {action:'checked',...r};
+  };
   const running={};
   async function runJob(name){
     if(running[name])return {action:'skipped',reason:name+' job is already running'};
@@ -101,7 +109,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     };
     plan('comments','comments_every_minutes',3000);
     plan('threads','threads_every_minutes',8000);
-    log('jobs scheduled: comments every '+queue.settings(store).comments_every_minutes+' min, threads every '+queue.settings(store).threads_every_minutes+' min');
+    plan('tracker','tracker_every_minutes',5000);
+    const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min`);
   }
   const jobStatus=()=>Object.fromEntries(Object.keys(jobs).map(n=>[n,{running:!!running[n],next_run:next[n]||null,last:store.kv('job_'+n)}]));
 
@@ -207,6 +216,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     // Cron: the two jobs. They wait for the work to finish (a thread collection takes minutes).
     'POST /api/cron/threads':async()=>runJob('threads'),
     'POST /api/cron/comments':async()=>runJob('comments'),
+    'POST /api/cron/tracker':async()=>runJob('tracker'),
+    // The tracking list and its counts over the last ?days= days (default 7, 0 = all time).
+    'GET /api/sent':async q=>tracker.sentView(store,{days:q.days??7}),
     'POST /api/cron/check-published':async()=>runJob('comments'),
     // Cron: a full collection regardless of queue size, or {collect:false} to only refresh.
     'POST /api/cron/refresh':async(_,body)=>{
