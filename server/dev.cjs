@@ -55,10 +55,17 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       return {started:true,...await startCollect(opts)};
     },
 
+    // Cron: cheap check (task list only) that puts newly published comments of ours into the queue.
+    'POST /api/cron/check-published':async()=>{
+      if(active)return {started:false,reason:'Collection run '+active+' is still in progress'};
+      return {started:true,...await startCollect({sources:['tasks'],enrich:false})};
+    },
+    'GET /api/published':async()=>queue.publishedList(store),
+
     'GET /api/status':async()=>{
       if(!projectId&&(mock||apiKey))await project().catch(()=>{});
       return {mock,engain_key:mock||!!apiKey,project_id:projectId||null,project_name:projectName,sources:SOURCES,active_run:active,
-        threads:store.threads().length,comments:store.comments().length,queued:store.queued().length,agent_auth:!!agentKey,cron_auth:!!cronSecret};
+        threads:store.threads().length,comments:store.comments().length,published:store.published().length,queued:store.queued().length,agent_auth:!!agentKey,cron_auth:!!cronSecret};
     },
     'GET /api/settings':async()=>queue.settings(store),
     'POST /api/settings':async(_,body)=>queue.saveSettings(store,body),

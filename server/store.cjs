@@ -25,6 +25,10 @@ function open(file){
     create index if not exists comments_thread on comments(thread_id);
     create table if not exists engaged(thread_id text primary key, subreddit text, statuses text not null, updated_at text not null);
     create table if not exists settings(key text primary key, value text not null);
+    create table if not exists published(
+      task_id text primary key, type text, reddit_url text not null, thread_url text, thread_id text, content text,
+      subreddit text, published_at text, parent_task_id text, labels text not null default '[]',
+      first_seen text not null, last_seen text not null);
   `);
   // The first queue held threads only; the mixed thread/comment queue replaces it.
   if(db.prepare("select 1 from pragma_table_info('queue') where name='thread_id'").get()&&!db.prepare("select 1 from pragma_table_info('queue') where name='kind'").get())db.exec('drop table queue');
@@ -33,6 +37,8 @@ function open(file){
     position integer, status text not null default 'queued', score_at_add integer,
     added_at text not null, updated_at text not null, claimed_at text, claimed_by text, note text);
     create index if not exists queue_thread on queue(thread_id);`);
+  // Competitor-mention items were called "comment" before our own published comments took that name.
+  db.exec("update queue set kind='mention' where kind='comment' and item_id like 'c\\_%' escape '\\'");
   // A run cannot survive a restart; close any left open so it does not look in progress.
   db.prepare('update runs set finished_at=?,summary=? where finished_at is null').run(new Date().toISOString(),JSON.stringify({errors:['Interrupted: the server stopped during this run']}));
   const parse=row=>{if(!row)return row;for(const k of JSON_COLS)row[k]=JSON.parse(row[k]);return row;};
@@ -77,6 +83,15 @@ function open(file){
       return old?'updated':'added';
     },
     comments:()=>db.prepare('select * from comments').all(),
+    // Our own comments that Engain has published. first_seen marks when this server first saw
+    // them published, which is what decides whether a queue refresh treats them as new.
+    savePublished(p){
+      const now=new Date().toISOString(),old=db.prepare('select first_seen from published where task_id=?').get(p.task_id);
+      const row={...p,labels:JSON.stringify(p.labels||[]),first_seen:old?.first_seen||now,last_seen:now},keys=Object.keys(row);
+      db.prepare(`insert or replace into published(${keys.join(',')}) values(${keys.map(()=>'?').join(',')})`).run(...keys.map(k=>row[k]??null));
+      return old?'updated':'added';
+    },
+    published:()=>db.prepare('select * from published order by published_at desc').all().map(r=>({...r,labels:JSON.parse(r.labels)})),
     // Replaces engagement state wholesale: Engain's task list is the source of truth.
     setEngaged(map){
       const now=new Date().toISOString();db.exec('delete from engaged');

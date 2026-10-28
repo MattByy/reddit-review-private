@@ -43,14 +43,28 @@ Each thread shows the breakdown. The weights are a starting point to tune. By de
 
 ## The work queue
 
-The queue is an ordered list of two kinds of item:
+Every queue item has a **type**, and the type decides where it enters:
 
-- **thread**: write a top-level comment on a thread (action `comment_on_thread`).
-- **comment**: reply to a comment that mentions a competitor (action `reply_to_comment`).
+| Type | What it is | Enters at | Agent action |
+| --- | --- | --- | --- |
+| `thread` | A thread to comment on (opportunities, Smart Search) | the **end** | `comment_on_thread` |
+| `comment` | One of **our own comments that Engain has published** | **position 5**, pushing everything from there down | `follow_up_on_our_comment` |
+| `mention` | A competitor-mention comment (off unless `mention_comments=1`) | right after the new comments | `reply_to_comment` |
 
-Threads fill the queue in score order. Comments first seen since the last refresh are inserted at `comment_position` (default 5), best first, at most `comment_limit` (default 20) per refresh. Everything from that position moves down: with 20 new comments, the thread at #6 moves to #26. The comment backlog is only used when the queue is first built or rebuilt with `reset`.
+**Published check.** `POST /api/cron/check-published` reads only Engain's task list, which is a few requests. Every task with `status: published` and a `redditUrl` is saved with these fields:
 
-Each refresh also tops threads back up to `thread_target` (default 50) at the end, and drops items that stopped qualifying (the reason is kept in the history).
+- `task_id`, `type` (comment or reply)
+- `reddit_url` (our comment), `thread_url`
+- `content`, `subreddit`, `published_at`
+- `parent_task_id` (for replies), `labels`
+
+The thread title comes from collected data, or from the thread URL's slug.
+
+Comments this server sees for the first time since the last refresh go in at #5, newest first, at most `comment_limit` per refresh. With 20 new comments, the thread at #6 moves to #26. A comment published more than `max_age_days` ago is not queued, and a comment that was claimed, done or skipped never comes back.
+
+Engain does not return replies under our comment or its current votes. Reddit's JSON answers 403 from here.
+
+Threads are topped back up to `thread_target` (default 50) **at the end**. Items that stop qualifying are dropped, and the reason is kept in the history.
 
 ### Rules
 
@@ -105,12 +119,14 @@ The `min_*` and `max_age_days` values are live settings, changed with `GET` or `
 
 A full collection takes several minutes at Engain's 30 requests/min. Hourly works. Mentions and opportunities are the parts that change.
 
+Run `check-published` often (every 10–15 minutes) and `refresh` hourly.
+
 ## Auth
 
 | Route | Rule |
 | --- | --- |
 | `/api/agent/*` | `Authorization: Bearer $AGENT_API_KEY` when the key is set. Without a key, only this machine may call. |
-| `/api/cron/*` | `Authorization: Bearer $CRON_SECRET`, same rule. |
+| `/api/cron/*` (`refresh`, `check-published`) | `Authorization: Bearer $CRON_SECRET`, same rule. |
 | Everything else (dashboard) | This machine only. |
 
 The server listens on `127.0.0.1` by default. `HOST=0.0.0.0` (for a remote agent or cron runner) refuses to start unless both `AGENT_API_KEY` and `CRON_SECRET` are set.

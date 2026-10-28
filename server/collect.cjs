@@ -148,6 +148,13 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
         if(!ACTIVE.has(t.status)&&!REMOVED.has(t.status))continue;
         const ref=threadRef(t.threadUrl||t.redditUrl);if(!ref)continue;
         const e=map.get(ref.thread_id)||{subreddit:t.subreddit||ref.subreddit,statuses:[]};e.statuses.push(t.status);map.set(ref.thread_id,e);
+        // Our published comments and replies become follow-up items in the queue.
+        if(t.status==='published'&&t.redditUrl&&['comment','reply'].includes(t.type)){
+          const r=store.savePublished({task_id:t._id||t.id,type:t.type,reddit_url:t.redditUrl,thread_url:t.threadUrl||null,thread_id:ref.thread_id,
+            content:String(t.content||'').slice(0,10000),subreddit:t.subreddit||ref.subreddit,published_at:t.publishedAt||null,
+            parent_task_id:t.parentTaskId||null,labels:Array.isArray(t.labels)?t.labels:[]});
+          summary[r==='added'?'published_new':'published_known']=(summary[r==='added'?'published_new':'published_known']||0)+1;
+        }
       }
       store.setEngaged(map);summary.engaged_threads=map.size;summary.per_source.tasks_read=tasks.length;
     });
