@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 /**
- * Queue2 → Engain Dry-Run Mapper (CORRECTED)
+ * Queue2 → Engain Dry-Run Mapper (UPDATED)
  * 
  * Reads the local dev server's queue2 SQLite table and shows what WOULD be sent
- * to Engain for each item, WITHOUT actually sending anything.
+ * to Engain for each item using BOTH pooled and accounts-beta delivery modes.
  * 
  * This script:
  * 1. Opens the dev server's SQLite database (.data/dev.db or .data/dev-mock.db)
  * 2. Fetches all queue2 items
- * 3. Maps each to the Engain request payload
- * 4. REFUSES to map placeholder messages (message_source='random')
- * 5. Shows what's missing (userAccountId, disclosure, etc.)
+ * 3. Maps each to BOTH pooled and beta Engain payloads
+ * 4. Shows what's missing or blocked (disclosure, pacing, etc.)
  * 
  * Usage:
  *   node scripts/q2-dry-run.cjs
@@ -109,7 +108,7 @@ function checkDisclosure(message) {
 function analyzeGaps(item, urlAnalysis, disclosure) {
   const gaps = [];
   
-  // Critical gaps
+  // Critical blockers
   if (item.message_source === 'random') {
     gaps.push('❌ BLOCKER: Placeholder message (message_source=random) - CANNOT SEND');
   }
@@ -118,17 +117,29 @@ function analyzeGaps(item, urlAnalysis, disclosure) {
     gaps.push(`❌ BLOCKER: ${disclosure.reason} - transparency violation`);
   }
   
-  // Missing required fields
-  gaps.push('❌ MISSING: userAccountId (which Engain account to post from)');
-  gaps.push('❌ MISSING: projectId (may be in config but not in item)');
+  // Status check
+  if (item.send_status && item.send_status !== 'ready') {
+    gaps.push(`✅ Already processed: send_status=${item.send_status}`);
+    if (item.reddit_url) {
+      gaps.push(`✅ Published at: ${item.reddit_url}`);
+    }
+    if (item.send_error) {
+      gaps.push(`❌ Error: ${item.send_error}`);
+    }
+  }
   
-  // Missing safety gates
-  gaps.push('⚠️  NO CHECK: Duplicate send protection (no status tracking)');
-  gaps.push('⚠️  NO CHECK: Rate limiting (45min global / 24h per subreddit)');
-  gaps.push('⚠️  NO CHECK: Thread already engaged (one account per thread)');
-  gaps.push('⚠️  NO CHECK: Parent still exists (for replies)');
-  gaps.push('⚠️  NO CHECK: Engain rule validation');
-  gaps.push('⚠️  NO CHECK: Forbidden phrases ("85,000", "we own the network")');
+  // Implementation status
+  if (!item.send_status) {
+    gaps.push('⚠️  Row needs migration: missing send_status column');
+  } else if (item.send_status === 'ready') {
+    gaps.push('✅ IMPLEMENTED: Disclosure check active');
+    gaps.push('✅ IMPLEMENTED: Placeholder rejection active');
+    gaps.push('✅ IMPLEMENTED: Status tracking (ready/sending/submitted/published/failed)');
+    gaps.push('✅ IMPLEMENTED: Pacing (45min global, 24h/subreddit, 20/day)');
+    gaps.push('✅ IMPLEMENTED: Beta thread-check gate');
+    gaps.push('✅ IMPLEMENTED: Idempotency/reservation locking');
+    gaps.push('📝 Manual send required: POST /api/agent/queue2/{id}/send {mode,userAccountId|posterAccount}');
+  }
   
   return gaps;
 }
@@ -221,11 +232,34 @@ function main() {
       console.log(`   ❌ ${disclosure.reason}`);
     }
     
-    // Engain Payload
-    console.log(`\n📤 Engain Request Payload (IF sent):`);
+    // Engain Payloads
+    console.log(`\n📤 Engain Request Payloads (IF sent):`);
+    
+    // Pooled mode
+    console.log(`\n   🏊 POOLED MODE:`);
+    if (item.kind === 'thread') {
+      console.log(`   POST /api/v1/tasks/comment`);
+      console.log(`   {`);
+      console.log(`     "projectId": "<FROM CONFIG>",`);
+      console.log(`     "url": "${item.url || '<MISSING>'}",`);
+      console.log(`     "content": ${JSON.stringify(truncate(item.message, 50))},`);
+      console.log(`     "posterAccount": 1  // optional, 1-40`);
+      console.log(`   }`);
+    } else {
+      console.log(`   POST /api/v1/tasks/reply`);
+      console.log(`   {`);
+      console.log(`     "projectId": "<FROM CONFIG>",`);
+      console.log(`     "url": "${item.url || '<MISSING>'}",  // comment permalink`);
+      console.log(`     "content": ${JSON.stringify(truncate(item.message, 50))},`);
+      console.log(`     "posterAccount": 1  // optional, 1-40`);
+      console.log(`   }`);
+    }
+    
+    // Beta mode
+    console.log(`\n   🧪 BETA MODE:`);
     console.log(`   POST /api/v1/accounts-beta/comments`);
     console.log(`   {`);
-    console.log(`     "userAccountId": "<MISSING - MUST BE PROVIDED>",`);
+    console.log(`     "userAccountId": "<SELECT FROM ACCOUNTS>",`);
     console.log(`     "targetUrl": "${item.url || '<MISSING>'}",`);
     console.log(`     "body": ${JSON.stringify(truncate(item.message, 50))}`);
     console.log(`   }`);
@@ -277,19 +311,29 @@ function main() {
   console.log(`   • No rate limiting (can exceed Reddit/Engain limits)`);
   console.log(`   • No safety gates (transparency, rules, duplicate checks)`);
   
-  console.log(`\n🔧 Recommended Next Steps:\n`);
-  console.log(`1. Replace placeholder messages:`);
-  console.log(`   POST http://127.0.0.1:3000/api/agent/queue2/:id {"message":"real message"}`);
+  console.log(`\n🔧 Send System Status:\n`);
+  console.log(`✅ IMPLEMENTED:`);
+  console.log(`   • Queue2 send columns (delivery_mode, user_account_id, poster_account, send_status, etc.)`);
+  console.log(`   • Engain client methods (pooled tasks + accounts-beta)`);
+  console.log(`   • server/send-queue2.cjs with all safety guards`);
+  console.log(`   • POST /api/agent/queue2/:id/send {mode,userAccountId|posterAccount}`);
+  console.log(`   • Dashboard Queue 2 tab with send controls`);
+  console.log(`   • Disclosure check (requires GeoNode mention)`);
+  console.log(`   • Pacing limits (45min global, 24h/subreddit, 20/day)`);
+  console.log(`   • Status polling and tracking`);
   console.log(``);
-  console.log(`2. Add accounts-beta methods to server/engain.cjs`);
+  console.log(`📝 TO USE:`);
+  console.log(`   1. Run dev server: npm run dev (or npm run dev:mock)`);
+  console.log(`   2. Open dashboard: http://127.0.0.1:3000/`);
+  console.log(`   3. Go to Queue 2 tab`);
+  console.log(`   4. For each ready item, select mode (pooled/beta) and account, then click Send`);
+  console.log(`   5. Poll status with "Refresh status" button to get Reddit URL`);
   console.log(``);
-  console.log(`3. Create server/send-queue2.cjs with:`);
-  console.log(`   - Placeholder rejection (message_source === 'random')`);
-  console.log(`   - Disclosure check (requires GeoNode mention)`);
-  console.log(`   - Account parameter (userAccountId required)`);
-  console.log(`   - Status tracking (sent_at, engain_task_id, status columns)`);
-  console.log(``);
-  console.log(`4. DO NOT auto-send until all safety gates are ported\n`);
+  console.log(`⚠️  BEFORE FIRST REAL SEND:`);
+  console.log(`   • Set ENGAIN_API_KEY in .env.local (real key, not mock)`);
+  console.log(`   • Verify disclosure in all messages`);
+  console.log(`   • Choose appropriate delivery mode and account`);
+  console.log(`   • Test with mock mode first: npm run dev:mock\n`);
   
   if (!SHOW_PLACEHOLDERS && items.some(i => i.message_source === 'random')) {
     console.log(`💡 Use --show-placeholders to see placeholder items\n`);

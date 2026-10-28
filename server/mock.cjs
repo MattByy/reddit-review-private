@@ -68,6 +68,67 @@ async function mockFetch(url,options={}){
       moderationLevel:(h%20)*5,moderationReasons:['Mock moderation level'],ruleFlags:{bansSelfPromotion:h%3===0,bansLinks:h%4===0,hasKarmaOrAgeGate:h%5===0,holdsPostsForApproval:false},
       botBouncerStatus:h%7===0?'installed':'not_installed'});
   }
+  
+  // Pooled task creation
+  if(u.pathname==='/api/v1/tasks/comment'&&method==='POST'){
+    const body=JSON.parse(options.body);
+    const tid='task_c_'+Date.now();
+    const task={_id:tid,id:tid,type:'comment',status:'pending',threadUrl:body.url,content:body.content,posterAccount:body.posterAccount||1,labels:[],createdAt:new Date().toISOString(),subreddit:body.url?.split('/')[4]||'unknown'};
+    tasks.push(task);
+    return json({id:tid,status:'pending',message:'Mock comment task created'});
+  }
+  if(u.pathname==='/api/v1/tasks/reply'&&method==='POST'){
+    const body=JSON.parse(options.body);
+    const tid='task_r_'+Date.now();
+    const task={_id:tid,id:tid,type:'reply',status:'pending',threadUrl:body.url,content:body.content,posterAccount:body.posterAccount||1,labels:[],createdAt:new Date().toISOString(),subreddit:body.url?.split('/')[4]||'unknown'};
+    tasks.push(task);
+    return json({id:tid,status:'pending',message:'Mock reply task created'});
+  }
+  if(u.pathname.match(/^\/api\/v1\/tasks\/(.+)$/)&&method==='GET'){
+    const tid=u.pathname.split('/').pop();
+    const task=tasks.find(t=>t._id===tid||t.id===tid);
+    if(!task)return json({error:'Task not found'},404);
+    return json(task);
+  }
+  if(u.pathname.match(/^\/api\/v1\/tasks\/(.+)\/cancel$/)&&method==='POST'){
+    const tid=u.pathname.split('/')[4];
+    const task=tasks.find(t=>t._id===tid||t.id===tid);
+    if(!task)return json({error:'Task not found'},404);
+    task.status='cancelled';
+    return json({ok:true,status:'cancelled'});
+  }
+  
+  // Accounts beta
+  if(u.pathname==='/api/v1/accounts-beta/accounts'&&method==='GET'){
+    return json([
+      {userAccountId:'acct_mock_1',username:'geonode_agent',karma:1337,accountAge:180,usable:true,isReadyForSelection:true,status:'active'},
+      {userAccountId:'acct_mock_2',username:'geonode_dev',karma:42,accountAge:90,usable:true,isReadyForSelection:true,status:'active'},
+      {userAccountId:'acct_mock_3',username:'geonode_test',karma:10,accountAge:7,usable:false,isReadyForSelection:false,status:'warming_up'}
+    ]);
+  }
+  if(u.pathname==='/api/v1/accounts-beta/comments'&&method==='POST'){
+    const body=JSON.parse(options.body);
+    const tid='comment_task_'+Date.now();
+    const task={taskId:tid,id:tid,userAccountId:body.userAccountId,targetUrl:body.targetUrl,body:body.body,status:'pending',actionType:'comment',createdAt:new Date().toISOString()};
+    tasks.push(task);
+    return json({ok:true,mode:'submitted',taskId:tid,status:'pending',actionType:'comment'});
+  }
+  if(u.pathname==='/api/v1/accounts-beta/comments'&&method==='GET'){
+    const betaTasks=tasks.filter(t=>t.actionType==='comment');
+    return json(betaTasks.slice(0,100));
+  }
+  if(u.pathname==='/api/v1/accounts-beta/comments/thread-check'&&method==='GET'){
+    // Always return no existing comment for mock
+    return json({hasExistingComment:false,threadUrl:q.get('threadUrl')});
+  }
+  if(u.pathname.match(/^\/api\/v1\/accounts-beta\/comments\/(.+)\/cancel$/)&&method==='POST'){
+    const tid=u.pathname.split('/')[5];
+    const task=tasks.find(t=>t.taskId===tid||t.id===tid);
+    if(!task)return json({error:'Task not found'},404);
+    task.status='cancelled';
+    return json({ok:true,status:'cancelled'});
+  }
+  
   return json({error:'Not mocked: '+u.pathname},404);
 }
 
