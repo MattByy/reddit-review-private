@@ -205,8 +205,11 @@ Everything sent from Queue 2 goes on a tracking list with Engain's latest status
 | Removed by moderators | `mod_removed` (the subreddit's mod team) |
 | Deleted (account or Engain) | `user_deleted` |
 | Parent comment removed | `main_comment_removed_deleted` |
+| Not posted (thread or subreddit problem) | `post_url_broken`, `thread_archived_locked`, `subreddit_private_banned`, `incorrect_missing_flair` |
 | Cancelled | `cancelled` |
-| Error / other | anything else |
+| Error / other | `error`, `rebuilt`, or any status Engain adds later |
+
+These are all 19 values in Engain's spec (v1 `TaskItem.status` plus the legacy aliases `sent_for_posting` → `in_review` and `assigned` → `in_queue`). The "Our comments" verdicts count the four removal statuses of Engain's `task.removed` webhook as **disapproved**.
 
 - **`GET /api/sent?days=7`** (`1`, `7`, `30`; `0` = all time) returns counts per bucket for items **sent** in that window, the publish rate (published ÷ settled), and every item with its history. `POST /api/cron/tracker` runs the checker now.
 - **Dashboard:** the **Sent (tracking)** tab shows the window selector, a count tile per bucket, and the list.

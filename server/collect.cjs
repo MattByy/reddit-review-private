@@ -13,7 +13,9 @@ const INTENT=/\?|recommend|suggest|looking for|alternative|anyone (use|tried|kno
 const ACTIVE=new Set(['scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned','published']);
 const REMOVED=new Set(['mod_removed','automod_removed']);
 // approved = live on Reddit; disapproved = moderators or AutoModerator removed it.
-const verdictFor=s=>s==='published'?'approved':REMOVED.has(s)?'disapproved':s==='cancelled'?'cancelled':ACTIVE.has(s)?'pending':'failed';
+// Removals as Engain's task.removed webhook defines them (it also covers deletions and a removed parent).
+const REMOVALS=new Set(['mod_removed','automod_removed','user_deleted','main_comment_removed_deleted']);
+const verdictFor=s=>s==='published'?'approved':REMOVALS.has(s)?'disapproved':s==='cancelled'?'cancelled':ACTIVE.has(s)?'pending':'failed';
 
 function threadRef(raw){
   let u;try{u=new URL(raw);}catch{return null;}

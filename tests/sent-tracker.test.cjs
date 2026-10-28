@@ -44,7 +44,7 @@ test('sent items are tracked until their status is final, and keep it afterwards
     assert.deepStrictEqual(job.changed.map(c=>c.to).sort(),['automod_removed','in_review','mod_removed','published','user_deleted']);
 
     v=(await call(a,'GET','/api/sent')).body;
-    assert.deepStrictEqual(v.counts,{pending:1,published:1,automod_removed:1,mod_removed:1,deleted:1,parent_removed:0,cancelled:0,error:0});
+    assert.deepStrictEqual(v.counts,{pending:1,published:1,automod_removed:1,mod_removed:1,deleted:1,parent_removed:0,not_posted:0,cancelled:0,error:0});
     assert.strictEqual(v.total,5,'nothing leaves the list');assert.strictEqual(v.published_rate,25);
     const pub=v.items.find(i=>i.queue2_id===ids[0]);
     assert.strictEqual(pub.bucket_label,'Published');assert.strictEqual(pub.checking,false);assert.ok(pub.reddit_url);
@@ -85,3 +85,15 @@ test('the comments job and the status button update the same tracking entry',asy
     assert.deepStrictEqual(i.history.map(h=>h.to_status).slice(1),['in_queue','mod_removed']);
   }finally{mock.tasks.splice(0,mock.tasks.length,...saved);a.close();}
 });
+
+test('every Engain task status lands in the right bucket',()=>{
+  const {bucket}=require('../server/tracker.cjs');
+  const final=s=>bucket({engain_status:s,settled:1,send_status:'failed'});
+  const expect={published:'published',automod_removed:'automod_removed',mod_removed:'mod_removed',user_deleted:'deleted',
+    main_comment_removed_deleted:'parent_removed',post_url_broken:'not_posted',thread_archived_locked:'not_posted',
+    subreddit_private_banned:'not_posted',incorrect_missing_flair:'not_posted',cancelled:'cancelled',error:'error',rebuilt:'error',something_new:'error'};
+  for(const [s,b] of Object.entries(expect))assert.strictEqual(final(s),b,s);
+  for(const s of ['scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned'])
+    assert.strictEqual(bucket({engain_status:s,settled:0,send_status:'submitted'}),'pending',s);
+});
+

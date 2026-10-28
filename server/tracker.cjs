@@ -8,11 +8,14 @@ const BUCKETS={
   mod_removed:'Removed by moderators',
   deleted:'Deleted (account or Engain)',
   parent_removed:'Parent comment removed',
+  not_posted:'Not posted (thread or subreddit problem)',
   cancelled:'Cancelled',
   error:'Error / other',
 };
 const FINAL={published:'published',automod_removed:'automod_removed',mod_removed:'mod_removed',user_deleted:'deleted',
-  main_comment_removed_deleted:'parent_removed',cancelled:'cancelled',canceled:'cancelled'};
+  main_comment_removed_deleted:'parent_removed',cancelled:'cancelled',canceled:'cancelled',
+  post_url_broken:'not_posted',thread_archived_locked:'not_posted',subreddit_private_banned:'not_posted',incorrect_missing_flair:'not_posted'};
+// Anything else final (error, rebuilt, or a status Engain adds later) counts as Error / other.
 function bucket(row){
   if(!row.engain_status||!row.settled)return row.send_status==='published'?'published':row.send_status==='cancelled'?'cancelled':
     row.send_status==='failed'&&row.engain_status?FINAL[row.engain_status]||'error':'pending';
