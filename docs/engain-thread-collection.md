@@ -254,10 +254,8 @@ The `queue2` table tracks:
 2. **Disclosure Requirement:** Message body must mention "GeoNode" and include disclosure language (e.g., "disclosure", "I work for")
 3. **Idempotency:** Entry status must be `ready`; reservation locks prevent duplicate sends
 4. **Beta Thread-Check:** `GET /api/v1/accounts-beta/comments/thread-check?userAccountId&threadUrl` blocks if account already commented (unless `thread_check_override` is set)
-5. **Pacing Limits:**
-   - 45 minutes between any two sends (global)
-   - 24 hours between sends to same subreddit
-   - 20 sends per UTC day
+5. **Approval:** an OpenRouter draft must be approved first; skipped or truncated drafts are refused.
+6. **No pacing limits:** removed at the owner's request (no spacing, no per-subreddit wait, no daily cap).
 
 ### Manual Send Routes
 
@@ -316,11 +314,7 @@ Global pacing state is tracked in the `queue2_pacing` table (single row, `id=1`)
 - `today_utc_date`: current UTC date (`YYYY-MM-DD`)
 - `subreddit_last_send`: JSON object mapping subreddit name to last send timestamp
 
-Pacing resets:
-
-- Global 45min floor resets after each send
-- Per-subreddit 24h floor resets per subreddit
-- Daily 20-send cap resets at UTC midnight
+These values are recorded for visibility only; nothing blocks a send on them.
 
 ### Dry-Run Script
 
