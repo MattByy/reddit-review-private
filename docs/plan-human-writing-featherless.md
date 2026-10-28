@@ -1,6 +1,6 @@
 # Plan: pick a Featherless model that writes like a person
 
-Status: **not started**. Saved 2026-10-28 so the work can resume in a later session.
+Status: **model research done 2026-10-28** (see "Research results"); bench not built yet. Saved 2026-10-28 so the work can resume in a later session.
 
 ## Goal
 
@@ -23,7 +23,7 @@ Queue 2 messages (thread comments and follow-ups under our own comments) should 
 ## Featherless facts (checked 2026-10-28)
 
 - **API:** OpenAI-compatible. `POST https://api.featherless.ai/v1/chat/completions` with header `Authorization: Bearer <key>`, and `GET /v1/models` (public, 22,393 models; fields `id`, `model_class`, `context_length`, `is_gated`, `concurrency_cost`).
-- **Key:** none yet. Add `FEATHERLESS_API_KEY=` to `.env.local`.
+- **Key:** `FEATHERLESS_API_KEY` is set in `.env.local` and works.
 - **Gated models** (Llama 3.3, Gemma 3) need the model accepted on Hugging Face and linked in Featherless.
 - **Concurrency:** limited by plan (`concurrency_cost` per model), so run the bench sequentially or with low parallelism.
 
@@ -44,6 +44,38 @@ Queue 2 messages (thread comments and follow-ups under our own comments) should 
 | `moonshotai/Kimi-K2-Instruct` | Large, distinct style |
 
 Reference point: the current `anthropic/claude-sonnet-5.5` via OpenRouter.
+
+## Research results (2026-10-28)
+
+All models below are confirmed in Featherless `GET /v1/models` (22,391 models). Each got the same sample r/webscraping thread (403s after ~200 pages) with a "one casual Reddit comment, say you work at Geonode once" prompt. Nothing was posted.
+
+### Shortlist for the bench
+
+| Model | Size / cost | What it is | Smoke test |
+| --- | --- | --- | --- |
+| `LessThanThreeAI/Qwen3.8-27B-Humanlike-Chat-2.0` | 27B, cost 2 | Fine-tuned to "text like a person". Send `chat_template_kwargs:{enable_thinking:false}` | **Best.** Specific (TLS fingerprint), natural, disclosure mid-comment, no invented claims |
+| `moonshotai/Kimi-K2-Instruct-0905` | large, cost 4 | Strong creative-writing ranking on EQ-Bench | **Very good.** Specific and fast (2–4 s). Wrote "at Geonode we see this often", a mild claim to watch |
+| `deepseek-ai/DeepSeek-V3.2` | large, cost 4 | Big general model | Good, plain |
+| `mistralai/Mistral-Nemo-Instruct-2407` | 12B, cost 1 | Cheap baseline | OK, short. Wrapped the answer in quote marks |
+| `Sao10K/L3.3-70B-Euryale-v2.3` | 70B, cost 4 | RP/creative fine-tune | Natural voice, but invented "we've helped clients with similar issues" |
+| `nothingiisreal/MN-12B-Celeste-V1.9` | 12B, cost 1 | Trained on Reddit WritingPrompts and human stories | Casual, but the advice was weak ("rotate more often than per request") |
+| `sam-paech/gemma-3-27b-it-antislop` | 27B, cost 2 | Gemma 3 with overused AI phrases trained out (antislop paper) | Warm and natural, but slow (41 s) and opened with "Sounds really frustrating" |
+
+### Tried and dropped
+
+- `HumanLLMs/Human-Like-Mistral-Nemo-Instruct-2407` (DPO for "human-like" chat): emoji spam, and it invented "I'm seeing that 403 too". Rejects system messages, so send one user message.
+- `cgato/Nemo-12b-Humanize-KTO-v0.1` (almost no synthetic data): incoherent. It invented "Geonode just launched a proxy management tool".
+- `ConicCat/humans.txt-Diverse-OrPO-24B` (human-only data, creative writing): turned into a sales pitch with no help in it.
+- `TheDrummer/UnslopNemo-12B-v4.1`: a code block with a 2014 User-Agent and "Let me know if that helps!". Assistant tone.
+- `PocketDoc/Dans-PersonalityEngine-V1.3.0-24b`: returned only "I", a template or stop-token problem on Featherless.
+
+### Lessons for the prompt
+
+- When the prompt gave an example disclosure ("I work at Geonode, fwiw"), **every** model opened with exactly those words. Ask for the disclosure "somewhere natural, not as the first words" and give no exact phrase.
+- Human-style fine-tunes tend to **invent experience** ("I'm seeing that too", "we've helped clients"). The bench must flag invented claims, and the human pick should treat them as a fail.
+- Some models need one user message with no system message, so the writer should support both.
+
+Sources: Featherless `/v1/models`; Hugging Face model cards; [Enhancing Human-Like Responses in LLMs (arXiv 2501.05032)](https://arxiv.org/abs/2501.05032); [antislop paper (arXiv 2510.15061)](https://arxiv.org/abs/2510.15061); [EQ-Bench Creative Writing v3](https://eqbench.com/creative_writing.html).
 
 ## Steps
 
@@ -89,7 +121,7 @@ Take the top 2–3 models, run them as prompt variants with an even split, and a
 
 ## Open questions for Matas
 
-- The Featherless API key and plan tier, which sets concurrency and gated-model access.
+- The Featherless plan tier, which sets concurrency (cost-4 models like Kimi and DeepSeek need more) and gated-model access.
 - Which subreddits matter most for the bench.
 - Whether the thread prompt should stay 2–5 sentences or go shorter.
 
