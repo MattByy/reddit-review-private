@@ -197,6 +197,7 @@ function cleanMessage(m){
 const queue2Entry=r=>r&&{queue2_id:r.id,item_id:r.item_id,status:r.kind,url:r.url,thread_url:r.thread_url,title:r.title,
   message:r.message,message_source:r.message_source,disclosure:require('./send-queue2.cjs').checkDisclosure(r.message),
   write_status:r.write_status??null,write_error:r.write_error??null,model:r.model??null,prompt_used:r.prompt_used??null,written_at:r.written_at??null,
+  prompt_variant_id:r.prompt_variant_id??null,prompt_variant_name:r.prompt_variant_name??null,
   approved_at:r.approved_at??null,approved_by:r.approved_by??null,
   send_status:r.send_status??'ready',delivery_mode:r.delivery_mode??null,poster_account:r.poster_account??null,user_account_id:r.user_account_id??null,
   engain_task_id:r.engain_task_id??null,reddit_url:r.reddit_url??null,send_error:r.send_error??null,send_reason:r.send_reason??null,sent_at:r.sent_at??null,

@@ -43,8 +43,11 @@ function open(file){
   migrateQueue2(db);
   createPacingTable(db);
   // Drafting and approval: which prompt and model wrote the message, and who approved it.
-  for(const [col,type] of [['prompt_used','text'],['model','text'],['write_status','text'],['write_error','text'],['written_at','text'],['approved_at','text'],['approved_by','text']])
+  for(const [col,type] of [['prompt_used','text'],['model','text'],['write_status','text'],['write_error','text'],['written_at','text'],['approved_at','text'],['approved_by','text'],['prompt_variant_id','text'],['prompt_variant_name','text']])
     if(!db.prepare("select 1 from pragma_table_info('queue2') where name=?").get(col))db.exec(`alter table queue2 add column ${col} ${type}`);
+  // v2 task list: where a task was posted from, and by which of our accounts.
+  for(const col of ['posted_from','account_handle'])
+    if(!db.prepare("select 1 from pragma_table_info('our_tasks') where name=?").get(col))db.exec(`alter table our_tasks add column ${col} text`);
   // The first published-only table is folded into our_tasks.
   if(db.prepare("select 1 from sqlite_master where name='published'").get()){
     db.exec(`insert or ignore into our_tasks(task_id,type,status,verdict,reddit_url,thread_url,thread_id,content,subreddit,published_at,parent_task_id,labels,first_seen,last_seen,status_changed_at,published_seen_at)
@@ -173,12 +176,28 @@ function open(file){
     // Any change to the text withdraws an earlier approval.
     // A person's edit also clears a draft's truncated/skipped mark: the text is now theirs.
     setQueue2Message(id,message,source){return db.prepare("update queue2 set message=?,message_source=?,approved_at=null,approved_by=null,write_status=case when write_status in ('truncated','skipped') then 'edited' else write_status end,write_error=null,updated_at=? where id=?").run(message,source,new Date().toISOString(),Number(id)).changes>0;},
-    setQueue2Draft(id,{message,prompt_used,model,write_status,write_error}){
+    setQueue2Draft(id,{message,prompt_used,model,write_status,write_error,prompt_variant_id,prompt_variant_name}){
       const now=new Date().toISOString();
-      if(message!=null)db.prepare(`update queue2 set message=?,message_source='openrouter',prompt_used=?,model=?,write_status=?,write_error=?,written_at=?,approved_at=null,approved_by=null,updated_at=? where id=?`)
-        .run(message,prompt_used,model,write_status,write_error??null,now,now,Number(id));
+      if(message!=null)db.prepare(`update queue2 set message=?,message_source='openrouter',prompt_used=?,model=?,write_status=?,write_error=?,written_at=?,approved_at=null,approved_by=null,
+          prompt_variant_id=?,prompt_variant_name=?,updated_at=? where id=?`)
+        .run(message,prompt_used,model,write_status,write_error??null,now,prompt_variant_id??null,prompt_variant_name??null,now,Number(id));
       else db.prepare('update queue2 set write_status=?,write_error=?,prompt_used=?,model=?,updated_at=? where id=?').run(write_status,write_error??null,prompt_used??null,model??null,now,Number(id));
     },
+    // Drafts per prompt variant of one item kind, for the weighted split.
+    variantCounts(kind){return Object.fromEntries(db.prepare('select prompt_variant_id id,count(*) n from queue2 where kind=? and prompt_variant_id is not null group by prompt_variant_id').all(kind).map(r=>[r.id,r.n]));},
+    // Outcome per prompt variant. Engain's verdict (our_tasks) wins over Queue 2's own send status.
+    variantStats(){
+      return db.prepare(`select q.kind,q.prompt_variant_id id,max(q.prompt_variant_name) name,count(*) drafted,
+          sum(q.engain_task_id is not null) sent,
+          sum(coalesce(t.verdict,case q.send_status when 'published' then 'approved' end)='approved') published,
+          sum(t.verdict='disapproved') removed,
+          sum(t.verdict='failed' or (t.verdict is null and q.send_status='failed')) failed,
+          sum(t.verdict='cancelled' or (t.verdict is null and q.send_status='cancelled')) cancelled,
+          sum(q.engain_task_id is not null and coalesce(t.verdict,'pending')='pending' and coalesce(q.send_status,'')<>'published') pending
+        from queue2 q left join our_tasks t on t.task_id=q.engain_task_id
+        where q.prompt_variant_id is not null group by q.kind,q.prompt_variant_id`).all().map(r=>({...r}));
+    },
+    queue2ByTask(taskId){return db.prepare('select id,send_status from queue2 where engain_task_id=?').get(taskId)||null;},
     approveQueue2(id,by){return db.prepare("update queue2 set approved_at=?,approved_by=?,updated_at=? where id=? and send_status='ready'").run(new Date().toISOString(),by??null,new Date().toISOString(),Number(id)).changes>0;},
     setQueueStatus(id,status,note){
       const r=db.prepare('update queue set status=?,note=?,updated_at=?,position=case when ?=\'queued\' then 1e9 else null end where item_id=?').run(status,note??null,new Date().toISOString(),status,id);

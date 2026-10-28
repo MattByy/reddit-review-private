@@ -139,6 +139,20 @@ Queue 2 messages are written by OpenRouter (`OPENROUTER_API_KEY` in `.env.local`
 - **What the model sees:** the prompt is sent as the only message, with `{{variables}}` filled from the item. There is no hidden system prompt.
 - **Saved with each draft:** the exact filled-in prompt (`prompt_used`) and the model. The Queue 2 tab shows it under "Prompt used".
 
+**Several prompts per type, split by percentage.** Each type (thread, comment, mention) has 1 to 10 prompts. Each has a name and a percentage, and a type's percentages add up to 100%; 0% pauses a prompt.
+
+The split is exact, not random. Each new draft uses the prompt furthest below its share of that type's drafts so far, so 60/40 over 10 threads gives exactly 6 and 4. A rewrite keeps the prompt the item was given. Changing the percentages steers new drafts toward the new target.
+
+- **API:**
+  - `GET /api/prompts` returns `{variants, stats, defaults, variables, model}`.
+  - `POST /api/prompts {"type":"thread","variants":[{"id"?,"name","text","weight"}]}` replaces one type's list. Keep `id` to keep a prompt's history.
+- **Each draft records** `prompt_variant_id` and `prompt_variant_name`. The Queue 2 tab shows which prompt wrote it.
+- **Stats per prompt** (Prompts tab, `stats` in the API):
+  - target %, drafted (with its share), sent, published (with its share), removed (moderators or AutoModerator), failed, cancelled, pending;
+  - publish rate = published ÷ sent;
+  - deleted prompts that have drafts stay listed as "(deleted)".
+- **Where outcomes come from:** Engain's verdict, from the comments job, which reads `GET /api/v2/tasks` (pool and our own accounts). The job also moves each sent Queue 2 item to published or failed.
+
 **Flow.**
 
 1. `POST /api/agent/task {"write":true}` (the "Get next item & write with OpenRouter" button) moves #1 to Queue 2 and drafts its message. `POST /api/agent/queue2/:id/write` drafts or redrafts an existing entry.

@@ -144,7 +144,7 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
   if(sources.includes('tasks'))
     await step('tasks',async()=>{
       // Every thread with a live, published or moderator-removed task is ours already.
-      const tasks=await paginate(cursor=>engain.tasks({projectId,numItems:100,cursor}).then(r=>({...r,continueCursor:r.continueCursor||r.cursor})),Math.max(maxPages,20),'page');
+      const tasks=await paginate(cursor=>engain.tasks({projectId,numItems:100,cursor}).then(r=>({...r,continueCursor:r.continueCursor||r.cursor})),Math.max(maxPages,30),'page');
       const map=new Map();
       for(const t of tasks){
         if(!ACTIVE.has(t.status)&&!REMOVED.has(t.status))continue;
@@ -159,7 +159,13 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
         const ref=threadRef(t.threadUrl||t.redditUrl),verdict=verdictFor(t.status);st[verdict]++;
         const r=store.saveTask({task_id:id,type:t.type||null,status:t.status,verdict,reddit_url:t.redditUrl||null,thread_url:t.threadUrl||null,thread_id:ref?.thread_id||null,
           content:String(t.content||'').slice(0,10000),subreddit:t.subreddit||ref?.subreddit||null,created_at:t.creationDate||null,published_at:t.publishedAt||null,
-          parent_task_id:t.parentTaskId||null,labels:Array.isArray(t.labels)?t.labels:[]});
+          parent_task_id:t.parentTaskId||null,labels:Array.isArray(t.labels)?t.labels:[],posted_from:t.postedFrom||null,account_handle:t.account?.handle||null});
+        // A message we sent from Queue 2: carry Engain's outcome over to it.
+        const q2=store.queue2ByTask(id);
+        if(q2&&!['published','failed','cancelled'].includes(q2.send_status)){
+          if(t.status==='published'&&t.redditUrl){store.updateQueue2Status(q2.id,'published',t.redditUrl,null);summary.queue2_published=(summary.queue2_published||0)+1;}
+          else if(['disapproved','failed','cancelled'].includes(verdict)){store.updateQueue2Status(q2.id,verdict==='cancelled'?'cancelled':'failed',null,'Engain status: '+t.status);summary.queue2_failed=(summary.queue2_failed||0)+1;}
+        }
         if(t.status==='published'&&t.redditUrl&&['comment','reply'].includes(t.type))summary[r.added||r.from!=='published'?'published_new':'published_known']=(summary[r.added||r.from!=='published'?'published_new':'published_known']||0)+1;
         if(r.changed&&!r.added){summary.status_changes.push({task_id:id,from:r.from,to:r.to,verdict:r.verdict});if(r.verdict==='disapproved')summary.newly_disapproved=(summary.newly_disapproved||0)+1;}
       }

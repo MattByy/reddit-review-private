@@ -37,7 +37,8 @@ function client({apiKey,fetchImpl=fetch,limits=true,log=()=>{}}={}){
     opportunities:q=>call('GET','/api/v1/opportunities',{query:q}),
     mentions:q=>call('GET','/api/v1/mentions',{query:q}),
     mentionBrands:q=>call('GET','/api/v1/mentions/brands',{query:q}),
-    tasks:q=>call('GET','/api/v1/tasks',{query:q}),
+    // v2 lists pool tasks and our dedicated-account tasks; v1 only knows pool tasks.
+    tasks:q=>call('GET','/api/v2/tasks',{query:q}),
     smartSearch:body=>call('POST','/api/v1/smart-search',{body,bucket:'smart'}),
     smartSearchResults:q=>call('GET','/api/v1/smart-search/results',{query:q}),
     smartSearchHistory:q=>call('GET','/api/v1/smart-search/history',{query:q}),

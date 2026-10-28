@@ -122,6 +122,24 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     fail(409,`All ${ready.length} of your ready accounts already commented in this thread.`);
   }
 
+  // Per type: each prompt's target %, drafts, sends and Engain outcomes, with shares and rates.
+  // Prompts that were deleted but still have drafts are listed with deleted:true.
+  function promptStats(){
+    const rows=store.variantStats(),out={};
+    for(const [type,list] of Object.entries(writer.variants(store))){
+      const mine=rows.filter(r=>r.kind===type),pct=(a,b)=>b?Math.round(a/b*1000)/10:null;
+      const sum=k=>mine.reduce((a,r)=>a+(r[k]||0),0),drafted=sum('drafted'),published=sum('published');
+      const entries=[...list.map(v=>({id:v.id,name:v.name,weight:v.weight,deleted:false})),
+        ...mine.filter(r=>!list.some(v=>v.id===r.id)).sort((x,y)=>String(x.name).localeCompare(String(y.name))).map(r=>({id:r.id,name:r.name,weight:0,deleted:true}))];
+      out[type]={drafted,published,prompts:entries.map(e=>{
+        const r=mine.find(r=>r.id===e.id)||{drafted:0,sent:0,published:0,removed:0,failed:0,cancelled:0,pending:0};
+        return {...e,drafted:r.drafted,sent:r.sent,published:r.published,removed:r.removed,failed:r.failed,cancelled:r.cancelled,pending:r.pending,
+          share_of_drafts:pct(r.drafted,drafted),share_of_published:pct(r.published,published),publish_rate:pct(r.published,r.sent)};
+      })};
+    }
+    return out;
+  }
+
   const routes={
     // Agent: take the next item off the queue. POST because every call removes an item.
     // Moves #1 of queue 1 into queue 2 with body.message, or a random placeholder message.
@@ -154,9 +172,11 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         {engain,store,projectId:await project(),log});
       return {...sent,account:account&&{id:account.userAccountId,username:account.username||null,niche:account.niche||null},queue2:queue.queue2Item(store,id)};
     },
-    'GET /api/prompts':async()=>({prompts:writer.prompts(store),defaults:writer.DEFAULT_PROMPTS,variables:writer.VARIABLES,
+    // Prompt variants per type with their percentages, and how each one has done so far.
+    'GET /api/prompts':async()=>({variants:writer.variants(store),stats:promptStats(),defaults:writer.DEFAULT_PROMPTS,variables:writer.VARIABLES,
       model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,openrouter_key:!!(writerOpts.apiKey??process.env.OPENROUTER_API_KEY)}),
-    'POST /api/prompts':async(_,body)=>writer.savePrompts(store,body),
+    // Replace one type's prompt list: {"type":"thread","variants":[{"id"?,"name","text","weight"}]} (weights add up to 100).
+    'POST /api/prompts':async(_,body)=>({type:body?.type,variants:writer.saveVariants(store,body?.type,body?.variants)}),
     'GET /api/agent/queue2':async()=>queue.queue2List(store),
     'POST /api/agent/queue2/:id':async(_,body,id)=>queue.setQueue2Message(store,id,body?.message),
     'POST /api/agent/queue2/:id/send':async(_,body,id)=>{

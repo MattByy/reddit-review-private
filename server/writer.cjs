@@ -2,6 +2,7 @@
 // stored in settings, shown and edited on the dashboard, and the exact filled-in prompt is saved
 // with every draft. There is no hidden system prompt: what you see is what the model receives.
 const {checkDisclosure}=require('./send-queue2.cjs');
+const {randomBytes}=require('node:crypto');
 
 const DEFAULT_MODEL='anthropic/claude-sonnet-5.5';
 const VARIABLES={
@@ -67,17 +68,47 @@ Output only the reply text.`,
 };
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
-const prompts=store=>({...DEFAULT_PROMPTS,...(store.kv('prompts')||{})});
-function savePrompts(store,input){
-  const next={...prompts(store)};
-  for(const [k,v] of Object.entries(input||{})){
-    if(!DEFAULT_PROMPTS[k])fail(422,'Unknown prompt type: '+k+' (use thread, comment or mention)');
-    if(v===null){next[k]=DEFAULT_PROMPTS[k];continue;}
-    if(typeof v!=='string'||!v.trim())fail(422,k+' prompt must be non-empty text');
-    if(v.length>12000)fail(422,k+' prompt is longer than 12000 characters');
-    next[k]=v;
-  }
-  store.setKv('prompts',next);return next;
+// Prompt variants. Each type (thread, comment, mention) has 1-10 prompts with a weight in percent;
+// the weights of a type add up to 100. A prompt at 0% is paused. Stored under kv 'prompt_variants'.
+const TYPES=Object.keys(DEFAULT_PROMPTS);
+const defaultVariant=type=>({id:'v_default_'+type,name:'Default',text:DEFAULT_PROMPTS[type],weight:100});
+function variants(store){
+  const saved=store.kv('prompt_variants')||{},old=store.kv('prompts')||{};
+  return Object.fromEntries(TYPES.map(t=>[t,saved[t]?.length?saved[t]:[{...defaultVariant(t),...(old[t]?{text:old[t]}:{})}]]));
+}
+function saveVariants(store,type,list){
+  if(!TYPES.includes(type))fail(422,'type must be thread, comment or mention');
+  if(!Array.isArray(list)||!list.length)fail(422,'Give at least one prompt');
+  if(list.length>10)fail(422,'At most 10 prompts per type');
+  const ids=new Set();
+  const clean=list.map((v,i)=>{
+    const name=String(v?.name??'').trim()||'Prompt '+(i+1);
+    if(name.length>60)fail(422,`Prompt ${i+1}: name is longer than 60 characters`);
+    if(typeof v?.text!=='string'||!v.text.trim())fail(422,`Prompt "${name}": text is required`);
+    if(v.text.length>12000)fail(422,`Prompt "${name}": text is longer than 12000 characters`);
+    const weight=Number(v.weight);
+    if(!Number.isInteger(weight)||weight<0||weight>100)fail(422,`Prompt "${name}": percentage must be a whole number from 0 to 100`);
+    let id=typeof v.id==='string'&&/^v_[\w-]{1,40}$/.test(v.id)?v.id:'v_'+randomBytes(5).toString('hex');
+    if(ids.has(id))id='v_'+randomBytes(5).toString('hex');
+    ids.add(id);return {id,name,text:v.text,weight};
+  });
+  const total=clean.reduce((a,v)=>a+v.weight,0);
+  if(total!==100)fail(422,`The ${type} prompt percentages add up to ${total}%; they must add up to 100%`);
+  store.setKv('prompt_variants',{...variants(store),[type]:clean});
+  return clean;
+}
+// Exact split, not a dice roll: the next draft goes to the prompt furthest below its share of all
+// drafts of this type so far (60/40 over 10 drafts gives exactly 6 and 4). A redraft keeps the
+// prompt it was given, so rewrites do not skew the split.
+function chooseVariant(store,entry){
+  const list=variants(store)[entry.kind]||variants(store).thread;
+  const kept=entry.prompt_variant_id&&list.find(v=>v.id===entry.prompt_variant_id);
+  if(kept)return kept;
+  const active=list.filter(v=>v.weight>0),counts=store.variantCounts(entry.kind);
+  const total=active.reduce((a,v)=>a+(counts[v.id]||0),0)+1;
+  let best=null,gap=-Infinity;
+  for(const v of active){const g=v.weight/100*total-(counts[v.id]||0);if(g>gap+1e-9){gap=g;best=v;}}
+  return best;
 }
 
 const clip=(s,n)=>{s=String(s??'').trim();return s.length>n?s.slice(0,n)+'…':s;};
@@ -97,7 +128,7 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,model
   if(!entry)fail(404,'No such queue 2 entry');
   if(entry.send_status&&entry.send_status!=='ready')fail(409,'Already '+entry.send_status+'; it can no longer be rewritten');
   if(!apiKey)fail(503,'OPENROUTER_API_KEY is not set (add it to .env.local)');
-  const prompt=render(prompts(store)[entry.kind]||DEFAULT_PROMPTS.thread,variables(entry));
+  const variant=chooseVariant(store,entry),prompt=render(variant.text,variables(entry)),pv={prompt_variant_id:variant.id,prompt_variant_name:variant.name};
   let text;
   try{
     const r=await fetchImpl('https://openrouter.ai/api/v1/chat/completions',{method:'POST',
@@ -109,7 +140,7 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,model
     if(!text)throw Error('OpenRouter returned an empty message');
     // A message cut off at the token limit is kept for reading but can never be approved.
     if(j.choices[0].finish_reason==='length'){
-      store.setQueue2Draft(id,{message:text,prompt_used:prompt,model,write_status:'truncated',write_error:'The model hit the length limit and the message is cut off. Rewrite or edit it.'});
+      store.setQueue2Draft(id,{...pv,message:text,prompt_used:prompt,model,write_status:'truncated',write_error:'The model hit the length limit and the message is cut off. Rewrite or edit it.'});
       return store.queue2(id);
     }
   }catch(e){
@@ -117,8 +148,8 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,model
     fail(502,'Writing failed: '+e.message);
   }
   const skipped=/^skip\.?$/i.test(text);
-  store.setQueue2Draft(id,{message:skipped?'SKIP: the model found nothing useful to add.':text,prompt_used:prompt,model,write_status:skipped?'skipped':'written'});
+  store.setQueue2Draft(id,{...pv,message:skipped?'SKIP: the model found nothing useful to add.':text,prompt_used:prompt,model,write_status:skipped?'skipped':'written'});
   return store.queue2(id);
 }
 
-module.exports={DEFAULT_PROMPTS,DEFAULT_MODEL,VARIABLES,prompts,savePrompts,variables,render,writeQueue2,checkDisclosure};
+module.exports={DEFAULT_PROMPTS,DEFAULT_MODEL,VARIABLES,TYPES,variants,saveVariants,chooseVariant,variables,render,writeQueue2,checkDisclosure};

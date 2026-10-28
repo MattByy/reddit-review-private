@@ -50,7 +50,7 @@ async function mockFetch(url,options={}){
       postContent:own||i!==1?post(n):{...post(n),title:'Season finale discussion'},commentContent:bodies[i]?{body:bodies[i],author:'someone'+i,score:4,createdUtc:now-3600*(i+1),permalink:post(n).url+'c'+n+'/'}:undefined,
       sentiment:['neutral','positive','negative'][i],reasoning:'Mock mention',snippet:'…'+brand+'…',createdAt:Date.now()})),isDone:true});
   }
-  if(u.pathname==='/api/v1/tasks')return json({page:tasks,isDone:true});
+  if(u.pathname==='/api/v1/tasks'||(u.pathname==='/api/v2/tasks'&&method==='GET'))return json({page:tasks.map(t=>({postedFrom:t.accountId?'dedicated':'pool',account:t.accountId?{id:t.accountId,handle:'u/mock'}:null,...t})),isDone:true});
   if(u.pathname==='/api/v1/smart-search/history')return json({history:[...searched].map((k,i)=>({id:'h'+i,keyword:k,searchMode:'web_ranking',exactSpelling:false,resultsCount:8,googleTraffic:0,searchedAt:new Date().toISOString()}))});
   if(u.pathname==='/api/v1/smart-search'||u.pathname==='/api/v1/smart-search/results'){
     const body=method==='POST'?JSON.parse(options.body):{},keyword=body.keyword||q.get('keyword');

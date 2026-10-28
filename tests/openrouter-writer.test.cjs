@@ -236,23 +236,93 @@ test('approve routes automatically: first comments from a random own account, re
   }finally{mock.tasks.splice(saved);a.close();}
 });
 
-test('prompts are visible and editable per type, and the edited one is used',async()=>{
-  const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
+test('prompt variants: visible per type, editable, validated to 100%',async()=>{
+  const a=app({fetchImpl:fakeOpenRouter().fetchImpl});
   try{
     const p=(await call(a,'GET','/api/prompts')).body;
-    assert.deepStrictEqual(Object.keys(p.prompts),['thread','comment','mention']);
-    assert.notStrictEqual(p.prompts.thread,p.prompts.comment);
-    for(const k of ['thread','comment','mention'])assert.ok(/I work (at|for) Geonode/.test(p.prompts[k]),k+' prompt asks for the disclosure');
+    assert.deepStrictEqual(Object.keys(p.variants),['thread','comment','mention']);
+    for(const k of ['thread','comment','mention']){
+      assert.deepStrictEqual(p.variants[k].map(v=>[v.name,v.weight]),[['Default',100]]);
+      assert.strictEqual(p.variants[k][0].text,DEFAULT_PROMPTS[k]);assert.ok(/I work (at|for) Geonode/.test(p.variants[k][0].text));
+    }
     assert.strictEqual(p.openrouter_key,true);assert.ok(p.variables.comment.includes('our_comment'));
+    const bad=async(v,re)=>{const r=await call(a,'POST','/api/prompts',v);assert.strictEqual(r.status,422,JSON.stringify(r.body));assert.match(r.body.error,re);};
+    await bad({type:'thread',variants:[{name:'A',text:'x',weight:60},{name:'B',text:'y',weight:30}]},/add up to 90%/);
+    await bad({type:'nope',variants:[{text:'x',weight:100}]},/type must be/);
+    await bad({type:'thread',variants:[]},/at least one/);
+    await bad({type:'thread',variants:[{name:'A',text:'  ',weight:100}]},/text is required/);
+    await bad({type:'thread',variants:[{name:'A',text:'x',weight:50.5},{text:'y',weight:49.5}]},/whole number/);
+    const r=(await call(a,'POST','/api/prompts',{type:'comment',variants:[{name:'Short',text:'S {{our_comment}}',weight:20},{name:'Detail',text:'D {{our_comment}}',weight:20},{name:'Question',text:'Q',weight:60}]})).body;
+    assert.deepStrictEqual(r.variants.map(v=>[v.name,v.weight]),[['Short',20],['Detail',20],['Question',60]]);
+    assert.ok(r.variants.every(v=>/^v_/.test(v.id)));
+    const after=(await call(a,'GET','/api/prompts')).body.variants;
+    assert.strictEqual(after.comment.length,3);assert.strictEqual(after.thread[0].name,'Default','other types untouched');
+  }finally{a.close();}
+});
 
-    await call(a,'POST','/api/prompts',{thread:'Custom prompt for r/{{subreddit}} about "{{title}}". Disclose: I work at Geonode.'});
+test('drafts follow the percentages exactly: 60/40 over 10 threads is 6 and 4, rewrites keep their prompt',async()=>{
+  const a=app({fetchImpl:fakeOpenRouter().fetchImpl});
+  const add=n=>{a.store.db.prepare(`insert into queue2(item_id,kind,thread_id,url,thread_url,title,message,message_source,item,created_at,updated_at)
+      values(?,'thread',?,?,?,'t','Placeholder message: x','random','{}',datetime('now'),datetime('now'))`).run('t_split'+n,'split'+n,`https://www.reddit.com/r/x/comments/split${n}/`,`https://www.reddit.com/r/x/comments/split${n}/`);
+    return a.store.db.prepare('select id from queue2 where item_id=?').get('t_split'+n).id;};
+  try{
+    await call(a,'POST','/api/prompts',{type:'thread',variants:[{name:'Helpful',text:'H {{title}} I work at Geonode',weight:60},{name:'Brief',text:'B {{title}} I work at Geonode',weight:40}]});
+    const ids=[];for(let n=0;n<10;n++){ids.push(add(n));await call(a,'POST',`/api/agent/queue2/${ids.at(-1)}/write`,{});}
+    const names=(await call(a,'GET','/api/agent/queue2')).body.items.map(x=>x.prompt_variant_name);
+    assert.deepStrictEqual({Helpful:names.filter(n=>n==='Helpful').length,Brief:names.filter(n=>n==='Brief').length},{Helpful:6,Brief:4});
+    const e=(await call(a,'GET','/api/agent/queue2')).body.items.find(x=>x.queue2_id===ids[0]);
+    assert.match(e.prompt_used,/^H /);
+    for(let i=0;i<3;i++)await call(a,'POST',`/api/agent/queue2/${ids[0]}/write`,{});
+    const again=(await call(a,'GET','/api/prompts')).body.stats.thread;
+    assert.deepStrictEqual(again.prompts.map(p=>[p.name,p.weight,p.drafted,p.share_of_drafts]),[['Helpful',60,6,60],['Brief',40,4,40]],'rewrites did not change the split');
+
+    // Changing the weights steers new drafts toward the new target.
+    await call(a,'POST','/api/prompts',{type:'thread',variants:[{id:again.prompts[0].id,name:'Helpful',text:'H {{title}} I work at Geonode',weight:20},{id:again.prompts[1].id,name:'Brief',text:'B {{title}} I work at Geonode',weight:80}]});
+    for(let n=10;n<20;n++)await call(a,'POST',`/api/agent/queue2/${add(n)}/write`,{});
+    const s2=(await call(a,'GET','/api/prompts')).body.stats.thread.prompts;
+    assert.deepStrictEqual(s2.map(p=>p.drafted),[6,14],'20 drafts at 20/80 overall gives 4/16; the 6 already done stay, so new ones all went to Brief until it caught up');
+  }finally{a.close();}
+});
+
+test('per-prompt stats count what was sent, published and removed, including deleted prompts',async()=>{
+  const mock=require('../server/mock.cjs'),saved=JSON.parse(JSON.stringify(mock.tasks));
+  const a=app({fetchImpl:fakeOpenRouter().fetchImpl});
+  try{
+    await call(a,'POST','/api/prompts',{type:'thread',variants:[{name:'A',text:'A {{title}} I work at Geonode',weight:50},{name:'B',text:'B {{title}} I work at Geonode',weight:50}]});
+    await ready(a);
+    const sent=[];
+    for(let i=0;i<4;i++){
+      const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
+      const r=await call(a,'POST',`/api/agent/queue2/${q.queue2_id}/approve`,{});
+      assert.strictEqual(r.status,200,JSON.stringify(r.body));sent.push({task:r.body.taskId,name:q.prompt_variant_name});
+    }
+    // Engain publishes the A messages and moderators remove one B message.
+    for(const s of sent){const t=mock.tasks.find(t=>t._id===s.task);
+      if(s.name==='A'){t.status='published';t.redditUrl='https://www.reddit.com/r/x/comments/1/x/'+s.task+'/';}
+      else if(!sent.some(o=>o.name==='B'&&o.removed)){t.status='mod_removed';s.removed=true;}}
+    const job=(await call(a,'POST','/api/cron/comments',{})).body;
+    assert.strictEqual(job.action,'checked');
+    const st=(await call(a,'GET','/api/prompts')).body.stats.thread;
+    assert.deepStrictEqual(st.prompts.map(p=>[p.name,p.drafted,p.sent,p.published,p.removed,p.failed,p.cancelled,p.pending]),[['A',2,2,2,0,0,0,0],['B',2,2,0,1,0,0,1]]);
+    assert.strictEqual(st.prompts[0].share_of_published,100);assert.strictEqual(st.prompts[0].publish_rate,100);assert.strictEqual(st.prompts[1].publish_rate,0);
+    const q2=(await call(a,'GET','/api/agent/queue2')).body.items.filter(x=>x.prompt_variant_name==='A');
+    assert.ok(q2.every(x=>x.send_status==='published'&&x.reddit_url),'Queue 2 items follow Engain');
+
+    await call(a,'POST','/api/prompts',{type:'thread',variants:[{name:'C',text:'C I work at Geonode',weight:100}]});
+    const after=(await call(a,'GET','/api/prompts')).body.stats.thread.prompts;
+    assert.deepStrictEqual(after.map(p=>[p.name,p.deleted,p.drafted]),[['C',false,0],['A',true,2],['B',true,2]]);
+  }finally{mock.tasks.splice(0,mock.tasks.length,...saved);a.close();}
+});
+
+test('an edited prompt is exactly what the model receives',async()=>{
+  const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
+  try{
+    await call(a,'POST','/api/prompts',{type:'thread',variants:[{name:'Custom',text:'Custom prompt for r/{{subreddit}} about "{{title}}". Disclose: I work at Geonode.',weight:100}]});
     await ready(a);
     const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
     assert.match(q.prompt_used,/^Custom prompt for r\/\w+ about "/);
-    await call(a,'POST','/api/prompts',{thread:null});
-    assert.strictEqual((await call(a,'GET','/api/prompts')).body.prompts.thread,DEFAULT_PROMPTS.thread,'null resets to the default');
-    assert.strictEqual((await call(a,'POST','/api/prompts',{nope:'x'})).status,422);
-    assert.strictEqual((await call(a,'POST','/api/prompts',{thread:'  '})).status,422);
+    assert.strictEqual(or.calls.at(-1).body.messages[0].content,q.prompt_used);
+    assert.strictEqual(q.prompt_variant_name,'Custom');
   }finally{a.close();}
 });
 

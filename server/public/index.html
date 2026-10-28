@@ -192,11 +192,11 @@ async function loadQueue2(){
     <div class="meta"><span>url:</span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.url)}</a></div>
     <div class="meta"><span>thread:</span><a href="${esc(x.thread_url)}" target="_blank" rel="noopener">${esc(x.title||x.thread_url)}</a></div>
     ${ready?`<textarea id="msg-${id}" rows="4" style="margin-top:6px">${esc(x.message)}</textarea>`:`<blockquote>${esc(x.message)}</blockquote>`}
-    <div class="meta"><span>message: ${esc(x.message_source)}${x.model?' · '+esc(x.model):''}${x.written_at?' · written '+esc(String(x.written_at).slice(0,16).replace('T',' ')):''}</span>
+    <div class="meta"><span>message: ${esc(x.message_source)}${x.prompt_variant_name?' · prompt “'+esc(x.prompt_variant_name)+'”':''}${x.model?' · '+esc(x.model):''}${x.written_at?' · written '+esc(String(x.written_at).slice(0,16).replace('T',' ')):''}</span>
       <span class="${x.disclosure.ok?'':'flag'}">${x.disclosure.ok?'✓ disclosure present':'✕ '+esc(x.disclosure.reason)}</span>
       ${x.approved_at?`<span>approved ${esc(String(x.approved_at).slice(0,16).replace('T',' '))} by ${esc(x.approved_by)}</span>`:''}</div>
     ${x.write_error?`<div class="flag">Writing failed: ${esc(x.write_error)}</div>`:''}
-    ${x.prompt_used?`<details><summary>Prompt used (${esc(x.status)} prompt, exactly as sent to OpenRouter)</summary><pre>${esc(x.prompt_used)}</pre></details>`:''}
+    ${x.prompt_used?`<details><summary>Prompt used (${esc(x.prompt_variant_name||x.status+' prompt')}, exactly as sent to OpenRouter)</summary><pre>${esc(x.prompt_used)}</pre></details>`:''}
     ${x.reddit_url?`<div class="meta">✓ <a href="${esc(x.reddit_url)}" target="_blank" rel="noopener">Published on Reddit</a></div>`:''}
     ${x.send_error?`<div class="flag">Send error: ${esc(x.send_error)}</div>`:''}${x.send_reason?`<div class="meta">Reason: ${esc(x.send_reason)}</div>`:''}
     ${x.engain_task_id?`<div class="meta">Engain task: ${esc(x.engain_task_id)} · ${x.delivery_mode==='beta'?'posted from your account '+esc(accountName(x.user_account_id)):'posted through the Engain pool'}</div>`:''}
@@ -217,17 +217,40 @@ window.approveQ2=id=>q2('Sending #'+id+' to Engain',async()=>{
   const r=await api(`/api/agent/queue2/${id}/approve`,{approved_by:'dashboard'});
   return `✓ Sent #${id}: Engain task ${r.taskId} · `+(r.account?`from your account ${r.account.username?'u/'+r.account.username:r.account.id}${r.account.niche?' ('+r.account.niche+')':''}`:'through the Engain pool');});
 window.pollQ2=id=>q2('Checking #'+id,async()=>{const r=await api(`/api/agent/queue2/${id}/poll`,{});return `#${id}: ${r.status}${r.redditUrl?' → '+r.redditUrl:''}${r.reason?' ('+r.reason+')':''}`;});
+// Prompt variants: several prompts per type, each with a percentage of the drafts.
+let PV=null;
+const PTYPES={thread:'Thread prompts: first comment in a thread',comment:'Comment prompts: follow-up under our own published comment',mention:'Mention prompts: reply to a competitor mention (only when mentions are on)'};
 async function loadPrompts(){
-  const p=await api('/api/prompts');
-  $('#promptinfo').innerHTML=`Model: <b>${esc(p.model)}</b> · OpenRouter key ${p.openrouter_key?'found':'<span class="flag">missing (OPENROUTER_API_KEY)</span>'}. Each prompt is sent exactly as shown, with {{variables}} filled in. There is no hidden system prompt.`;
-  const LBL={thread:'Thread prompt: a top-level comment on a thread',comment:'Comment prompt: a follow-up under our own published comment',mention:'Mention prompt: a reply to a competitor-mention comment (only when mentions are on)'};
-  $('#prompts').innerHTML=Object.keys(p.prompts).map(k=>`<div style="margin-bottom:18px"><strong>${esc(LBL[k]||k)}</strong>
-    <div class="meta">Variables: ${p.variables[k].map(v=>'{{'+esc(v)+'}}').join(' ')}${p.prompts[k]===p.defaults[k]?' · default':' · <b>edited</b>'}</div>
-    <textarea id="prompt-${k}" rows="16" style="margin-top:6px;font:12px ui-monospace,monospace">${esc(p.prompts[k])}</textarea>
-    <div class="meta" style="margin-top:6px"><button class="ghost" onclick="savePrompt('${k}')">Save</button><button class="ghost" onclick="resetPrompt('${k}')">Reset to default</button></div></div>`).join('');
+  const p=await api('/api/prompts');PV=p;
+  $('#promptinfo').innerHTML=`Model: <b>${esc(p.model)}</b> · OpenRouter key ${p.openrouter_key?'found':'<span class="flag">missing (OPENROUTER_API_KEY)</span>'}. Each type can have several prompts; set what percentage of drafts each one writes (they must add up to 100%). 0% pauses a prompt. Prompts are sent exactly as shown, with {{variables}} filled in.`;
+  renderPrompts();
 }
-window.savePrompt=k=>q2('Saving '+k+' prompt',async()=>{await api('/api/prompts',{[k]:$('#prompt-'+k).value});return k+' prompt saved. New drafts use it.';});
-window.resetPrompt=k=>q2('Resetting '+k+' prompt',async()=>{await api('/api/prompts',{[k]:null});return k+' prompt reset to the default.';});
+function renderPrompts(){
+  const p=PV,pct=v=>v==null?'–':v+'%';
+  $('#prompts').innerHTML=Object.keys(PTYPES).map(t=>{
+    const list=p.variants[t],total=list.reduce((a,v)=>a+(Number(v.weight)||0),0),st=p.stats[t];
+    return `<section style="margin-bottom:18px"><strong>${esc(PTYPES[t])}</strong>
+    <div class="meta">Variables: ${p.variables[t].map(v=>'{{'+esc(v)+'}}').join(' ')} · <span class="${total===100?'':'flag'}">total ${total}%${total===100?'':' (must be 100%)'}</span></div>
+    ${list.map((v,i)=>`<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">
+      <div class="filters" style="margin-bottom:6px"><input type="text" value="${esc(v.name)}" oninput="PV.variants.${t}[${i}].name=this.value" placeholder="Prompt name" maxlength="60">
+        <label style="flex:0;white-space:nowrap;margin:0"><input type="number" min="0" max="100" value="${v.weight}" style="width:70px" oninput="PV.variants.${t}[${i}].weight=Number(this.value);renderTotals()"> %</label>
+        ${list.length>1?`<button class="ghost" onclick="PV.variants.${t}.splice(${i},1);renderPrompts()">Remove</button>`:''}</div>
+      <textarea rows="10" style="font:12px ui-monospace,monospace" oninput="PV.variants.${t}[${i}].text=this.value">${esc(v.text)}</textarea></div>`).join('')}
+    <div class="meta" style="margin-top:8px"><button class="ghost" onclick="addPrompt('${t}')">+ Add prompt</button><button class="ghost" onclick="splitEven('${t}')">Split evenly</button><button onclick="savePrompts('${t}')">Save ${t} prompts</button></div>
+    <table style="width:100%;margin-top:10px;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--muted)">
+      <th>Prompt</th><th>Target</th><th>Drafted</th><th>Sent</th><th>Published</th><th>Removed</th><th>Failed</th><th>Cancelled</th><th>Pending</th><th>Publish rate</th></tr></thead><tbody>
+      ${st.prompts.map(r=>`<tr style="border-top:1px solid var(--line)${r.deleted?';color:var(--muted)':''}"><td>${esc(r.name)}${r.deleted?' (deleted)':''}</td><td>${r.deleted?'–':r.weight+'%'}</td>
+        <td>${r.drafted} <span class="muted">(${pct(r.share_of_drafts)})</span></td><td>${r.sent}</td><td>${r.published} <span class="muted">(${pct(r.share_of_published)})</span></td>
+        <td class="${r.removed?'lo':''}">${r.removed}</td><td>${r.failed}</td><td>${r.cancelled}</td><td>${r.pending}</td><td>${pct(r.publish_rate)}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="meta">Drafted share is each prompt's part of all ${st.drafted} ${t} drafts; Published share is its part of the ${st.published} published. Publish rate is published ÷ sent. Removed = taken down by moderators or AutoModerator; Failed = Engain error or deleted. Outcomes update with the comments job.</div>
+    </section>`;}).join('');
+}
+// Re-render after a percentage change without losing the field being typed in.
+function renderTotals(){const el=document.activeElement,pos=el&&el.selectionStart;const path=el&&[...document.querySelectorAll('#prompts input,#prompts textarea')].indexOf(el);renderPrompts();if(path>=0){const n=document.querySelectorAll('#prompts input,#prompts textarea')[path];if(n){n.focus();try{n.setSelectionRange(pos,pos);}catch{}}}}
+window.addPrompt=t=>{const l=PV.variants[t];if(l.length>=10){$('#progress').textContent='At most 10 prompts per type';return;}l.push({name:'Prompt '+(l.length+1),text:PV.defaults[t],weight:0});renderPrompts();};
+window.splitEven=t=>{const l=PV.variants[t],base=Math.floor(100/l.length);l.forEach((v,i)=>v.weight=base+(i<100-base*l.length?1:0));renderPrompts();};
+window.savePrompts=t=>q2('Saving '+t+' prompts',async()=>{const r=await api('/api/prompts',{type:t,variants:PV.variants[t]});return `${t} prompts saved: `+r.variants.map(v=>`${v.name} ${v.weight}%`).join(', ');});
 $('#takewrite').onclick=async()=>{$('#takewrite').disabled=true;$('#taken').hidden=false;$('#taken').textContent='Taking #1 and writing with OpenRouter…';
   try{const r=await api('/api/agent/task',{agent:'dashboard',write:true});
     $('#taken').textContent=r.status==='empty'?r.message:`Moved ${r.task_id} to Queue 2 (#${r.queue2.queue2_id}) and drafted with ${r.queue2.model||'OpenRouter'}`+(r.write_error?`\nWriting failed: ${r.write_error}`:`\n\n${r.queue2.message}\n\nReview it on the Queue 2 tab, then Approve & send.`);
