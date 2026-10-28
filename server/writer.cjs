@@ -224,13 +224,19 @@ async function complete({provider='openrouter',model,prompt,temperature=0.7,maxT
   if(provider==='featherless')body.chat_template_kwargs={enable_thinking:false};
   const started=Date.now();
   for(let attempt=0;;attempt++){
-    const r=await fetchImpl(p.url,{method:'POST',headers:{Authorization:'Bearer '+keys[provider],'Content-Type':'application/json',...(provider==='openrouter'?{'X-Title':'Geonode thread collector'}:{})},
-      body:JSON.stringify(body),signal:AbortSignal.timeout(120000)});
+    const wait=()=>new Promise(z=>setTimeout(z,(attempt+1)*(fetchImpl===fetch?5000:1)));
+    let r;
+    // A dropped connection is retried like a busy server.
+    try{r=await fetchImpl(p.url,{method:'POST',headers:{Authorization:'Bearer '+keys[provider],'Content-Type':'application/json',...(provider==='openrouter'?{'X-Title':'Geonode thread collector'}:{})},
+      body:JSON.stringify(body),signal:AbortSignal.timeout(120000)});}
+    catch(e){if(attempt<2&&e.name!=='TimeoutError'){await wait();continue;}throw e;}
     const j=await r.json().catch(()=>null);
     // Featherless answers 429 when the plan's concurrency is in use; wait and try again.
-    if(r.status===429&&attempt<4){await new Promise(z=>setTimeout(z,(attempt+1)*(fetchImpl===fetch?5000:1)));continue;}
+    if(r.status===429&&attempt<4){await wait();continue;}
     if(!r.ok)throw Error(j?.error?.message||`${p.label} ${r.status}`);
     const c=j?.choices?.[0],text=cleanText(c?.message?.content);
+    // An empty answer now and then is a model hiccup; ask once more before giving up.
+    if(!text&&attempt<1){await wait();continue;}
     // Reasoning models (GLM, MiniMax) think first; a small token limit can end before the answer.
     if(!text)throw Error(p.label+' returned an empty message'+(c?.message?.reasoning||c?.message?.reasoning_content?' (only reasoning; the token limit ran out before the answer)':''));
     return {text,finish_reason:c.finish_reason??null,latency_ms:Date.now()-started,usage:j.usage??null};
