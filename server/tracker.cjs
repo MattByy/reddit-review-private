@@ -78,7 +78,7 @@ function sentView(store,{days=7}={}){
   const rows=store.sentSince(since);
   const counts=Object.fromEntries(Object.keys(BUCKETS).map(k=>[k,0]));
   const items=rows.map(r=>{const b=bucket(r);counts[b]++;
-    return {group:groupOf(b),queue2_id:r.id,kind:r.kind,title:r.title,url:r.url,thread_url:r.thread_url,message:r.message,prompt_variant_name:r.prompt_variant_name??null,
+    return {group:groupOf(b),queue2_id:r.id,kind:r.kind,title:r.title,url:r.url,thread_url:r.thread_url,message:r.message,prompt_variant_slug:r.prompt_variant_slug??null,prompt_variant_name:r.prompt_variant_name??null,
       delivery_mode:r.delivery_mode,user_account_id:r.user_account_id,engain_task_id:r.engain_task_id,engain_status:r.engain_status??null,
       bucket:b,bucket_label:BUCKETS[b],reddit_url:r.reddit_url??null,sent_at:r.sent_at,status_checked_at:r.status_checked_at??null,
       status_changed_at:r.status_changed_at??null,checking:!r.settled,history:store.queue2Events(r.id)};});

@@ -142,19 +142,47 @@ const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 // Prompt variants. Each type (thread, comment, mention) has 1-10 prompts with a weight in percent;
 // the weights of a type add up to 100. A prompt at 0% is paused. Stored under kv 'prompt_variants'.
 const TYPES=Object.keys(DEFAULT_PROMPTS);
-const defaultVariant=type=>({id:'v_default_'+type,name:'Default',text:DEFAULT_PROMPTS[type],weight:100});
+const defaultVariant=type=>({id:'v_default_'+type,slug:type+'-default',name:'Default',text:DEFAULT_PROMPTS[type],weight:100});
+// Every prompt has a readable slug, unique across all types ("thread-default", "thread-natural-2").
+// It is made from the type and name once, then kept through renames; it can be edited.
+// Each draft and send records it, so stats and a comment's origin still name the prompt later.
+const SLUG=/^[a-z0-9][a-z0-9-]{0,59}$/;
+const slugify=s=>String(s??'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,50);
+function withSlugs(type,list,taken=new Set()){
+  return list.map(v=>{
+    let s=SLUG.test(v.slug||'')&&!taken.has(v.slug)?v.slug:null;
+    if(!s){const base=type+'-'+(slugify(v.name)||'prompt');s=base;for(let n=2;taken.has(s);n++)s=base+'-'+n;}
+    taken.add(s);return v.slug===s?v:{...v,slug:s};
+  });
+}
 function variants(store){
-  const saved=store.kv('prompt_variants')||{},old=store.kv('prompts')||{};
-  return Object.fromEntries(TYPES.map(t=>[t,saved[t]?.length?saved[t]:[{...defaultVariant(t),...(old[t]?{text:old[t]}:{})}]]));
+  const saved=store.kv('prompt_variants')||{},old=store.kv('prompts')||{},taken=new Set();
+  const out=Object.fromEntries(TYPES.map(t=>[t,withSlugs(t,saved[t]?.length?saved[t]:[{...defaultVariant(t),...(old[t]?{text:old[t]}:{})}],taken)]));
+  // Prompts saved before slugs existed get theirs now, once, so they never change afterwards.
+  if(TYPES.some(t=>saved[t]?.length&&saved[t].some((v,i)=>v.slug!==out[t][i].slug)))store.setKv('prompt_variants',out);
+  return out;
+}
+// Older drafts and sends get the slug of the prompt that wrote them (matched by prompt id).
+function backfillSlugs(store){
+  const st=store.db.prepare('update queue2 set prompt_variant_slug=? where prompt_variant_id=? and prompt_variant_slug is null');
+  let n=0;for(const list of Object.values(variants(store)))for(const v of list)n+=st.run(v.slug,v.id).changes;
+  return n;
 }
 function saveVariants(store,type,list){
   if(!TYPES.includes(type))fail(422,'type must be thread, comment or mention');
   if(!Array.isArray(list)||!list.length)fail(422,'Give at least one prompt');
   if(list.length>10)fail(422,'At most 10 prompts per type');
-  const ids=new Set();
+  const ids=new Set(),slugs=new Set();
+  const others=new Set(Object.entries(variants(store)).filter(([t])=>t!==type).flatMap(([,l])=>l.map(v=>v.slug)));
   const clean=list.map((v,i)=>{
     const name=String(v?.name??'').trim()||'Prompt '+(i+1);
     if(name.length>60)fail(422,`Prompt ${i+1}: name is longer than 60 characters`);
+    const slug=v?.slug==null||v.slug===''?null:String(v.slug).trim();
+    if(slug!=null){
+      if(!SLUG.test(slug))fail(422,`Prompt "${name}": slug must be lowercase letters, digits and dashes (up to 60), e.g. thread-natural-2`);
+      if(slugs.has(slug)||others.has(slug))fail(422,`Prompt "${name}": slug "${slug}" is already used by another prompt`);
+      slugs.add(slug);
+    }
     if(typeof v?.text!=='string'||!v.text.trim())fail(422,`Prompt "${name}": text is required`);
     if(v.text.length>12000)fail(422,`Prompt "${name}": text is longer than 12000 characters`);
     const weight=Number(v.weight);
@@ -169,18 +197,19 @@ function saveVariants(store,type,list){
     let id=typeof v.id==='string'&&/^v_[\w-]{1,40}$/.test(v.id)?v.id:'v_'+randomBytes(5).toString('hex');
     if(ids.has(id))id='v_'+randomBytes(5).toString('hex');
     ids.add(id);
-    return {id,name,text:v.text,weight,...(provider!=='openrouter'?{provider}:{}),...(model?{model}:{}),...(temperature!=null?{temperature}:{})};
+    return {id,...(slug?{slug}:{}),name,text:v.text,weight,...(provider!=='openrouter'?{provider}:{}),...(model?{model}:{}),...(temperature!=null?{temperature}:{})};
   });
   const total=clean.reduce((a,v)=>a+v.weight,0);
   if(total!==100)fail(422,`The ${type} prompt percentages add up to ${total}%; they must add up to 100%`);
-  store.setKv('prompt_variants',{...variants(store),[type]:clean});
-  return clean;
+  const done=withSlugs(type,clean,new Set([...others,...slugs].filter(s=>!clean.some(v=>v.slug===s))));
+  store.setKv('prompt_variants',{...variants(store),[type]:done});
+  return done;
 }
 // One prompt at a time, for the API. A new prompt starts at 0% (paused) unless weights are given,
 // so the type's total stays 100%; percentages change together through setWeights.
 function findVariant(store,id){
-  for(const [type,list] of Object.entries(variants(store))){const v=list.find(v=>v.id===id);if(v)return {type,variant:v,list};}
-  fail(404,'No prompt with id '+id);
+  for(const [type,list] of Object.entries(variants(store))){const v=list.find(v=>v.id===id||v.slug===id);if(v)return {type,variant:v,list};}
+  fail(404,'No prompt with id or slug '+id);
 }
 function addVariant(store,body){
   const type=body?.type;if(!TYPES.includes(type))fail(422,'type must be thread, comment or mention');
@@ -190,16 +219,16 @@ function addVariant(store,body){
   return {type,variant:saved[saved.length-1],variants:saved};
 }
 function updateVariant(store,id,body){
-  const {type,variant,list}=findVariant(store,id);
+  const {type,variant,list}=findVariant(store,id);id=variant.id;
   if(body?.weight!=null&&Number(body.weight)!==variant.weight)fail(422,'Change percentages with POST /api/prompts/weights, so the total stays 100%');
   const next={...variant};
-  for(const k of ['name','text','provider','model','temperature'])if(body&&k in body)next[k]=body[k];
+  for(const k of ['name','slug','text','provider','model','temperature'])if(body&&k in body)next[k]=body[k];
   if(next.provider==='openrouter'&&body&&'provider' in body&&!('model' in body))delete next.model;
   const saved=saveVariants(store,type,list.map(v=>v.id===id?next:v));
   return {type,variant:saved.find(v=>v.id===id),variants:saved};
 }
 function deleteVariant(store,id){
-  const {type,variant,list}=findVariant(store,id);
+  const {type,variant,list}=findVariant(store,id);id=variant.id;
   if(list.length===1)fail(409,'A type needs at least one prompt');
   if(variant.weight>0)fail(409,`"${variant.name}" still writes ${variant.weight}% of drafts; set it to 0% first`);
   return {type,variants:saveVariants(store,type,list.filter(v=>v.id!==id))};
@@ -209,7 +238,7 @@ function setWeights(store,type,weights){
   if(!TYPES.includes(type))fail(422,'type must be thread, comment or mention');
   if(!weights||typeof weights!=='object')fail(422,'weights must be an object like {"Default":50,"Natural 2":50}');
   const list=variants(store)[type],used=new Set();
-  const next=list.map(v=>{const k=v.id in weights?v.id:v.name in weights?v.name:null;if(k)used.add(k);return {...v,weight:k?Number(weights[k]):0};});
+  const next=list.map(v=>{const k=v.id in weights?v.id:v.slug in weights?v.slug:v.name in weights?v.name:null;if(k)used.add(k);return {...v,weight:k?Number(weights[k]):0};});
   const unknown=Object.keys(weights).filter(k=>!used.has(k));
   if(unknown.length)fail(422,'No '+type+' prompt called: '+unknown.join(', '));
   return {type,variants:saveVariants(store,type,next)};
@@ -291,10 +320,10 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   const variant=chooseVariant(store,entry),provider=variant.provider||'openrouter',model=variant.model||defaultModel;
   const keys={openrouter:apiKey,featherless:featherlessKey};
   if(!keys[provider])fail(503,`${PROVIDERS[provider].key} is not set (add it to .env.local)`);
-  const prompt=render(variant.text,variables(entry,store,variant.text)),pv={prompt_variant_id:variant.id,prompt_variant_name:variant.name,provider};
+  const prompt=render(variant.text,variables(entry,store,variant.text)),pv={prompt_variant_id:variant.id,prompt_variant_slug:variant.slug,prompt_variant_name:variant.name,provider};
   let res;
   const temperature=variant.temperature??0.7,maxTokens=provider==='featherless'?3000:1500,ref={queue2_id:entry.id,item_id:entry.item_id};
-  store.event('llm.request',`Queue 2 #${entry.id}: asking ${provider} ${model} (prompt "${variant.name}")`,{...ref,provider,model,temperature,max_tokens:maxTokens,prompt_variant_id:variant.id,prompt_variant_name:variant.name,prompt});
+  store.event('llm.request',`Queue 2 #${entry.id}: asking ${provider} ${model} (prompt "${variant.name}")`,{...ref,provider,model,temperature,max_tokens:maxTokens,prompt_variant_id:variant.id,prompt_variant_slug:variant.slug,prompt_variant_name:variant.name,prompt});
   const trace=note=>store.event('llm.retry',`Queue 2 #${entry.id}: ${provider} ${model}: ${note}`,{...ref,provider,model,note});
   // Some Featherless models reason before answering and need room for both.
   try{res=await complete({provider,model,prompt,temperature,maxTokens,keys,fetchImpl,trace});}
@@ -321,4 +350,4 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   return store.queue2(id);
 }
 
-module.exports={DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};
+module.exports={backfillSlugs,DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};

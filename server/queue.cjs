@@ -40,6 +40,20 @@ function titleFromUrl(url){
   try{const slug=new URL(url).pathname.split('/')[5];return slug&&slug!=='_'&&slug!=='comment'?decodeURIComponent(slug).replace(/_/g,' '):null;}catch{return null;}
 }
 
+// Where one of our Engain tasks came from, if this tool sent it: the Queue 2 entry, the prompt
+// (slug, id, name), model, when and how it was sent, the thread, and every status since.
+// null when the comment was posted some other way (before this tool, or by hand in Engain).
+function originFor(store,taskId){
+  const hit=taskId?store.queue2ByTask(taskId):null,r=hit&&store.queue2(hit.id);
+  if(!r)return null;
+  return {queue2_id:r.id,item_id:r.item_id,kind:r.kind,url:r.url,thread_url:r.thread_url,title:r.title,
+    prompt:{slug:r.prompt_variant_slug??null,id:r.prompt_variant_id??null,name:r.prompt_variant_name??null},
+    model:r.model??null,provider:r.provider??null,message_source:r.message_source,written_at:r.written_at??null,
+    approved_at:r.approved_at??null,approved_by:r.approved_by??null,sent_at:r.sent_at??null,
+    delivery:r.delivery_mode==='beta'?'dedicated':r.delivery_mode??null,account:r.delivery_mode==='beta'?r.user_account_id??null:r.poster_account??null,
+    engain_task_id:r.engain_task_id,engain_status:r.engain_status??null,reddit_url:r.reddit_url??null,history:store.queue2Events(r.id)};
+}
+
 // Scores everything collected and lists why each one cannot be queued (if so).
 function evaluate(store){
   const cfg=settings(store),subs=store.subreddits(),engaged=store.engaged(),threads=store.threads(),comments=store.comments(),history=store.queue();
@@ -90,7 +104,7 @@ function evaluate(store){
     if(since&&(!p.published_at||p.published_at<since))r.push('Published before the fresh start ('+since.slice(0,16).replace('T',' ')+' UTC)');
     if(age==null)r.push('Publish date unknown');else if(age>cfg.max_age_days)r.push(`Published more than ${cfg.max_age_days} days ago`);
     if(handledItems.has('p_'+p.task_id))r.push('Already '+handledItems.get('p_'+p.task_id)+' from the queue');
-    const row={...p,first_seen:p.published_seen_at,age_days:age==null?null:Math.round(age*10)/10,eligibility:{queueable:r.length===0,reasons:r}};
+    const row={...p,first_seen:p.published_seen_at,age_days:age==null?null:Math.round(age*10)/10,origin:originFor(store,p.task_id),eligibility:{queueable:r.length===0,reasons:r}};
     return publishedById[p.task_id]=row;
   });
   return {cfg,comments_since:since,threads:threadRows,comments:commentRows,published:publishedRows,threadById,commentById,publishedById};
@@ -173,7 +187,7 @@ function describeKind(q,ev){
     const p=ev.publishedById[q.comment_id];
     return {status:'comment',action:'follow_up_on_our_comment',
       comment:p&&{task_id:p.task_id,type:p.type,reddit_url:p.reddit_url,thread_url:p.thread_url,content:p.content,subreddit:p.subreddit,
-        published_at:p.published_at,age_days:p.age_days,parent_task_id:p.parent_task_id,labels:p.labels},
+        published_at:p.published_at,age_days:p.age_days,parent_task_id:p.parent_task_id,labels:p.labels,origin:p.origin},
       thread:t?threadInfo(t):p&&{id:p.thread_id,url:p.thread_url,title:titleFromUrl(p.thread_url),subreddit:p.subreddit}};
   }
   if(q.kind==='mention'){
@@ -208,7 +222,7 @@ function cleanMessage(m){
 const queue2Entry=r=>r&&{queue2_id:r.id,item_id:r.item_id,status:r.kind,url:r.url,thread_url:r.thread_url,title:r.title,
   message:r.message,message_source:r.message_source,disclosure:require('./send-queue2.cjs').checkDisclosure(r.message),
   write_status:r.write_status??null,write_error:r.write_error??null,model:r.model??null,provider:r.provider??null,prompt_used:r.prompt_used??null,written_at:r.written_at??null,
-  prompt_variant_id:r.prompt_variant_id??null,prompt_variant_name:r.prompt_variant_name??null,
+  prompt_variant_id:r.prompt_variant_id??null,prompt_variant_slug:r.prompt_variant_slug??null,prompt_variant_name:r.prompt_variant_name??null,
   approved_at:r.approved_at??null,approved_by:r.approved_by??null,
   send_status:r.send_status??'ready',delivery_mode:r.delivery_mode??null,poster_account:r.poster_account??null,user_account_id:r.user_account_id??null,
   engain_task_id:r.engain_task_id??null,reddit_url:r.reddit_url??null,send_error:r.send_error??null,send_reason:r.send_reason??null,sent_at:r.sent_at??null,
@@ -245,7 +259,7 @@ function sendLog(store,{result,q,queue2_id,limit=200}={}){
     if(!['send.ok','send.failed'].includes(e.type))continue;
     const ok=e.type==='send.ok';if(result==='ok'&&!ok||result==='failed'&&ok)continue;
     const d=e.data||{},req=ev.find(r=>r.type==='send.request'&&r.queue2_id===e.queue2_id&&r.id<e.id),cur=e.queue2_id!=null?store.queue2(e.queue2_id):null;
-    rows.push({id:e.id,at:e.at,result:ok?'ok':'failed',summary:e.message,queue2_id:e.queue2_id,item_id:e.item_id,kind:d.kind??cur?.kind??null,
+    rows.push({id:e.id,at:e.at,result:ok?'ok':'failed',summary:e.message,queue2_id:e.queue2_id,item_id:e.item_id,kind:d.kind??cur?.kind??null,prompt_variant_slug:cur?.prompt_variant_slug??null,
       mode:d.mode??null,account:d.account??null,url:d.url??cur?.url??null,message:req?.data?.message??cur?.message??null,
       task_id:d.task_id??null,http_status:ok?200:d.status??null,reason:d.reason??null,error:d.error??null,
       request:req?{at:req.at,...req.data}:null,response:ok?d.response??null:d.engain??null,
@@ -307,4 +321,4 @@ function commentList(store,{q,brand,own,min_score=40,available,limit=100,offset=
 const publishedList=store=>evaluate(store).published;
 
 const queue2Item=(store,id)=>queue2Entry(store.queue2(id));
-module.exports={DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};
+module.exports={originFor,DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};

@@ -30,6 +30,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // Console lines also go to the activity log; `say` prints only, for lines that log their own event.
   const say=log;log=m=>{say(m);store.event('server.log',String(m));};
   const keepDays=Number(process.env.LOG_KEEP_DAYS)||30;store.pruneEvents(keepDays);
+  writer.backfillSlugs(store);
   store.event('server.started',`Server started (${mock?'mock':'live'} Engain)`,{mock,keep_log_days:keepDays});
   const engain=client(mock?{apiKey:'mock',fetchImpl:require('./mock.cjs').mockFetch,limits:false,log}:{apiKey,log});
   const live=new Map();let active=null,projectName=null;
@@ -184,9 +185,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     for(const [type,list] of Object.entries(writer.variants(store))){
       const mine=rows.filter(r=>r.kind===type),pct=(a,b)=>b?Math.round(a/b*1000)/10:null;
       const sum=k=>mine.reduce((a,r)=>a+(r[k]||0),0),drafted=sum('drafted'),published=sum('published');
-      const entries=[...list.map(v=>({id:v.id,name:v.name,weight:v.weight,deleted:false})),
-        ...mine.filter(r=>!list.some(v=>v.id===r.id)).sort((x,y)=>String(x.name).localeCompare(String(y.name))).map(r=>({id:r.id,name:r.name,weight:0,deleted:true}))];
-      out[type]={drafted,published,prompts:entries.map(e=>{
+      const entries=[...list.map(v=>({id:v.id,slug:v.slug,name:v.name,weight:v.weight,deleted:false})),
+        ...mine.filter(r=>!list.some(v=>v.id===r.id)).sort((x,y)=>String(x.name).localeCompare(String(y.name))).map(r=>({id:r.id,slug:r.slug,name:r.name,weight:0,deleted:true}))];
+      out[type]={drafted,published,prompts:entries.map(e=>{e.slug=e.slug??mine.find(r=>r.id===e.id)?.slug??null;
         const r=mine.find(r=>r.id===e.id)||{drafted:0,sent:0,published:0,removed:0,failed:0,cancelled:0,pending:0};
         return {...e,drafted:r.drafted,sent:r.sent,published:r.published,removed:r.removed,failed:r.failed,cancelled:r.cancelled,pending:r.pending,
           share_of_drafts:pct(r.drafted,drafted),share_of_published:pct(r.published,published),publish_rate:pct(r.published,r.sent)};
@@ -364,6 +365,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         queues:{queue1:store.queued().length,queue2_ready:q2.filter(r=>(r.send_status||'ready')==='ready').length,sent_waiting_for_status:store.toCheck().length}};
     },
     'GET /api/published':async()=>queue.publishedList(store),
+    // Where one of our Engain tasks came from (Queue 2 entry, prompt slug, model, sent, statuses); 404 if not sent from here.
+    'GET /api/agent/origin/:id':async(_,__,id)=>queue.originFor(store,id)||fail(404,'This task was not sent from Queue 2'),
     'GET /api/our-comments':async q=>{
       const rows=store.ourTasks(q.verdict||undefined),counts={};
       for(const r of store.ourTasks())counts[r.verdict]=(counts[r.verdict]||0)+1;

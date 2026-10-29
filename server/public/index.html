@@ -161,7 +161,11 @@ function commentHtml(c,thread){return `<blockquote>${esc(c.body.length>600?c.bod
   <div class="meta">in ${thread?.url?`<a href="${esc(thread.url)}" target="_blank" rel="noopener">${esc(thread.title||'thread')}</a>`:esc(thread?.title||c.thread_title||'thread')} · r/${esc(thread?.subreddit||c.subreddit)}</div>`;}
 function ownHtml(c,thread){if(!c)return '<span class="muted">Published comment no longer collected</span>';return `<blockquote>${esc(c.content.length>600?c.content.slice(0,600)+'…':c.content)}</blockquote>
   <div class="meta"><span>our ${esc(c.type)}</span><span>published ${esc(String(c.published_at).slice(0,10))} (${c.age_days} days ago)</span><a href="${esc(c.reddit_url)}" target="_blank" rel="noopener">Open our comment</a>${c.parent_task_id?`<span>replies to task ${esc(c.parent_task_id)}</span>`:''}${c.labels.length?`<span>${c.labels.map(esc).join(', ')}</span>`:''}</div>
-  <div class="meta">in <a href="${esc(c.thread_url)}" target="_blank" rel="noopener">${esc(thread?.title||c.thread_url)}</a> · r/${esc(c.subreddit)}</div>`;}
+  <div class="meta">in <a href="${esc(c.thread_url)}" target="_blank" rel="noopener">${esc(thread?.title||c.thread_url)}</a> · r/${esc(c.subreddit)}</div>${originHtml(c.origin)}`;}
+// Where our comment came from, when this tool sent it.
+function originHtml(o){if(!o)return '<div class="meta muted">Not sent from Queue 2 (posted before this tool or in Engain directly)</div>';const d=s=>esc(String(s||'').slice(0,16).replace('T',' '));
+  return `<div class="meta"><span>origin: Queue 2 #${esc(o.queue2_id)} (${esc(o.item_id)})</span><span>prompt ${o.prompt.slug?`<code>${esc(o.prompt.slug)}</code>`:esc(o.prompt.name||o.message_source)}</span>${o.model?`<span>${esc(o.model)}</span>`:''}
+    <span>sent ${d(o.sent_at)} ${o.delivery==='dedicated'?'from your account '+esc(accountName(o.account)):'through the Engain pool'}</span><span>${(o.history||[]).map(h=>esc(h.to_status)).join(' → ')||esc(o.engain_status||'')}</span></div>`;}
 const KIND={thread:'Comment on thread',comment:'Our published comment',mention:'Reply to competitor mention'};
 function itemHtml(x,controls=''){return `<div class="item ${x.status==='queued'||!x.status?'':'done'}"><div class="score ${cls(x.score)}">${x.kind==='comment'?'<span class="kind comment">new</span>':x.score??'–'}${x.position?`<div class="pos">#${x.position}</div>`:''}</div><div>
   <div class="kind ${x.kind}">${KIND[x.kind]||x.kind}</div>
@@ -453,7 +457,7 @@ async function loadQueue2(){
     <div class="meta"><span>url:</span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.url)}</a></div>
     <div class="meta"><span>thread:</span><a href="${esc(x.thread_url)}" target="_blank" rel="noopener">${esc(x.title||x.thread_url)}</a></div>
     ${ready?`<textarea id="msg-${id}" rows="4" style="margin-top:6px">${esc(x.message)}</textarea>`:`<blockquote>${esc(x.message)}</blockquote>`}
-    <div class="meta"><span>message: ${esc(x.message_source)}${x.prompt_variant_name?' · prompt “'+esc(x.prompt_variant_name)+'”':''}${x.model?' · '+esc(x.model):''}${x.written_at?' · written '+esc(String(x.written_at).slice(0,16).replace('T',' ')):''}</span>
+    <div class="meta"><span>message: ${esc(x.message_source)}${x.prompt_variant_name?' · prompt “'+esc(x.prompt_variant_name)+'”'+(x.prompt_variant_slug?' ('+esc(x.prompt_variant_slug)+')':''):''}${x.model?' · '+esc(x.model):''}${x.written_at?' · written '+esc(String(x.written_at).slice(0,16).replace('T',' ')):''}</span>
       ${x.approved_at?`<span>approved ${esc(String(x.approved_at).slice(0,16).replace('T',' '))} by ${esc(x.approved_by)}</span>`:''}</div>
     ${x.write_error?`<div class="flag">Writing failed: ${esc(x.write_error)}</div>`:''}
     ${x.prompt_used?`<details><summary>Prompt used (${esc(x.prompt_variant_name||x.status+' prompt')}, exactly as sent to OpenRouter)</summary><pre>${esc(x.prompt_used)}</pre></details>`:''}
@@ -500,7 +504,7 @@ async function loadSent(){
   $('#sent').innerHTML=items.map(x=>`<div class="item"><div class="score ${BCOL[x.bucket]}" style="font-size:11px">${esc(x.bucket_label)}</div><div>
     <div class="kind ${esc(x.kind)}">${esc(KIND[x.kind]||x.kind)} · #${x.queue2_id}${x.checking?' · <span class="mid">checking</span>':''}</div>
     <div class="meta"><a href="${esc(x.thread_url||x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a>${x.reddit_url?` · <a href="${esc(x.reddit_url)}" target="_blank" rel="noopener">live comment</a>`:''}</div>
-    <div class="meta"><span>sent ${t(x.sent_at)}</span><span>${x.delivery_mode==='beta'?'from your account '+esc(accountName(x.user_account_id)):'Engain pool'}</span>${x.prompt_variant_name?`<span>prompt “${esc(x.prompt_variant_name)}”</span>`:''}<span>Engain: ${esc(x.engain_status||'–')}</span><span>last checked ${t(x.status_checked_at)}</span></div>
+    <div class="meta"><span>sent ${t(x.sent_at)}</span><span>${x.delivery_mode==='beta'?'from your account '+esc(accountName(x.user_account_id)):'Engain pool'}</span>${x.prompt_variant_name?`<span>prompt “${esc(x.prompt_variant_name)}”${x.prompt_variant_slug?' ('+esc(x.prompt_variant_slug)+')':''}</span>`:''}<span>Engain: ${esc(x.engain_status||'–')}</span><span>last checked ${t(x.status_checked_at)}</span></div>
     <div class="meta">${x.history.map(h=>`${t(h.at)} ${esc(h.from_status||'sent')} → ${esc(h.to_status)}`).join(' · ')}</div>
   </div></div>`).join('')||'<p class="muted">Nothing here for this period.</p>';
 }
@@ -524,6 +528,7 @@ function renderPrompts(){
     <div class="meta">Variables: ${p.variables[t].map(v=>'{{'+esc(v)+'}}').join(' ')} · <span class="${total===100?'':'flag'}">total ${total}%${total===100?'':' (must be 100%)'}</span></div>
     ${list.map((v,i)=>`<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">
       <div class="filters" style="margin-bottom:6px"><input type="text" value="${esc(v.name)}" oninput="PV.variants.${t}[${i}].name=this.value" placeholder="Prompt name" maxlength="60">
+        <input type="text" value="${esc(v.slug||'')}" oninput="PV.variants.${t}[${i}].slug=this.value" placeholder="slug (made from the name)" maxlength="60" style="max-width:220px;font:12px ui-monospace,monospace" title="Short unique name saved on every comment this prompt writes">
         <label style="flex:0;white-space:nowrap;margin:0"><input type="number" min="0" max="100" value="${v.weight}" style="width:70px" oninput="PV.variants.${t}[${i}].weight=Number(this.value);renderTotals()"> %</label>
         ${list.length>1?`<button class="ghost" onclick="PV.variants.${t}.splice(${i},1);renderPrompts()">Remove</button>`:''}</div>
       <div class="filters" style="margin-bottom:6px"><select style="max-width:130px" onchange="PV.variants.${t}[${i}].provider=this.value"><option value="openrouter">OpenRouter</option><option value="featherless" ${v.provider==='featherless'?'selected':''}>Featherless</option></select>
@@ -533,7 +538,7 @@ function renderPrompts(){
     <div class="meta" style="margin-top:8px"><button class="ghost" onclick="addPrompt('${t}')">+ Add prompt</button><button class="ghost" onclick="addPrompt('${t}',true)">+ Add natural-style prompt</button><button class="ghost" onclick="splitEven('${t}')">Split evenly</button><button onclick="savePrompts('${t}')">Save ${t} prompts</button></div>
     <table style="width:100%;margin-top:10px;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--muted)">
       <th>Prompt</th><th>Target</th><th>Drafted</th><th>Sent</th><th>Published</th><th>Removed</th><th>Failed</th><th>Cancelled</th><th>Pending</th><th>Publish rate</th></tr></thead><tbody>
-      ${st.prompts.map(r=>`<tr style="border-top:1px solid var(--line)${r.deleted?';color:var(--muted)':''}"><td>${esc(r.name)}${r.deleted?' (deleted)':''}</td><td>${r.deleted?'–':r.weight+'%'}</td>
+      ${st.prompts.map(r=>`<tr style="border-top:1px solid var(--line)${r.deleted?';color:var(--muted)':''}"><td>${esc(r.name)}${r.deleted?' (deleted)':''}${r.slug?` <span class="muted" style="font-family:ui-monospace,monospace">${esc(r.slug)}</span>`:''}</td><td>${r.deleted?'–':r.weight+'%'}</td>
         <td>${r.drafted} <span class="muted">(${pct(r.share_of_drafts)})</span></td><td>${r.sent}</td><td>${r.published} <span class="muted">(${pct(r.share_of_published)})</span></td>
         <td class="${r.removed?'lo':''}">${r.removed}</td><td>${r.failed}</td><td>${r.cancelled}</td><td>${r.pending}</td><td>${pct(r.publish_rate)}</td></tr>`).join('')}
     </tbody></table>

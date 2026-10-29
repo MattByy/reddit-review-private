@@ -367,3 +367,53 @@ test('a send leaves Queue 2: OK ones go to Sent, failures to the send log, and R
     assert.ok((await call(a,'GET','/api/agent/queue2?status=all')).body.items.some(x=>x.queue2_id===bad),'status=all still lists it');
   }finally{a.close();}
 });
+
+test('prompts have unique, editable slugs that every draft records',async()=>{
+  const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
+  try{
+    let p=(await call(a,'GET','/api/prompts')).body.variants;
+    assert.deepStrictEqual([p.thread[0].slug,p.comment[0].slug,p.mention[0].slug],['thread-default','comment-default','mention-default']);
+    const n=(await call(a,'POST','/api/prompt-variants',{type:'thread',name:'Natural 2',style:'natural'})).body.variant;
+    assert.strictEqual(n.slug,'thread-natural-2','made from the type and name');
+    const same=(await call(a,'POST','/api/prompt-variants',{type:'thread',name:'Natural 2'})).body.variant;
+    assert.strictEqual(same.slug,'thread-natural-2-2','unique');
+    const renamed=(await call(a,'POST','/api/prompt-variants/'+n.id,{name:'Casual'})).body.variant;
+    assert.strictEqual(renamed.slug,'thread-natural-2','kept through a rename');
+    assert.strictEqual((await call(a,'POST','/api/prompt-variants/'+n.id,{slug:'Bad Slug!'})).status,422);
+    assert.strictEqual((await call(a,'POST','/api/prompt-variants/'+n.id,{slug:'comment-default'})).status,422,'unique across types');
+    assert.strictEqual((await call(a,'POST','/api/prompt-variants/'+n.id,{slug:'thread-casual'})).body.variant.slug,'thread-casual');
+    assert.strictEqual((await call(a,'GET','/api/prompt-variants/thread-casual')).body.variant.id,n.id,'found by slug');
+    await call(a,'POST','/api/prompts/weights',{type:'thread',weights:{'thread-casual':100}});
+
+    await ready(a);
+    const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
+    assert.strictEqual(q.prompt_variant_slug,'thread-casual');assert.strictEqual(q.prompt_variant_name,'Casual');
+    const st=(await call(a,'GET','/api/prompts')).body.stats.thread.prompts.find(r=>r.id===n.id);
+    assert.strictEqual(st.slug,'thread-casual');assert.strictEqual(st.drafted,1);
+  }finally{a.close();}
+});
+
+test('a published comment comes back into Queue 1 with where it came from',async()=>{
+  const mock=require('../server/mock.cjs'),saved=JSON.parse(JSON.stringify(mock.tasks));
+  const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
+  try{
+    await ready(a);
+    let t;do{t=(await call(a,'POST','/api/agent/task',{write:true})).body;}while(t.status!=='thread');
+    const id=t.queue2.queue2_id;
+    const sent=(await call(a,'POST',`/api/agent/queue2/${id}/approve`,{mode:'pool'})).body;
+    assert.ok(sent.taskId);
+    let o=(await call(a,'GET','/api/agent/origin/'+sent.taskId)).body;
+    assert.strictEqual(o.queue2_id,id);assert.strictEqual(o.item_id,t.task_id);assert.strictEqual(o.prompt.slug,'thread-default');
+    assert.strictEqual(o.model,'anthropic/claude-sonnet-5.5');assert.strictEqual(o.delivery,'pool');assert.ok(o.sent_at);assert.strictEqual(o.thread_url,t.queue2.thread_url);
+    assert.strictEqual((await call(a,'GET','/api/agent/origin/nope')).status,404);
+
+    // Engain publishes it; the comments job brings it back into Queue 1 carrying its origin.
+    Object.assign(mock.tasks.find(x=>(x._id||x.id)===sent.taskId),{status:'published',redditUrl:t.queue2.url+'ours_origin/',publishedAt:new Date().toISOString(),parentTaskId:null,labels:[]});
+    await call(a,'POST','/api/cron/comments',{});
+    const pub=(await call(a,'GET','/api/published')).body.find(x=>x.task_id===sent.taskId);
+    assert.ok(pub,'collected as our published comment');assert.strictEqual(pub.origin.queue2_id,id);assert.strictEqual(pub.origin.prompt.slug,'thread-default');
+    const item=(await call(a,'GET','/api/queue')).body.items.find(x=>x.kind==='comment'&&x.comment_id===sent.taskId);
+    assert.ok(item,'back in Queue 1');assert.strictEqual(item.comment.origin.prompt.slug,'thread-default');assert.strictEqual(item.comment.origin.item_id,t.task_id);
+    assert.ok(item.comment.origin.history.length>=1);
+  }finally{mock.tasks.splice(0,mock.tasks.length,...saved);a.close();}
+});
