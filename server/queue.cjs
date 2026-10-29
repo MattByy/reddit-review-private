@@ -249,7 +249,15 @@ function claimNext(store,agent,{message}={}){
 // Queue 2 holds only what still waits to be sent. Submitted items live on in the Sent list,
 // failed ones in the send log; status=all lists every entry.
 const WAITING=new Set([null,undefined,'ready','sending']);
-const queue2List=(store,{status}={})=>{const rows=store.queue2().filter(r=>status==='all'||WAITING.has(r.send_status));return {count:rows.length,items:rows.map(queue2Entry)};};
+// Pool and our own accounts take turns in a thread: the next post goes out the other way from our
+// first post there. A thread with nothing of ours starts from the pool.
+function threadDelivery(store,threadId){
+  const posts=threadId?store.threadPosts(threadId):[],first=posts[0]?.source??null;
+  return {first,next:first==='pool'?'dedicated':'pool',posts:posts.length};
+}
+// A waiting entry also says how it will be sent (next_delivery), so the page can show it.
+const withDelivery=(store,r)=>{const e=queue2Entry(r);if(e&&WAITING.has(r.send_status))e.next_delivery=threadDelivery(store,r.thread_id);return e;};
+const queue2List=(store,{status}={})=>{const rows=store.queue2().filter(r=>status==='all'||WAITING.has(r.send_status));return {count:rows.length,items:rows.map(r=>withDelivery(store,r))};};
 // Every send attempt to Engain, newest first: result ok|failed, the request we made and Engain's answer.
 // Filters: result, q (text), queue2_id, limit.
 function sendLog(store,{result,q,queue2_id,limit=200}={}){
@@ -320,5 +328,5 @@ function commentList(store,{q,brand,own,min_score=40,available,limit=100,offset=
 }
 const publishedList=store=>evaluate(store).published;
 
-const queue2Item=(store,id)=>queue2Entry(store.queue2(id));
-module.exports={originFor,DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};
+const queue2Item=(store,id)=>withDelivery(store,store.queue2(id));
+module.exports={originFor,threadDelivery,DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};

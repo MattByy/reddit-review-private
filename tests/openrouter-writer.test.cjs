@@ -187,17 +187,38 @@ test('dedicated accounts (Engain v2): list, post a thread comment, once per thre
   }finally{mock.tasks.splice(saved);a.close();}
 });
 
-test('approve routes automatically: first comments from a random own account, replies through the pool',async()=>{
+test('approve routes automatically: pool and our accounts take turns in a thread',async()=>{
   const mock=require('../server/mock.cjs'),saved=mock.tasks.length;
   const a=app({fetchImpl:fakeOpenRouter().fetchImpl});
-  const add=(kind,n)=>{a.store.db.prepare(`insert into queue2(item_id,kind,thread_id,url,thread_url,title,message,message_source,item,created_at,updated_at)
+  const add=(kind,n,k=kind[0])=>{a.store.db.prepare(`insert into queue2(item_id,kind,thread_id,url,thread_url,title,message,message_source,item,created_at,updated_at)
       values(?,?,?,?,?,'t','Disclosure: I work at Geonode. A useful note.','given','{}',datetime('now'),datetime('now'))`)
-      .run(kind[0]+'_auto'+n,kind,'auto'+n,`https://www.reddit.com/r/proxies/comments/auto${n}/`+(kind==='thread'?'':`x/c${n}/`),`https://www.reddit.com/r/proxies/comments/auto${n}/`);
-    return a.store.db.prepare('select id from queue2 where item_id=?').get(kind[0]+'_auto'+n).id;};
+      .run(k+'_auto'+n,kind,'auto'+n,`https://www.reddit.com/r/proxies/comments/auto${n}/`+(kind==='thread'?'':`x/c${n}/`),`https://www.reddit.com/r/proxies/comments/auto${n}/`);
+    return a.store.db.prepare('select id from queue2 where item_id=?').get(k+'_auto'+n).id;};
+  // Our earlier post in thread autoN, as Engain's task list has it.
+  const had=(n,from,verdict='approved',status='published')=>a.store.saveTask({task_id:`had_${n}_${from}_${verdict}`,type:'comment',status,verdict,thread_id:'auto'+n,
+    thread_url:`https://www.reddit.com/r/proxies/comments/auto${n}/`,posted_from:from,created_at:'2026-01-01T00:00:00Z'});
+  const waiting=async id=>(await call(a,'GET','/api/agent/queue2?status=all')).body.items.find(x=>x.queue2_id===id);
   try{
+    // Nothing of ours in the thread: the first post goes through the pool.
+    let q=add('thread',1);
+    assert.deepStrictEqual((await waiting(q)).next_delivery,{first:null,next:'pool',posts:0});
+    let r=await call(a,'POST',`/api/agent/queue2/${q}/approve`,{});
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));
+    assert.strictEqual(r.body.account,null);assert.strictEqual(r.body.queue2.delivery_mode,'pool');assert.strictEqual(mock.tasks.at(-1).type,'comment');
+    const chosen=(await call(a,'GET','/api/logs?queue2_id='+q)).body.items.find(e=>e.type==='delivery.chosen');
+    assert.match(chosen.message,/nothing of ours in this thread yet, so this one goes via the pool/);
+
+    // That send counts before Engain's task list has it: the next post in the thread comes from our accounts.
+    q=add('thread',1,'second');
+    assert.deepStrictEqual((await waiting(q)).next_delivery,{first:'pool',next:'dedicated',posts:1});
+    r=await call(a,'POST',`/api/agent/queue2/${q}/approve`,{});
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));assert.strictEqual(r.body.queue2.delivery_mode,'beta');
+
+    // Started from the pool: a random ready account of ours.
     const used=new Set();
-    for(let n=0;n<20;n++){
-      const r=await call(a,'POST',`/api/agent/queue2/${add('thread',n)}/approve`,{});
+    for(let n=10;n<30;n++){
+      had(n,'pool');
+      r=await call(a,'POST',`/api/agent/queue2/${add('thread',n)}/approve`,{});
       assert.strictEqual(r.status,200,JSON.stringify(r.body));
       assert.ok(['sn_mock_1','sn_mock_2'].includes(r.body.account.id),'only ready accounts');
       assert.strictEqual(mock.tasks.at(-1).postedFrom,'dedicated');assert.strictEqual(mock.tasks.at(-1).accountId,r.body.account.id);
@@ -206,33 +227,49 @@ test('approve routes automatically: first comments from a random own account, re
     }
     assert.strictEqual(used.size,2,'the account is chosen at random');
 
+    // Started from our accounts: the pool.
+    had(40,'dedicated');
+    r=await call(a,'POST',`/api/agent/queue2/${add('thread',40)}/approve`,{});
+    assert.strictEqual(r.body.account,null);assert.strictEqual(r.body.queue2.delivery_mode,'pool');
+    // A cancelled or failed task never reached Reddit, so it does not count; a removed one does.
+    had(41,'dedicated','cancelled','cancelled');had(41,'pool','approved');
+    assert.strictEqual((await waiting(add('thread',41))).next_delivery.first,'pool');
+    had(42,'dedicated','disapproved','mod_removed');
+    assert.strictEqual((await waiting(add('thread',42))).next_delivery.next,'pool');
+
+    // A reply in a thread our accounts started goes through the pool.
+    had(50,'dedicated');
+    r=await call(a,'POST',`/api/agent/queue2/${add('comment',50)}/approve`,{});
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));
+    assert.strictEqual(r.body.account,null);assert.strictEqual(r.body.queue2.delivery_mode,'pool');assert.strictEqual(mock.tasks.at(-1).type,'reply');
+    // A reply in a thread the pool started is our accounts' turn, and they cannot reply: nothing is sent.
+    had(51,'pool');const sentBefore=mock.tasks.length,c=add('comment',51);
+    r=await call(a,'POST',`/api/agent/queue2/${c}/approve`,{});
+    assert.strictEqual(r.status,409);assert.match(r.body.error,/does not let your own accounts post replies/);
+    assert.strictEqual(mock.tasks.length,sentBefore,'nothing reached Engain');
+    let e=await waiting(c);assert.strictEqual(e.send_status,'failed','moved to the send log');assert.strictEqual(e.approved_at,null);
+
     // In a thread where sn_mock_1 already commented, only sn_mock_2 can be picked; when both have, nothing is sent.
-    const t1=add('thread',100);
+    had(100,'pool');const t1=add('thread',100);
     mock.tasks.push({_id:'pre1',accountId:'sn_mock_1',threadUrl:'https://www.reddit.com/r/proxies/comments/auto100/',status:'published'});
     for(let i=0;i<5;i++){
-      if(i){a.store.db.prepare("update queue2 set send_status='ready',approved_at=null where id=?").run(t1);mock.tasks.splice(mock.tasks.findIndex(t=>t.postedFrom==='dedicated'&&t.threadUrl.includes('auto100')),1);}
-      const r=await call(a,'POST',`/api/agent/queue2/${t1}/approve`,{});
+      if(i){a.store.db.prepare("update queue2 set send_status='ready',approved_at=null,engain_task_id=null where id=?").run(t1);mock.tasks.splice(mock.tasks.findIndex(t=>t.postedFrom==='dedicated'&&t.threadUrl.includes('auto100')),1);}
+      r=await call(a,'POST',`/api/agent/queue2/${t1}/approve`,{});
       assert.strictEqual(r.body.account.id,'sn_mock_2');
     }
-    const t2=add('thread',200);
+    had(200,'pool');const t2=add('thread',200);
     for(const id of ['sn_mock_1','sn_mock_2'])mock.tasks.push({_id:'pre_'+id,accountId:id,threadUrl:'https://www.reddit.com/r/proxies/comments/auto200/',status:'published'});
-    let r=await call(a,'POST',`/api/agent/queue2/${t2}/approve`,{});
+    r=await call(a,'POST',`/api/agent/queue2/${t2}/approve`,{});
     assert.strictEqual(r.status,409);assert.match(r.body.error,/All 2 of your ready accounts already commented/);
-    let e=(await call(a,'GET','/api/agent/queue2?status=all')).body.items.find(x=>x.queue2_id===t2);
+    e=await waiting(t2);
     assert.strictEqual(e.send_status,'failed','moved to the send log');assert.strictEqual(e.approved_at,null,'not marked approved when nothing was sent');
-
-    // A reply goes through the pool without any account choice.
-    r=await call(a,'POST',`/api/agent/queue2/${add('comment',300)}/approve`,{});
-    assert.strictEqual(r.status,200,JSON.stringify(r.body));
-    assert.strictEqual(r.body.account,null);assert.strictEqual(r.body.queue2.delivery_mode,'pool');
-    assert.strictEqual(mock.tasks.at(-1).type,'reply');
 
     // No accounts available: nothing is sent.
     a.engain.v2Accounts=async()=>{throw Object.assign(Error('Forbidden'),{status:403});};
-    const t3=add('thread',400);
+    had(400,'pool');const t3=add('thread',400);
     r=await call(a,'POST',`/api/agent/queue2/${t3}/approve`,{});
     assert.strictEqual(r.status,409);assert.match(r.body.error,/not available/);
-    e=(await call(a,'GET','/api/agent/queue2?status=all')).body.items.find(x=>x.queue2_id===t3);
+    e=await waiting(t3);
     assert.strictEqual(e.send_status,'failed');assert.strictEqual(e.approved_at,null);
   }finally{mock.tasks.splice(saved);a.close();}
 });
@@ -294,7 +331,7 @@ test('per-prompt stats count what was sent, published and removed, including del
     const sent=[];
     for(let i=0;i<4;i++){
       const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
-      const r=await call(a,'POST',`/api/agent/queue2/${q.queue2_id}/approve`,{});
+      const r=await call(a,'POST',`/api/agent/queue2/${q.queue2_id}/approve`,{mode:'dedicated',userAccountId:'sn_mock_1'});
       assert.strictEqual(r.status,200,JSON.stringify(r.body));sent.push({task:r.body.taskId,name:q.prompt_variant_name});
     }
     // Engain publishes the A messages and moderators remove one B message.
@@ -358,6 +395,9 @@ test('a send leaves Queue 2: OK ones go to Sent, failures to the send log, and R
     assert.strictEqual(back.send_status,'ready');assert.strictEqual(back.approved_at,null);
     assert.ok((await waiting()).includes(bad),'Retry puts it back in Queue 2');
 
+    // The pool already posted in this thread, so the automatic choice is one of our accounts.
+    const tid=a.store.queue2(bad).thread_id;
+    a.store.saveTask({task_id:'pool_'+tid,type:'comment',status:'published',verdict:'approved',thread_id:tid,posted_from:'pool',created_at:'2026-01-01T00:00:00Z'});
     r=await call(a,'POST',`/api/agent/queue2/${bad}/approve`,{});
     assert.strictEqual(r.status,200,JSON.stringify(r.body));assert.notStrictEqual(r.body.account.id,'sn_mock_4','the picker never uses a refunded account');
     assert.ok(!(await waiting()).includes(bad),'a submitted item leaves Queue 2');

@@ -31,7 +31,7 @@ test('one item: queued, moved to Queue 2, drafted, approved and sent, all in the
     assert.strictEqual(sent.status,200,JSON.stringify(sent.body));
     const log=(await call(a,'GET','/api/logs?item_id='+r.task_id)).body.items;
     const seq=types(log);
-    for(const t of ['queue.added','queue.moved','llm.request','llm.response','account.picked','queue2.approved','send.request','send.ok'])assert.ok(seq.includes(t),t+' missing: '+seq);
+    for(const t of ['queue.added','queue.moved','llm.request','llm.response','delivery.chosen','queue2.approved','send.request','send.ok'])assert.ok(seq.includes(t),t+' missing: '+seq);
     assert.ok(seq.indexOf('queue.moved')<seq.indexOf('llm.request')&&seq.indexOf('llm.response')<seq.indexOf('send.ok'),'in order: '+seq);
     const req=log.find(e=>e.type==='llm.request'),res=log.find(e=>e.type==='llm.response');
     assert.ok(req.data.prompt.includes(r.thread.title),'the exact prompt is kept');

@@ -209,10 +209,11 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       return r;
     },
     'POST /api/agent/queue2/:id/write':async(_,__,id)=>{await writer.writeQueue2(store,id,writerOpts);return queue.queue2Item(store,id)||{queue2_id:Number(id),write_status:'skipped',discarded:true};},
-    // Approve and send in one step. Routing is automatic unless body.mode is given:
-    //   thread items (first comment in a thread) -> a random ready account of ours (Engain v2),
-    //     skipping any account that already commented in that thread;
-    //   comment and mention items (replies) -> the Engain pool (v2 accounts cannot post replies).
+    // Approve and send in one step. Routing is automatic unless body.mode is given: pool and our
+    // own accounts take turns in a thread (queue.threadDelivery). Our first post there goes from the
+    // pool, the next from a random ready account of ours (Engain v2) that has not commented in the
+    // thread, then the pool again. Our accounts cannot post replies (v2), so a reply whose turn is
+    // ours is refused rather than sent through the pool.
     'POST /api/agent/queue2/:id/approve':async(_,body,id)=>{
       const item=store.queue2(id);if(!item)fail(404,'No such queue 2 entry');
       if(item.message_source==='random'||['skipped','truncated'].includes(item.write_status))fail(422,item.write_status==='truncated'?'This message is cut off. Rewrite or edit it first.':'There is no real message to approve. Write one first.');
@@ -229,7 +230,11 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         throw e;
       };
       if(!mode){
-        if(item.kind==='thread'){
+        const turn=queue.threadDelivery(store,item.thread_id);
+        store.event('delivery.chosen',`Queue 2 #${id}: ${turn.first?`our first post in this thread came from ${turn.first==='pool'?'the pool':'our accounts'}`:'nothing of ours in this thread yet'}, so this one goes via ${turn.next==='pool'?'the pool':'our accounts'}`,
+          {queue2_id:Number(id),item_id:item.item_id,thread_id:item.thread_id,...turn});
+        if(turn.next==='dedicated'){
+          if(item.kind!=='thread')notSent(Object.assign(Error('This thread started from the pool, so this reply should come from one of your accounts, but Engain does not let your own accounts post replies.'),{status:409}),'Turn of our accounts; they cannot reply');
           try{account=await pickAccount(item);}catch(e){notSent(e,'No account to post from');}
           mode='dedicated';userAccountId=account.userAccountId;override={...override,thread_check:true};
         }

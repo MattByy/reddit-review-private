@@ -49,7 +49,7 @@ Engain ──collect──▶ threads + comments ──rank──▶ Queue 1 ─
 
 1. **Queue 1** holds ranked items: `thread` means comment on a thread; `comment` means follow up under our own published comment.
 2. **Taking #1** moves it to **Queue 2**, where a message is written: by a model from the type's prompts (split by percentage), or given by you.
-3. **Approve** sends it. Thread items go from one of our own accounts; replies go through Engain's pool.
+3. **Approve** sends it. Engain's pool and our own accounts take turns in each thread (see Routing below).
 4. **Sent** tracks Engain's status until it is final.
 
 ---
@@ -264,9 +264,13 @@ Each entry includes:
 j -X POST $API/api/agent/queue2/12/approve -d '{}'
 ```
 
-Routing is automatic:
-- **Thread items** go from a random ready account of ours. Accounts that already commented in that thread are skipped.
-- **Comment and mention items** go through Engain's pool, because our own accounts can't post replies.
+Routing is automatic. The pool and our own accounts take turns in a thread:
+- **Nothing of ours in the thread yet:** the post goes through Engain's pool.
+- **Our first post there came from the pool:** the next one goes from a random ready account of ours. Accounts that already commented in that thread are skipped.
+- **Our first post there came from our accounts:** the next one goes through the pool.
+- "Our posts" are Engain's task list plus our Queue 2 sends it hasn't listed yet. Cancelled and failed tasks never reached Reddit, so they don't count; removed ones do.
+- **Replies** (comment and mention items) can't come from our accounts (Engain v2). A reply whose turn is ours is not sent: it goes to the Send log, and Auto-send leaves it in Queue 2.
+- Each Queue 2 entry shows the choice as `next_delivery` (`{first, next, posts}`), and the send logs a `delivery.chosen` event.
 - **Overriding:** use `{"mode":"pool"}`, or `{"mode":"dedicated","userAccountId":"…"}`.
 
 ```bash

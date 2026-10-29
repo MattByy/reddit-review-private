@@ -264,7 +264,9 @@ async function processQueue2AutoSend() {
     const queue2 = await api('/api/agent/queue2');
     // Only real drafts: placeholders, failed and cut-off drafts are refused by the approve route.
     const readyItems = queue2.items.filter(item => item.queue2_id != null && item.send_status === 'ready' && !item.approved_at
-      && item.message_source !== 'random' && !['skipped', 'truncated', 'failed'].includes(item.write_status));
+      && item.message_source !== 'random' && !['skipped', 'truncated', 'failed'].includes(item.write_status)
+      // A reply whose turn is our own accounts can't be sent (they can't reply); leave it in Queue 2.
+      && !(item.status !== 'thread' && item.next_delivery?.next === 'dedicated'));
     
     for (const item of readyItems) {
       try {
@@ -449,6 +451,10 @@ async function loadQueue2(){
   const r=await api('/api/agent/queue2');$('#q2count').textContent=r.count+' items';
   if(betaAccounts===null){try{const b=await api('/api/agent/beta-accounts');allAccounts=b.accounts||[];betaAccounts=allAccounts.filter(a=>a.usable);betaNote=b.available?(betaAccounts.length?'':'No usable accounts in Engain Accounts.'):b.reason;}catch(e){betaAccounts=[];betaNote='Could not load your accounts: '+e.message;}}
   $('#q2count').textContent=r.count+' waiting to send · sent ones move to Sent (tracking), failed ones to Send log'+(betaNote?' · Own accounts unavailable: '+betaNote:'');
+  // Pool and our accounts take turns in a thread; the server picks, this only says which way it will go.
+  const deliveryNote=x=>{const d=x.next_delivery||{},was=d.first?`our first post here came from ${d.first==='pool'?'the pool':'your accounts'}`:'nothing of ours in this thread yet';
+    if(d.next==='dedicated')return x.status==='thread'?`Posts from a random account of yours (${was})`:`Won't send: it's your accounts' turn (${was}), and they can't post replies`;
+    return `Posts through the Engain pool (${was})`;};
   $('#queue2').innerHTML=r.items.map(x=>{
     const id=x.queue2_id,ready=x.send_status==='ready',real=x.message_source!=='random'&&!['skipped','truncated'].includes(x.write_status);
     const canApprove=ready&&real;
@@ -467,7 +473,7 @@ async function loadQueue2(){
     ${ready?`<div class="meta" style="margin-top:8px">
       <button class="ghost" onclick="writeQ2(${id})">${x.write_status==='written'?'Rewrite':'Write'} with OpenRouter</button>
       <button class="ghost" onclick="editQ2(${id})">Save edit</button>
-      ${canApprove?`<button onclick="approveQ2(${id})">Approve &amp; send</button><span class="muted">${x.status==='thread'?'First comment: posts from a random account of yours':'Reply: posts through the Engain pool'}</span>`:`<span class="muted">${x.write_status==='truncated'?'Cut off: rewrite or edit it before approving':!real?'Write a message to approve it':''}</span>`}
+      ${canApprove?`<button onclick="approveQ2(${id})">Approve &amp; send</button><span class="muted">${deliveryNote(x)}</span>`:`<span class="muted">${x.write_status==='truncated'?'Cut off: rewrite or edit it before approving':!real?'Write a message to approve it':''}</span>`}
     </div>`:''}
     ${x.engain_task_id&&!x.reddit_url?`<button class="ghost" onclick="pollQ2(${id})" style="margin-top:4px">Refresh status</button>`:''}
   </div></div>`;}).join('')||'<p class="muted">Empty. Use “Get next item” on Queue 1.</p>';
