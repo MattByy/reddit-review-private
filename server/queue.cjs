@@ -204,7 +204,7 @@ function cleanMessage(m){
   return s;
 }
 // Queue 2 entry as the API and dashboard see it: the item, its message and how it was written,
-// approval, and delivery state. `disclosure` is the same check the send step enforces.
+// approval, and delivery state. `disclosure` is informational; sending does not require it.
 const queue2Entry=r=>r&&{queue2_id:r.id,item_id:r.item_id,status:r.kind,url:r.url,thread_url:r.thread_url,title:r.title,
   message:r.message,message_source:r.message_source,disclosure:require('./send-queue2.cjs').checkDisclosure(r.message),
   write_status:r.write_status??null,write_error:r.write_error??null,model:r.model??null,provider:r.provider??null,prompt_used:r.prompt_used??null,written_at:r.written_at??null,

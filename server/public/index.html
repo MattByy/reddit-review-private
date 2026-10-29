@@ -373,14 +373,13 @@ async function loadQueue2(){
   $('#q2count').textContent=r.count+' items'+(betaNote?' · Own accounts unavailable: '+betaNote:'');
   $('#queue2').innerHTML=r.items.map(x=>{
     const id=x.queue2_id,ready=x.send_status==='ready',real=x.message_source!=='random'&&!['skipped','truncated'].includes(x.write_status);
-    const canApprove=ready&&real&&x.disclosure.ok;
+    const canApprove=ready&&real;
     return `<div class="item"><div class="score" style="font-size:12px">#${id}</div><div>
     <div class="kind ${esc(x.status)}">${esc(KIND[x.status]||x.status)} · ${STATUS_EMOJI[x.send_status]||'⚪'} ${esc(x.send_status)}${x.delivery_mode?' ('+esc(x.delivery_mode)+')':''}</div>
     <div class="meta"><span>url:</span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.url)}</a></div>
     <div class="meta"><span>thread:</span><a href="${esc(x.thread_url)}" target="_blank" rel="noopener">${esc(x.title||x.thread_url)}</a></div>
     ${ready?`<textarea id="msg-${id}" rows="4" style="margin-top:6px">${esc(x.message)}</textarea>`:`<blockquote>${esc(x.message)}</blockquote>`}
     <div class="meta"><span>message: ${esc(x.message_source)}${x.prompt_variant_name?' · prompt “'+esc(x.prompt_variant_name)+'”':''}${x.model?' · '+esc(x.model):''}${x.written_at?' · written '+esc(String(x.written_at).slice(0,16).replace('T',' ')):''}</span>
-      <span class="${x.disclosure.ok?'':'flag'}">${x.disclosure.ok?'✓ disclosure present':'✕ '+esc(x.disclosure.reason)}</span>
       ${x.approved_at?`<span>approved ${esc(String(x.approved_at).slice(0,16).replace('T',' '))} by ${esc(x.approved_by)}</span>`:''}</div>
     ${x.write_error?`<div class="flag">Writing failed: ${esc(x.write_error)}</div>`:''}
     ${x.prompt_used?`<details><summary>Prompt used (${esc(x.prompt_variant_name||x.status+' prompt')}, exactly as sent to OpenRouter)</summary><pre>${esc(x.prompt_used)}</pre></details>`:''}
@@ -390,7 +389,7 @@ async function loadQueue2(){
     ${ready?`<div class="meta" style="margin-top:8px">
       <button class="ghost" onclick="writeQ2(${id})">${x.write_status==='written'?'Rewrite':'Write'} with OpenRouter</button>
       <button class="ghost" onclick="editQ2(${id})">Save edit</button>
-      ${canApprove?`<button onclick="approveQ2(${id})">Approve &amp; send</button><span class="muted">${x.status==='thread'?'First comment: posts from a random account of yours':'Reply: posts through the Engain pool'}</span>`:`<span class="muted">${x.write_status==='truncated'?'Cut off: rewrite or edit it before approving':!real?'Write a message to approve it':!x.disclosure.ok?'Needs the Geonode disclosure before it can be approved':''}</span>`}
+      ${canApprove?`<button onclick="approveQ2(${id})">Approve &amp; send</button><span class="muted">${x.status==='thread'?'First comment: posts from a random account of yours':'Reply: posts through the Engain pool'}</span>`:`<span class="muted">${x.write_status==='truncated'?'Cut off: rewrite or edit it before approving':!real?'Write a message to approve it':''}</span>`}
     </div>`:''}
     ${x.engain_task_id&&!x.reddit_url?`<button class="ghost" onclick="pollQ2(${id})" style="margin-top:4px">Refresh status</button>`:''}
   </div></div>`;}).join('')||'<p class="muted">Empty. Use “Get next item” on Queue 1.</p>';

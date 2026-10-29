@@ -91,7 +91,7 @@ describe('Queue2 sending',()=>{
     );
   });
 
-  it('sendQueue2 rejects missing disclosure',async()=>{
+  it('sendQueue2 sends without a disclosure',async()=>{
     const now=new Date().toISOString();
     store.db.prepare(`insert into queue2(item_id,kind,thread_id,url,thread_url,title,message,message_source,item,created_at,updated_at)
       values(?,?,?,?,?,?,?,?,?,?,?)`).run(
@@ -105,9 +105,8 @@ describe('Queue2 sending',()=>{
       now,now
     );
     
-    await assert.rejects(
-      sendQueue2({id:3,mode:'pool'},{engain,store,projectId:'project_mock'}),
-      /transparency/i
+    await assert.doesNotReject(
+      sendQueue2({id:3,mode:'pool'},{engain,store,projectId:'project_mock'})
     );
   });
 

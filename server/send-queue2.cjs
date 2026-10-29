@@ -63,12 +63,6 @@ async function send({id,mode,userAccountId,posterAccount,override},{engain,store
   if(item.write_status==='truncated')fail(422,'This message was cut off at the length limit. Rewrite or edit it first.');
   if(item.message_source==='openrouter'&&!item.approved_at)fail(409,'Approve this message before sending it.');
 
-  // Guard: disclosure
-  const disclosure=checkDisclosure(item.message);
-  if(!disclosure.ok){
-    fail(422,`Transparency violation: ${disclosure.reason}`);
-  }
-  
   // Delivery: 'pool' (Engain's posters) or 'dedicated' (one of our accounts, Engain API v2).
   // 'beta' is accepted as the old name and stored as 'beta' (the column's CHECK predates v2).
   if(mode==='dedicated')mode='beta';
