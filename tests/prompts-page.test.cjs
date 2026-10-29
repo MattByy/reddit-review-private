@@ -21,6 +21,11 @@ test('the Prompts page and the agent docs are served to anyone; the data needs a
     assert.strictEqual(r.status,200);assert.match(r.type,/markdown/);assert.match(r.body,/POST \$API\/api\/prompt-variants/);
     assert.strictEqual((await call(a,'GET','/api/prompts',null,{remote:true})).status,403);
     assert.strictEqual((await call(a,'GET','/',null,{remote:true})).status,403,'the dashboard stays on this machine');
+    // A tunnel or the Vercel proxy connects from this machine but forwards someone else's request.
+    for(const h of ['x-forwarded-for','cf-connecting-ip','forwarded']){
+      const req=(async function*(){})();let st;Object.assign(req,{method:'GET',url:'/api/prompts',socket:{remoteAddress:'127.0.0.1'},headers:{[h]:'203.0.113.9'}});
+      await a.handle(req,{writeHead(s){st=s;},end(){}});assert.strictEqual(st,403,h+' counts as remote');
+    }
   }finally{a.close();}
 });
 

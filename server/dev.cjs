@@ -17,6 +17,10 @@ const tracker=require('./tracker.cjs');
 const bench=require('./bench.cjs');
 
 const LOOPBACK=new Set(['127.0.0.1','::1','::ffff:127.0.0.1']);
+// A tunnel (ngrok, Cloudflare, Tailscale Funnel) or the Vercel proxy connects from this machine too,
+// but adds a forwarding header: such a request came from elsewhere and needs a key.
+const FORWARDED=['x-forwarded-for','forwarded','cf-connecting-ip','x-real-ip','tailscale-user-login','ngrok-trace-id'];
+const isLocal=req=>LOOPBACK.has(req.socket?.remoteAddress)&&!FORWARDED.some(h=>req.headers?.[h]);
 const digest=s=>createHash('sha256').update(String(s)).digest();
 const bearer=(req,secret)=>timingSafeEqual(digest(String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'')),digest(secret));
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
@@ -425,7 +429,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // "full" everything AGENT_API_KEY reaches except the cron routes. Returns who is calling.
   const PROMPT_ROUTES=/^\/api\/(prompts(\/|$)|prompt-variants(\/|$)|models$|keys\/me$)/;
   function authorize(req,pathname){
-    const local=LOOPBACK.has(req.socket?.remoteAddress);
+    const local=isLocal(req);
     const token=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'').trim();
     if(token.startsWith('gnk_')){
       const k=store.apiKeyFor(token);
@@ -467,7 +471,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     const send=(status,value,type='application/json; charset=utf-8')=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store'});res.end(type.startsWith('application/json')?JSON.stringify(value,null,1):value);};
     try{
       if(req.method==='GET'&&(u.pathname==='/'||u.pathname==='/index.html')){
-        if(!LOOPBACK.has(req.socket?.remoteAddress))fail(403,'The dashboard only answers on this machine');
+        if(!isLocal(req))fail(403,'The dashboard only answers on this machine');
         return send(200,fs.readFileSync(path.join(__dirname,'public/index.html')),'text/html; charset=utf-8');
       }
       // The Prompts page holds no data itself, so it is served to anyone; its API calls need a key
