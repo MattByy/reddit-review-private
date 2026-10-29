@@ -73,7 +73,7 @@ table.lb{width:100%;font-size:12px;border-collapse:collapse}table.lb th{text-ali
 <section>
   <div class="tabs"><button data-tab="queue" class="on">Queue 1</button><button data-tab="queue2">Queue 2 (with message)</button><button data-tab="sent">Sent (tracking)</button><button data-tab="prompts">Prompts</button><button data-tab="bench">Model test</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="ours">Our comments</button><button data-tab="history">Taken / removed</button></div>
   <div id="tab-queue">
-    <div class="filters"><span class="muted" id="qcount"></span><button id="checkpub" class="ghost">Check published now</button><button id="refreshq" class="ghost">Refresh queue</button><button id="rebuild" class="ghost">Rebuild from scratch</button><button id="takewrite">Get next item &amp; write with OpenRouter</button><button id="take" class="ghost">Get next item (placeholder)</button></div>
+    <div class="filters"><span class="muted" id="qcount"></span><button id="checkpub" class="ghost">Check published now</button><button id="refreshq" class="ghost">Refresh queue</button><button id="rebuild" class="ghost">Rebuild from scratch</button><button id="freshstart" class="ghost" title="Drop our already-published comments; only comments published from now on enter Queue 1">Fresh start (comments from now)</button><button id="takewrite">Get next item &amp; write with OpenRouter</button><button id="take" class="ghost">Get next item (placeholder)</button></div>
     <pre id="taken" hidden></pre>
     <div id="queue"></div>
   </div>
@@ -157,7 +157,7 @@ function itemHtml(x,controls=''){return `<div class="item ${x.status==='queued'|
 
 async function loadQueue(){
   const q=await api('/api/queue'),n=k=>q.items.filter(i=>i.kind===k).length;
-  $('#qcount').textContent=`${q.count} items: ${n('thread')} threads, ${n('comment')} our comments`+(n('mention')?`, ${n('mention')} mentions`:'');
+  $('#qcount').textContent=`${q.count} items: ${n('thread')} threads, ${n('comment')} our comments`+(n('mention')?`, ${n('mention')} mentions`:'')+(q.comments_since?` · comments since ${q.comments_since.slice(0,16).replace('T',' ')} UTC`:'');
   $('#queue').innerHTML=q.items.map(x=>itemHtml(x,`<div class="meta" style="margin-top:6px"><button class="ghost" data-q="${esc(x.item_id)}" data-s="done">Mark done</button><button class="ghost" data-q="${esc(x.item_id)}" data-s="skipped">Skip</button></div>`)).join('')||'<p class="muted">Queue is empty. Collect, or loosen the queue rules.</p>';
   for(const b of document.querySelectorAll('[data-q]'))b.onclick=async()=>{await api('/api/queue/'+encodeURIComponent(b.dataset.q),{status:b.dataset.s});refresh();};
 }
@@ -275,6 +275,7 @@ async function loadOurs(){
 }
 $('#verdict').addEventListener('input',refresh);
 $('#refreshq').onclick=async()=>{await api('/api/queue/refresh',{});refresh();};
+$('#freshstart').onclick=async()=>{if(!window.confirm('Remove all already-published comments from Queue 1? Only comments published from now on will be added.'))return;await api('/api/queue/fresh-start',{});refresh();};
 $('#rebuild').onclick=async()=>{await api('/api/queue/refresh',{reset:true});refresh();};
 $('#take').onclick=async()=>{const r=await api('/api/agent/task',{agent:'dashboard'});$('#taken').hidden=false;
   $('#taken').textContent=r.status==='empty'?r.message:`Moved ${r.task_id} to Queue 2 (#${r.queue2.queue2_id})\nurl: ${r.queue2.url}\nthread_url: ${r.queue2.thread_url}\nmessage (${r.queue2.message_source}): ${r.queue2.message}`;refresh();};

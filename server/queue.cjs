@@ -17,6 +17,14 @@ const OWN=/geonode/i;
 const DAY=86400000;
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
+// Fresh start: our comments published before this date never enter the queue.
+const commentsSince=store=>store.kv('comments_since')?.since??null;
+function setCommentsSince(store,since){
+  const d=since==null||since===''?new Date():new Date(since);
+  if(isNaN(d))fail(422,'since must be a date, e.g. 2026-10-29T16:00:00Z');
+  store.setKv('comments_since',{since:d.toISOString()});
+  return {comments_since:d.toISOString(),...refreshQueue(store).summary};
+}
 const settings=store=>{const s=store.settings(DEFAULTS);return Object.fromEntries(Object.keys(DEFAULTS).map(k=>[k,s[k]]));};
 function saveSettings(store,input){
   const next={...settings(store)};
@@ -75,16 +83,17 @@ function evaluate(store){
     c.eligibility={queueable:r.length===0,reasons:[...new Set(r)]};commentById[c.id]=c;
   }
   // Every task of ours is evaluated, so a queued comment that is later removed drops out.
-  const publishedById={};
+  const publishedById={},since=commentsSince(store);
   const publishedRows=store.ourTasks().filter(p=>['comment','reply'].includes(p.type)&&p.reddit_url).map(p=>{
     const r=[],age=p.published_at?(Date.now()-Date.parse(p.published_at))/DAY:null;
     if(p.status!=='published')r.push(`Engain status is now ${p.status} (${p.verdict})`);
+    if(since&&(!p.published_at||p.published_at<since))r.push('Published before the fresh start ('+since.slice(0,16).replace('T',' ')+' UTC)');
     if(age==null)r.push('Publish date unknown');else if(age>cfg.max_age_days)r.push(`Published more than ${cfg.max_age_days} days ago`);
     if(handledItems.has('p_'+p.task_id))r.push('Already '+handledItems.get('p_'+p.task_id)+' from the queue');
     const row={...p,first_seen:p.published_seen_at,age_days:age==null?null:Math.round(age*10)/10,eligibility:{queueable:r.length===0,reasons:r}};
     return publishedById[p.task_id]=row;
   });
-  return {cfg,threads:threadRows,comments:commentRows,published:publishedRows,threadById,commentById,publishedById};
+  return {cfg,comments_since:since,threads:threadRows,comments:commentRows,published:publishedRows,threadById,commentById,publishedById};
 }
 
 const itemFor={
@@ -229,7 +238,7 @@ function setQueue2Message(store,id,message){
 function queueView(store,{history=30}={}){
   const ev=evaluate(store),rows=store.queue();
   const queued=rows.filter(q=>q.status==='queued'),recent=rows.filter(q=>q.status!=='queued').slice(0,Math.max(0,Math.min(Number(history)||0,500)));
-  return {settings:ev.cfg,count:queued.length,items:queued.map(q=>({...q,...describe(q,ev)})),recent:recent.map(q=>({...q,...describe(q,ev)}))};
+  return {settings:ev.cfg,comments_since:ev.comments_since,count:queued.length,items:queued.map(q=>({...q,...describe(q,ev)})),recent:recent.map(q=>({...q,...describe(q,ev)}))};
 }
 
 function setStatus(store,id,status,note){
@@ -264,4 +273,4 @@ function commentList(store,{q,brand,own,min_score=40,available,limit=100,offset=
 const publishedList=store=>evaluate(store).published;
 
 const queue2Item=(store,id)=>queue2Entry(store.queue2(id));
-module.exports={DEFAULTS,settings,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};
+module.exports={DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};

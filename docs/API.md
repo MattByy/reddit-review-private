@@ -216,6 +216,7 @@ curl -s $API/api/queue                       # queued items with thread/comment 
 curl -s $API/api/agent/queue                 # compact: item_id, kind, position, score
 j -X POST $API/api/queue/t_abc -d '{"status":"skipped","note":"off-topic"}'   # or "done"
 j -X POST $API/api/queue/refresh -d '{}'     # re-apply the rules now; {"reset":true} rebuilds the order
+j -X POST $API/api/queue/fresh-start -d '{}' # only our comments published from now on enter Queue 1; {"since":"2026-10-29T16:00:00Z"} picks the date
 curl -s $API/api/threads?q=proxy\&subreddit=webscraping\&available=true\&limit=50
 curl -s $API/api/threads/1abc23              # one thread with its ranking
 curl -s $API/api/comments?brand=brightdata.com\&min_score=40

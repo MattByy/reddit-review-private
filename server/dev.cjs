@@ -315,6 +315,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'POST /api/settings':async(_,body)=>queue.saveSettings(store,body),
     'GET /api/queue':async q=>queue.queueView(store,q),
     'POST /api/queue/refresh':async(_,body)=>queue.refreshQueue(store,{reset:!!body?.reset}).summary,
+    'POST /api/queue/fresh-start':async(_,body)=>queue.setCommentsSince(store,body?.since),
     'POST /api/queue/:id':async(_,body,id)=>queue.setStatus(store,id,body?.status,body?.note),
     'GET /api/comments':async q=>queue.commentList(store,q),
     'GET /api/threads':async q=>queue.threadList(store,q),
