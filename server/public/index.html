@@ -443,7 +443,7 @@ async function loadQueue2(){
   </div></div>`;}).join('')||'<p class="muted">Empty. Use “Get next item” on Queue 1.</p>';
 }
 async function q2(action,fn){try{$('#progress').textContent=action+'…';const r=await fn();$('#progress').textContent=r;}catch(e){$('#progress').textContent='Error: '+e.message;}refresh();}
-window.writeQ2=id=>q2('Writing #'+id+' with OpenRouter',async()=>{const x=await api(`/api/agent/queue2/${id}/write`,{});return `#${id} ${x.write_status}. Review it, then Approve & send.`;});
+window.writeQ2=id=>q2('Writing #'+id+' with OpenRouter',async()=>{const x=await api(`/api/agent/queue2/${id}/write`,{});return x.discarded?`#${id}: the model said SKIP, so it was removed from Queue 2.`:`#${id} ${x.write_status}. Review it, then Approve & send.`;});
 window.editQ2=id=>q2('Saving #'+id,async()=>{await api(`/api/agent/queue2/${id}`,{message:$('#msg-'+id).value});return `#${id} saved. Approval (if any) was withdrawn.`;});
 window.approveQ2=id=>q2('Sending #'+id+' to Engain',async()=>{
   const ta=$('#msg-'+id),items=(await api('/api/agent/queue2')).items,cur=items.find(i=>i.queue2_id===id);
@@ -523,7 +523,7 @@ window.splitEven=t=>{const l=PV.variants[t],base=Math.floor(100/l.length);l.forE
 window.savePrompts=t=>q2('Saving '+t+' prompts',async()=>{const r=await api('/api/prompts',{type:t,variants:PV.variants[t]});return `${t} prompts saved: `+r.variants.map(v=>`${v.name} ${v.weight}%`).join(', ');});
 $('#takewrite').onclick=async()=>{$('#takewrite').disabled=true;$('#taken').hidden=false;$('#taken').textContent='Taking #1 and writing with OpenRouter…';
   try{const r=await api('/api/agent/task',{agent:'dashboard',write:true});
-    $('#taken').textContent=r.status==='empty'?r.message:`Moved ${r.task_id} to Queue 2 (#${r.queue2.queue2_id}) and drafted with ${r.queue2.model||'OpenRouter'}`+(r.write_error?`\nWriting failed: ${r.write_error}`:`\n\n${r.queue2.message}\n\nReview it on the Queue 2 tab, then Approve & send.`);
+    $('#taken').textContent=r.status==='empty'?r.message:`Moved ${r.task_id} to Queue 2 (#${r.queue2.queue2_id}) and drafted with ${r.queue2.model||'OpenRouter'}`+(r.write_error?`\nWriting failed: ${r.write_error}`:r.queue2.discarded?`\n\nThe model said SKIP, so it was removed from Queue 2.`:`\n\n${r.queue2.message}\n\nReview it on the Queue 2 tab, then Approve & send.`);
   }catch(e){$('#taken').textContent='Error: '+e.message;}$('#takewrite').disabled=false;refresh();};
 $('#save').onclick=async()=>{const body={};for(const i of document.querySelectorAll('[data-k]'))body[i.dataset.k]=Number(i.value);
   try{await api('/api/settings',body);await api('/api/queue/refresh',{});}catch(e){$('#progress').textContent='Error: '+e.message;}loadSettings();refresh();};

@@ -86,8 +86,8 @@ test('placeholders, skips and failed drafts cannot be approved',async()=>{
     const p=(await call(a,'POST','/api/agent/task',{})).body.queue2;
     assert.strictEqual((await call(a,'POST',`/api/agent/queue2/${p.queue2_id}/approve`,{mode:'pool'})).status,422,'placeholder');
     const s=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
-    assert.strictEqual(s.write_status,'skipped');
-    assert.strictEqual((await call(a,'POST',`/api/agent/queue2/${s.queue2_id}/approve`,{mode:'pool'})).status,422,'skipped');
+    assert.strictEqual(s.write_status,'skipped');assert.strictEqual(s.discarded,true);
+    assert.ok(!(await call(a,'GET','/api/agent/queue2')).body.items.some(x=>x.queue2_id===s.queue2_id),'a SKIP is removed from Queue 2');
     mode='error';
     const r=await call(a,'POST',`/api/agent/queue2/${p.queue2_id}/write`,{});
     assert.strictEqual(r.status,502);

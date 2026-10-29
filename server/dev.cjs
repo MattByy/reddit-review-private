@@ -200,11 +200,11 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       const r=queue.claimNext(store,body?.agent?String(body.agent).slice(0,80):null,{message:body?.message});
       if(body?.write&&r.queue2){
         try{await writer.writeQueue2(store,r.queue2.queue2_id,writerOpts);}catch(e){r.write_error=e.message;}
-        r.queue2=queue.queue2Item(store,r.queue2.queue2_id);
+        r.queue2=queue.queue2Item(store,r.queue2.queue2_id)||{queue2_id:r.queue2.queue2_id,write_status:'skipped',discarded:true};
       }
       return r;
     },
-    'POST /api/agent/queue2/:id/write':async(_,__,id)=>{await writer.writeQueue2(store,id,writerOpts);return queue.queue2Item(store,id);},
+    'POST /api/agent/queue2/:id/write':async(_,__,id)=>{await writer.writeQueue2(store,id,writerOpts);return queue.queue2Item(store,id)||{queue2_id:Number(id),write_status:'skipped',discarded:true};},
     // Approve and send in one step. Routing is automatic unless body.mode is given:
     //   thread items (first comment in a thread) -> a random ready account of ours (Engain v2),
     //     skipping any account that already commented in that thread;

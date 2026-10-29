@@ -311,7 +311,13 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
     store.setQueue2Draft(id,{...pv,message:res.text,prompt_used:prompt,model,write_status:'truncated',write_error:'The model hit the length limit and the message is cut off. Rewrite or edit it.'});
     return store.queue2(id);
   }
-  store.setQueue2Draft(id,{...pv,message:skipped?'SKIP: the model found nothing useful to add.':res.text,prompt_used:prompt,model,write_status:skipped?'skipped':'written'});
+  // Nothing useful to add: the entry is deleted from Queue 2 (its Queue 1 item stays claimed, so it never returns).
+  if(skipped){
+    store.discardQueue2(id);
+    store.event('queue2.discarded',`Queue 2 #${entry.id} discarded: the model answered SKIP`,{...ref,reason:'skip',model,provider});
+    return {id:entry.id,item_id:entry.item_id,write_status:'skipped',discarded:true};
+  }
+  store.setQueue2Draft(id,{...pv,message:res.text,prompt_used:prompt,model,write_status:'written'});
   return store.queue2(id);
 }
 
