@@ -225,31 +225,50 @@ async function runFastCycle() {
   let log = `[${timestamp}] Cycle #${fastModeRun}\n`;
   
   try {
-    // Run all three jobs in sequence
+    // Run threads job first
     log += '  → Running threads job…\n';
     const threadsResult = await api('/api/cron/threads', {});
     log += `    ${threadsResult.action}: ${threadsResult.reason || ''}`;
     if (threadsResult.added_threads) log += ` (+${threadsResult.added_threads} threads)`;
     log += '\n';
     
+    // Run comments job second
     log += '  → Running comments job…\n';
     const commentsResult = await api('/api/cron/comments', {});
     log += `    ${commentsResult.action}: ${commentsResult.reason || ''}`;
     if (commentsResult.published_new) log += ` (+${commentsResult.published_new} published)`;
     log += '\n';
     
+    // Run tracker job third
     log += '  → Running tracker job…\n';
     const trackerResult = await api('/api/cron/tracker', {});
     log += `    ${trackerResult.action}: ${trackerResult.reason || ''}`;
     if (trackerResult.checked) log += ` (checked ${trackerResult.checked})`;
+    if (trackerResult.changed?.length) log += ` (${trackerResult.changed.length} status changes)`;
     log += '\n';
     
-    // Refresh queue view
+    // Get fresh queue and show items flowing one by one
     const queue = await api('/api/queue');
-    log += `  → Queue status: ${queue.count} items\n`;
+    log += `  → Queue status: ${queue.count} items total\n`;
+    log += `     Position | Kind | Status | Score\n`;
+    log += `     ${'─'.repeat(50)}\n`;
     
-    // Prepend to log (keep last 2000 chars)
-    $('#fastlog').textContent = log + $('#fastlog').textContent.slice(0, 2000);
+    // Show first 10 items in queue (the "flow")
+    const itemsToShow = queue.items.slice(0, 10);
+    itemsToShow.forEach(item => {
+      const kindLabel = item.kind === 'thread' ? 'THREAD' : 'COMMENT';
+      const scoreDisplay = item.score ? item.score : '—';
+      log += `     #${String(item.position).padStart(6)} | ${kindLabel.padEnd(6)} | ${String(item.status || 'active').padEnd(8)} | ${String(scoreDisplay).padStart(4)}\n`;
+    });
+    
+    if (queue.items.length > 10) {
+      log += `     ... and ${queue.items.length - 10} more items in queue\n`;
+    }
+    
+    log += '\n';
+    
+    // Prepend to log (keep last 2500 chars)
+    $('#fastlog').textContent = log + $('#fastlog').textContent.slice(0, 2500);
     
   } catch (e) {
     log += `  ✕ Error: ${e.message}\n`;
