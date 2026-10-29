@@ -253,16 +253,18 @@ $('#autosend').onclick = async () => {
 async function processQueue2AutoSend() {
   try {
     const queue2 = await api('/api/agent/queue2');
-    const readyItems = queue2.items.filter(item => item.send_status === 'ready' && !item.approved_at);
+    // Only real drafts: placeholders, failed and cut-off drafts are refused by the approve route.
+    const readyItems = queue2.items.filter(item => item.queue2_id != null && item.send_status === 'ready' && !item.approved_at
+      && item.message_source !== 'random' && !['skipped', 'truncated', 'failed'].includes(item.write_status));
     
     for (const item of readyItems) {
       try {
         // Approve and send immediately
-        const result = await api(`/api/agent/queue2/${item.id}/approve`, {approved_by: 'auto-send'});
-        console.log(`[Auto-send] Queue 2 #${item.id} sent to Engain: ${result.status || 'sent'}`);
+        const result = await api(`/api/agent/queue2/${item.queue2_id}/approve`, {approved_by: 'auto-send'});
+        console.log(`[Auto-send] Queue 2 #${item.queue2_id} sent to Engain: ${result.status || 'sent'}`);
       } catch (e) {
         // Item may have been processed already or not ready
-        if (e.status !== 409) console.log(`[Auto-send] Skipped Queue 2 #${item.id}: ${e.message}`);
+        if (e.status !== 409) console.log(`[Auto-send] Skipped Queue 2 #${item.queue2_id}: ${e.message}`);
       }
     }
   } catch (e) {
@@ -309,7 +311,7 @@ async function runFastCycle() {
         const claimResult = await api('/api/agent/task', {write: true});
         if (claimResult.queue2) {
           claimedCount++;
-          log += `     ✓ Claimed #${item.position} (${item.kind}) → Queue 2 #${claimResult.queue2.id}\n`;
+          log += `     ✓ Claimed #${item.position} (${item.kind}) → Queue 2 #${claimResult.queue2.queue2_id}\n`;
         }
       } catch (e) {
         // Item may have been claimed by another process
