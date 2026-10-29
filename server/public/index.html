@@ -62,6 +62,9 @@ table.lb{width:100%;font-size:12px;border-collapse:collapse}table.lb th{text-ali
     <button id="fastmode" style="background:var(--good)">▶ Fast mode (30s cycles)</button>
     <span id="faststatus" class="muted" style="margin-left:8px;display:none">Running fast cycles…</span>
   </div>
+  <div class="meta" style="margin-top:8px">
+    <button id="autosend" style="background:var(--good)">▶ Auto-send (Queue 2 → Engain)</button>
+  </div>
   <pre id="fastlog" class="muted" hidden style="max-height:180px;font-size:11px"></pre>
 </section>
 <section>
@@ -221,6 +224,51 @@ $('#fastmode').onclick = async () => {
   // Set up 30-second intervals
   fastModeTimer = setInterval(runFastCycle, 30000);
 };
+
+// Auto-send mode: immediately push everything that appears in Queue 2 to Engain
+let autoSendTimer = null, autoSendActive = false;
+$('#autosend').onclick = async () => {
+  if (autoSendTimer) {
+    // Stop auto-send mode
+    clearInterval(autoSendTimer);
+    autoSendTimer = null;
+    autoSendActive = false;
+    $('#autosend').textContent = '▶ Auto-send (Queue 2 → Engain)';
+    $('#autosend').style.background = 'var(--good)';
+    return;
+  }
+  
+  // Start auto-send mode
+  autoSendActive = true;
+  $('#autosend').textContent = '■ Stop auto-send';
+  $('#autosend').style.background = 'var(--bad)';
+  
+  // Process any existing Queue 2 items immediately
+  await processQueue2AutoSend();
+  
+  // Set up 15-second intervals to check and send new Queue 2 items
+  autoSendTimer = setInterval(processQueue2AutoSend, 15000);
+};
+
+async function processQueue2AutoSend() {
+  try {
+    const queue2 = await api('/api/agent/queue2');
+    const readyItems = queue2.items.filter(item => item.send_status === 'ready' && !item.approved_at);
+    
+    for (const item of readyItems) {
+      try {
+        // Approve and send immediately
+        const result = await api(`/api/agent/queue2/${item.id}/approve`, {approved_by: 'auto-send'});
+        console.log(`[Auto-send] Queue 2 #${item.id} sent to Engain: ${result.status || 'sent'}`);
+      } catch (e) {
+        // Item may have been processed already or not ready
+        if (e.status !== 409) console.log(`[Auto-send] Skipped Queue 2 #${item.id}: ${e.message}`);
+      }
+    }
+  } catch (e) {
+    console.log(`[Auto-send] Cycle error: ${e.message}`);
+  }
+}
 
 async function runFastCycle() {
   fastModeRun++;
