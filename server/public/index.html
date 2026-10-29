@@ -58,6 +58,11 @@ table.lb{width:100%;font-size:12px;border-collapse:collapse}table.lb th{text-ali
   <strong>Scheduled jobs</strong>
   <div id="jobs" class="muted" style="font-size:12px;margin-top:6px"></div>
   <div class="meta" style="margin-top:8px"><button class="ghost" id="runthreads">Run threads job now</button><button class="ghost" id="runcomments">Run comments job now</button></div>
+  <div class="meta" style="margin-top:8px">
+    <button id="fastmode" style="background:var(--good)">▶ Fast mode (30s cycles)</button>
+    <span id="faststatus" class="muted" style="margin-left:8px;display:none">Running fast cycles…</span>
+  </div>
+  <pre id="fastlog" class="muted" hidden style="max-height:180px;font-size:11px"></pre>
 </section>
 <section>
   <strong>Queue rules</strong>
@@ -178,7 +183,76 @@ async function loadThreads(){
 }
 async function refresh(){status();try{await({queue:loadQueue,queue2:loadQueue2,sent:loadSent,prompts:loadPrompts,bench:loadBench,comments:loadComments,threads:loadThreads,ours:loadOurs,history:loadHistory})[tab]();loadJobs();}catch(e){$('#progress').textContent='Error: '+e.message;}}
 
-async function runJob(name,btn){
+// Fast mode: rapid 30-second cycles for live monitoring
+let fastModeTimer = null, fastModeRun = 0;
+$('#fastmode').onclick = async () => {
+  if (fastModeTimer) {
+    // Stop fast mode
+    clearInterval(fastModeTimer);
+    fastModeTimer = null;
+    $('#fastmode').textContent = '▶ Fast mode (30s cycles)';
+    $('#fastmode').style.background = 'var(--good)';
+    $('#faststatus').style.display = 'none';
+    $('#fastlog').hidden = true;
+    $('#fastlog').textContent = '';
+    return;
+  }
+  
+  // Start fast mode
+  $('#fastmode').textContent = '■ Stop fast mode';
+  $('#fastmode').style.background = 'var(--bad)';
+  $('#faststatus').style.display = 'inline';
+  $('#fastlog').hidden = false;
+  $('#fastlog').textContent = 'Starting fast mode cycles (30s intervals)…\n';
+  
+  // Run initial cycle
+  await runFastCycle();
+  
+  // Set up 30-second intervals
+  fastModeTimer = setInterval(runFastCycle, 30000);
+};
+
+async function runFastCycle() {
+  fastModeRun++;
+  const timestamp = new Date().toLocaleTimeString();
+  let log = `[${timestamp}] Cycle #${fastModeRun}\n`;
+  
+  try {
+    // Run all three jobs in sequence
+    log += '  → Running threads job…\n';
+    const threadsResult = await api('/api/cron/threads', {});
+    log += `    ${threadsResult.action}: ${threadsResult.reason || ''}`;
+    if (threadsResult.added_threads) log += ` (+${threadsResult.added_threads} threads)`;
+    log += '\n';
+    
+    log += '  → Running comments job…\n';
+    const commentsResult = await api('/api/cron/comments', {});
+    log += `    ${commentsResult.action}: ${commentsResult.reason || ''}`;
+    if (commentsResult.published_new) log += ` (+${commentsResult.published_new} published)`;
+    log += '\n';
+    
+    log += '  → Running tracker job…\n';
+    const trackerResult = await api('/api/cron/tracker', {});
+    log += `    ${trackerResult.action}: ${trackerResult.reason || ''}`;
+    if (trackerResult.checked) log += ` (checked ${trackerResult.checked})`;
+    log += '\n';
+    
+    // Refresh queue view
+    const queue = await api('/api/queue');
+    log += `  → Queue status: ${queue.count} items\n`;
+    
+    // Prepend to log (keep last 2000 chars)
+    $('#fastlog').textContent = log + $('#fastlog').textContent.slice(0, 2000);
+    
+  } catch (e) {
+    log += `  ✕ Error: ${e.message}\n`;
+    $('#fastlog').textContent = log + $('#fastlog').textContent;
+  }
+  
+  refresh();
+}
+
+async function runJob(name, btn) {
   btn.disabled=true;$('#progress').textContent='Running '+name+' job… (a thread collection takes a few minutes)';
   try{$('#progress').textContent=name+' job:\n'+JSON.stringify(await api('/api/cron/'+name,{}),null,1);}catch(e){$('#progress').textContent='Error: '+e.message;}
   btn.disabled=false;refresh();
