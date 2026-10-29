@@ -305,6 +305,27 @@ curl -s $API/api/status                     # counts, project, whether keys and 
 curl -s $API/api/balance                    # Engain credits
 ```
 
+## Activity log (debugging)
+
+Everything the server does is logged: jobs and collection runs, items added to or removed from
+Queue 1 (with the reason), Queue 1 -> Queue 2 moves, every model call (the exact prompt, the reply,
+latency, tokens, retries, errors), edits, approvals, the account picked, every Engain send (request,
+response or error, and refusals before sending), sent-status and our-task status changes, every
+POST with its body, failed requests, and console lines. Newest first; kept `LOG_KEEP_DAYS` days (30).
+
+The same events are appended to `.data/logs/YYYY-MM-DD.jsonl`, one JSON object per line, so
+`grep`/`jq` work on them. On the dashboard: the **Logs** tab.
+
+```bash
+curl -s "$API/api/logs?item_id=t_abc123"     # one item's whole journey
+curl -s "$API/api/logs?queue2_id=17"         # everything about Queue 2 #17
+curl -s "$API/api/logs?type=llm"             # an area (job, collect, queue, queue2, llm, account, send, sent, engain, http, server) or an exact type (send.failed)
+curl -s "$API/api/logs?q=429&since=2026-10-29T00:00:00Z&limit=500"
+curl -s "$API/api/logs?before_id=1234"       # older page (next_before_id from the last answer)
+curl -s $API/api/logs/types                  # every type with its count
+jq -c 'select(.type|startswith("send."))' .data/logs/2026-10-29.jsonl
+```
+
 ## A full prompt-writing loop, start to finish
 
 ```bash
