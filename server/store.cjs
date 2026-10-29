@@ -2,6 +2,8 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
+const {randomBytes,createHash}=require('node:crypto');
+const sha256=s=>createHash('sha256').update(s).digest('hex');
 
 // Engain statuses that are not final yet; anything else settles a sent item.
 const PENDING_STATUSES=new Set(['submitted','pending','scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned']);
@@ -29,6 +31,8 @@ function open(file){
     create index if not exists comments_thread on comments(thread_id);
     create table if not exists engaged(thread_id text primary key, subreddit text, statuses text not null, updated_at text not null);
     create table if not exists settings(key text primary key, value text not null);
+    create table if not exists api_keys(id text primary key, name text not null, scope text not null, prefix text not null, hash text not null unique,
+      created_at text not null, last_used_at text, revoked_at text);
     create table if not exists our_tasks(
       task_id text primary key, type text, status text not null, verdict text not null, reddit_url text, thread_url text, thread_id text,
       content text, subreddit text, created_at text, published_at text, parent_task_id text, labels text not null default '[]',
@@ -246,7 +250,9 @@ function open(file){
           sum(t.verdict='disapproved') removed,
           sum(t.verdict='failed' or (t.verdict is null and q.send_status='failed')) failed,
           sum(t.verdict='cancelled' or (t.verdict is null and q.send_status='cancelled')) cancelled,
-          sum(q.engain_task_id is not null and coalesce(t.verdict,'pending')='pending' and coalesce(q.send_status,'')<>'published') pending
+          sum(q.engain_task_id is not null and coalesce(t.verdict,'pending')='pending' and coalesce(q.send_status,'')<>'published') pending,
+          sum(q.engain_task_id is not null and q.delivery_mode='beta') sent_dedicated,sum(q.engain_task_id is not null and coalesce(q.delivery_mode,'pool')<>'beta') sent_pool,
+          sum(q.engain_task_id is null and coalesce(q.send_status,'ready') in ('ready','sending')) waiting,max(q.written_at) last_written_at
         from queue2 q left join our_tasks t on t.task_id=q.engain_task_id
         where q.prompt_variant_id is not null group by q.kind,q.prompt_variant_id`).all().map(r=>({...r}));
     },
@@ -255,6 +261,24 @@ function open(file){
     setQueueStatus(id,status,note){
       const r=db.prepare('update queue set status=?,note=?,updated_at=?,position=case when ?=\'queued\' then 1e9 else null end where item_id=?').run(status,note??null,new Date().toISOString(),status,id);
       return r.changes>0;
+    },
+    // Drafts per prompt that the model answered SKIP (those entries are deleted, so they are counted from the log).
+    variantSkips(){return Object.fromEntries(db.prepare(`select json_extract(data,'$.prompt_variant_id') id,count(*) n from events
+      where type='queue2.discarded' and json_extract(data,'$.reason')='skip' and json_extract(data,'$.prompt_variant_id') is not null group by 1`).all().map(r=>[r.id,r.n]));},
+    // API keys for agents and remote dashboards. Only a SHA-256 of the secret is kept; the secret is shown once.
+    createApiKey({name,scope}){
+      const key='gnk_'+randomBytes(24).toString('base64url'),now=new Date().toISOString(),id='k_'+randomBytes(4).toString('hex');
+      db.prepare('insert into api_keys(id,name,scope,prefix,hash,created_at) values(?,?,?,?,?,?)').run(id,name,scope,key.slice(0,12),sha256(key),now);
+      return {...this.apiKey(id),key};
+    },
+    apiKey:id=>db.prepare('select id,name,scope,prefix,created_at,last_used_at,revoked_at from api_keys where id=?').get(id)||null,
+    apiKeys:()=>db.prepare('select id,name,scope,prefix,created_at,last_used_at,revoked_at from api_keys order by revoked_at is not null,created_at desc').all(),
+    revokeApiKey(id){return db.prepare('update api_keys set revoked_at=? where id=? and revoked_at is null').run(new Date().toISOString(),id).changes>0;},
+    // The active key for a secret, marking it used; null when unknown or revoked.
+    apiKeyFor(secret){
+      const r=db.prepare('select id,name,scope,prefix from api_keys where hash=? and revoked_at is null').get(sha256(String(secret)));
+      if(r)db.prepare('update api_keys set last_used_at=? where id=?').run(new Date().toISOString(),r.id);
+      return r||null;
     },
     kv(key){const r=db.prepare('select value from settings where key=?').get(key);return r?JSON.parse(r.value):null;},
     setKv(key,value){db.prepare('insert or replace into settings(key,value) values(?,?)').run(key,JSON.stringify(value));},

@@ -39,7 +39,7 @@ table.lb{width:100%;font-size:12px;border-collapse:collapse}table.lb th{text-ali
 </style>
 </head>
 <body>
-<header><h1>Thread Collector</h1><span id="mode" class="pill"></span><span id="count" class="muted"></span></header>
+<header><h1>Thread Collector</h1><span id="mode" class="pill"></span><a href="/prompts" class="pill">Prompts →</a><span id="count" class="muted"></span></header>
 <main>
 <aside>
 <section>
@@ -109,6 +109,7 @@ table.lb{width:100%;font-size:12px;border-collapse:collapse}table.lb th{text-ali
     <div id="sendlog"></div>
   </div>
   <div id="tab-prompts" hidden>
+    <p style="padding:10px 12px;border:1px solid var(--accent);border-radius:8px"><b>Prompts have their own page now:</b> <a href="/prompts">open Prompts →</a> (per-prompt results, the split, API keys for agents). This tab stays as the compact editor.</p>
     <p class="muted" id="promptinfo"></p>
     <div id="prompts"></div>
   </div>
@@ -553,7 +554,7 @@ function renderPrompts(){
 }
 // Re-render after a percentage change without losing the field being typed in.
 function renderTotals(){const el=document.activeElement,pos=el&&el.selectionStart;const path=el&&[...document.querySelectorAll('#prompts input,#prompts textarea')].indexOf(el);renderPrompts();if(path>=0){const n=document.querySelectorAll('#prompts input,#prompts textarea')[path];if(n){n.focus();try{n.setSelectionRange(pos,pos);}catch{}}}}
-window.addPrompt=(t,natural)=>{const l=PV.variants[t];if(l.length>=10){$('#progress').textContent='At most 10 prompts per type';return;}
+window.addPrompt=(t,natural)=>{const l=PV.variants[t];if(l.length>=(PV.max_prompts||5)){$('#progress').textContent=`At most ${PV.max_prompts||5} prompts per type`;return;}
   l.push(natural?{name:'Natural '+(l.length+1),text:PV.natural[t],weight:0,provider:'featherless',model:'LessThanThreeAI/Qwen3.8-27B-Humanlike-Chat-2.0',temperature:0.8}:{name:'Prompt '+(l.length+1),text:PV.defaults[t],weight:0});renderPrompts();};
 function modelList(short){$('#modellist').innerHTML=(short||[]).map(m=>`<option value="${esc(m.model)}">${esc(m.note)} (${esc(m.provider)})</option>`).join('');}
 window.splitEven=t=>{const l=PV.variants[t],base=Math.floor(100/l.length);l.forEach((v,i)=>v.weight=base+(i<100-base*l.length?1:0));renderPrompts();};

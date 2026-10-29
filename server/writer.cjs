@@ -139,9 +139,9 @@ Output only the reply.`,
 };
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
-// Prompt variants. Each type (thread, comment, mention) has 1-10 prompts with a weight in percent;
+// Prompt variants. Each type (thread, comment, mention) has 1-5 prompts with a weight in percent;
 // the weights of a type add up to 100. A prompt at 0% is paused. Stored under kv 'prompt_variants'.
-const TYPES=Object.keys(DEFAULT_PROMPTS);
+const TYPES=Object.keys(DEFAULT_PROMPTS),MAX_PROMPTS=5;
 const defaultVariant=type=>({id:'v_default_'+type,slug:type+'-default',name:'Default',text:DEFAULT_PROMPTS[type],weight:100});
 // Every prompt has a readable slug, unique across all types ("thread-default", "thread-natural-2").
 // It is made from the type and name once, then kept through renames; it can be edited.
@@ -171,7 +171,7 @@ function backfillSlugs(store){
 function saveVariants(store,type,list){
   if(!TYPES.includes(type))fail(422,'type must be thread, comment or mention');
   if(!Array.isArray(list)||!list.length)fail(422,'Give at least one prompt');
-  if(list.length>10)fail(422,'At most 10 prompts per type');
+  if(list.length>MAX_PROMPTS)fail(422,`At most ${MAX_PROMPTS} prompts per type`);
   const ids=new Set(),slugs=new Set();
   const others=new Set(Object.entries(variants(store)).filter(([t])=>t!==type).flatMap(([,l])=>l.map(v=>v.slug)));
   const clean=list.map((v,i)=>{
@@ -343,11 +343,11 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   // Nothing useful to add: the entry is deleted from Queue 2 (its Queue 1 item stays claimed, so it never returns).
   if(skipped){
     store.discardQueue2(id);
-    store.event('queue2.discarded',`Queue 2 #${entry.id} discarded: the model answered SKIP`,{...ref,reason:'skip',model,provider});
+    store.event('queue2.discarded',`Queue 2 #${entry.id} discarded: the model answered SKIP`,{...ref,reason:'skip',model,provider,prompt_variant_id:variant.id,prompt_variant_slug:variant.slug});
     return {id:entry.id,item_id:entry.item_id,write_status:'skipped',discarded:true};
   }
   store.setQueue2Draft(id,{...pv,message:res.text,prompt_used:prompt,model,write_status:'written'});
   return store.queue2(id);
 }
 
-module.exports={backfillSlugs,DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};
+module.exports={MAX_PROMPTS,backfillSlugs,DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};

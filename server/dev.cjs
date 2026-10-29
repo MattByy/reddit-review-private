@@ -181,16 +181,18 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // Per type: each prompt's target %, drafts, sends and Engain outcomes, with shares and rates.
   // Prompts that were deleted but still have drafts are listed with deleted:true.
   function promptStats(){
-    const rows=store.variantStats(),out={};
+    const rows=store.variantStats(),skips=store.variantSkips(),out={};
     for(const [type,list] of Object.entries(writer.variants(store))){
       const mine=rows.filter(r=>r.kind===type),pct=(a,b)=>b?Math.round(a/b*1000)/10:null;
-      const sum=k=>mine.reduce((a,r)=>a+(r[k]||0),0),drafted=sum('drafted'),published=sum('published');
+      const sum=k=>mine.reduce((a,r)=>a+(r[k]||0),0),drafted=sum('drafted'),published=sum('published'),sent=sum('sent');
       const entries=[...list.map(v=>({id:v.id,slug:v.slug,name:v.name,weight:v.weight,deleted:false})),
         ...mine.filter(r=>!list.some(v=>v.id===r.id)).sort((x,y)=>String(x.name).localeCompare(String(y.name))).map(r=>({id:r.id,slug:r.slug,name:r.name,weight:0,deleted:true}))];
-      out[type]={drafted,published,prompts:entries.map(e=>{e.slug=e.slug??mine.find(r=>r.id===e.id)?.slug??null;
-        const r=mine.find(r=>r.id===e.id)||{drafted:0,sent:0,published:0,removed:0,failed:0,cancelled:0,pending:0};
-        return {...e,drafted:r.drafted,sent:r.sent,published:r.published,removed:r.removed,failed:r.failed,cancelled:r.cancelled,pending:r.pending,
-          share_of_drafts:pct(r.drafted,drafted),share_of_published:pct(r.published,published),publish_rate:pct(r.published,r.sent)};
+      out[type]={drafted,sent,published,prompts:entries.map(e=>{e.slug=e.slug??mine.find(r=>r.id===e.id)?.slug??null;
+        const r=mine.find(r=>r.id===e.id)||{drafted:0,sent:0,published:0,removed:0,failed:0,cancelled:0,pending:0,sent_pool:0,sent_dedicated:0,waiting:0,last_written_at:null};
+        const not_published=r.removed+r.failed+r.cancelled;
+        return {...e,drafted:r.drafted,skipped:skips[e.id]||0,waiting:r.waiting,not_sent:r.drafted-r.sent-r.waiting,sent:r.sent,sent_pool:r.sent_pool,sent_dedicated:r.sent_dedicated,
+          published:r.published,pending:r.pending,not_published,removed:r.removed,failed:r.failed,cancelled:r.cancelled,last_written_at:r.last_written_at,
+          share_of_drafts:pct(r.drafted,drafted),share_of_published:pct(r.published,published),publish_rate:pct(r.published,r.sent),removal_rate:pct(r.removed,r.sent)};
       })};
     }
     return out;
@@ -249,8 +251,20 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       return {...sent,account:account&&{id:account.userAccountId,username:account.username||null,niche:account.niche||null},queue2:queue.queue2Item(store,id)};
     },
     // Prompt variants per type with their percentages, and how each one has done so far.
-    'GET /api/prompts':async()=>({variants:writer.variants(store),stats:promptStats(),defaults:writer.DEFAULT_PROMPTS,natural:writer.NATURAL_PROMPTS,variables:writer.VARIABLES,
+    'GET /api/prompts':async()=>({max_prompts:writer.MAX_PROMPTS,variants:writer.variants(store),stats:promptStats(),defaults:writer.DEFAULT_PROMPTS,natural:writer.NATURAL_PROMPTS,variables:writer.VARIABLES,
       model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,openrouter_key:!!llmKeys().openrouter,featherless_key:!!llmKeys().featherless,shortlist:bench.SHORTLIST}),
+    // API keys. The secret is returned once, on create. scope: "prompts" (default) or "full".
+    'GET /api/keys':async()=>({keys:store.apiKeys()}),
+    'GET /api/keys/me':async(_,__,___,who)=>({by:who?.by??null,key:who?.key?{id:who.key.id,name:who.key.name,scope:who.key.scope,prefix:who.key.prefix}:null}),
+    'POST /api/keys':async(_,body)=>{
+      const name=String(body?.name??'').trim(),scope=body?.scope??'prompts';
+      if(!name||name.length>60)fail(422,'Give the key a name (up to 60 characters), e.g. "prompt agent"');
+      if(!['prompts','full'].includes(scope))fail(422,'scope must be prompts or full');
+      const k=store.createApiKey({name,scope});store.event('key.created',`API key "${name}" created (${scope})`,{id:k.id,name,scope,prefix:k.prefix});
+      return k;
+    },
+    'POST /api/keys/:id/revoke':async(_,__,id)=>{const k=store.apiKey(id)||fail(404,'No such key');if(!store.revokeApiKey(id))fail(409,'That key is already revoked');
+      store.event('key.revoked',`API key "${k.name}" revoked`,{id,name:k.name});return store.apiKey(id);},
     // Replace one type's prompt list: {"type":"thread","variants":[{"id"?,"name","text","weight"}]} (weights add up to 100).
     'POST /api/prompts':async(_,body)=>({type:body?.type,variants:writer.saveVariants(store,body?.type,body?.variants)}),
     // One prompt at a time. Add: {"type","name","text"? or "style":"natural"|"default","provider","model","temperature"} (starts at 0%).
@@ -407,25 +421,39 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // Agent and cron routes need their bearer secret when one is configured, and always when
   // called from another machine. The other API routes answer this machine freely and another
   // machine with AGENT_API_KEY. The dashboard page itself is this machine only.
+  // API keys made on the Prompts page (gnk_…): scope "prompts" reaches only the prompt routes,
+  // "full" everything AGENT_API_KEY reaches except the cron routes. Returns who is calling.
+  const PROMPT_ROUTES=/^\/api\/(prompts(\/|$)|prompt-variants(\/|$)|models$|keys\/me$)/;
   function authorize(req,pathname){
     const local=LOOPBACK.has(req.socket?.remoteAddress);
+    const token=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'').trim();
+    if(token.startsWith('gnk_')){
+      const k=store.apiKeyFor(token);
+      if(!k)fail(401,'Unknown or revoked API key');
+      if(pathname.startsWith('/api/cron/'))fail(403,'API keys cannot run cron jobs; use CRON_SECRET');
+      if(k.scope!=='full'&&!PROMPT_ROUTES.test(pathname))fail(403,`The key "${k.name}" can only manage prompts (scope: prompts). See /docs/prompts-api`);
+      if(k.scope!=='full'&&pathname.startsWith('/api/keys')&&pathname!=='/api/keys/me')fail(403,'Only a full key, AGENT_API_KEY or this machine can manage keys');
+      return {by:'key:'+k.name,key:k};
+    }
+    if(pathname.startsWith('/api/keys')&&pathname!=='/api/keys/me'&&!local&&!(agentKey&&bearer(req,agentKey)))fail(401,'Managing keys needs this machine, AGENT_API_KEY or a full key');
     const secret=pathname.startsWith('/api/agent/')?agentKey:pathname.startsWith('/api/cron/')?cronSecret:undefined;
     if(pathname.startsWith('/api/agent/')||pathname.startsWith('/api/cron/')){
       if(secret){if(!bearer(req,secret))fail(401,'Missing or wrong bearer token');}
       else if(!local)fail(401,(pathname.startsWith('/api/agent/')?'AGENT_API_KEY':'CRON_SECRET')+' must be set to accept remote calls');
     }else if(!local){
-      // Everything else is the dashboard's API: from another machine it needs AGENT_API_KEY.
-      if(!agentKey)fail(403,'The dashboard API only answers on this machine (set AGENT_API_KEY to allow remote calls)');
+      // Everything else is the dashboard's API: from another machine it needs AGENT_API_KEY or an API key.
+      if(!agentKey)fail(403,'The dashboard API only answers on this machine (set AGENT_API_KEY or use an API key to allow remote calls)');
       if(!bearer(req,agentKey))fail(401,'Missing or wrong bearer token');
     }
+    return {by:local&&!token?'dashboard':'agent_api_key'};
   }
 
-  function logged(route,method,pathname){
-    return async(q,body,param)=>{
+  function logged(route,method,pathname,who){
+    return async(q,body,param,ctx)=>{
       const started=Date.now(),ref={queue2_id:/\/queue2\/\d+/.test(pathname)?Number(param):undefined};
       try{
-        const out=await route(q,body,param);
-        if(method==='POST')store.event('http.request',`${method} ${pathname} -> 200 in ${Date.now()-started} ms`,{...ref,method,path:pathname,status:200,ms:Date.now()-started,body});
+        const out=await route(q,body,param,ctx);
+        if(method==='POST')store.event('http.request',`${method} ${pathname} -> 200 in ${Date.now()-started} ms`,{...ref,method,path:pathname,status:200,ms:Date.now()-started,body,by:who?.by});
         return out;
       }catch(e){
         store.event('http.error',`${method} ${pathname} -> ${e.status||500}: ${e.message}`,{...ref,method,path:pathname,query:q,status:e.status||500,ms:Date.now()-started,body,error:e.message,engain:e.body??null,stack:e.status?undefined:e.stack});
@@ -442,6 +470,10 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         if(!LOOPBACK.has(req.socket?.remoteAddress))fail(403,'The dashboard only answers on this machine');
         return send(200,fs.readFileSync(path.join(__dirname,'public/index.html')),'text/html; charset=utf-8');
       }
+      // The Prompts page holds no data itself, so it is served to anyone; its API calls need a key
+      // from another machine. The agent docs are public too.
+      if(req.method==='GET'&&(u.pathname==='/prompts'||u.pathname==='/prompts.html'))return send(200,fs.readFileSync(path.join(__dirname,'public/prompts.html')),'text/html; charset=utf-8');
+      if(req.method==='GET'&&u.pathname==='/docs/prompts-api')return send(200,fs.readFileSync(path.join(root,'docs/PROMPTS-API.md')),'text/markdown; charset=utf-8');
       // Exact path first, then patterns with one :id segment anywhere (…/queue2/:id/send).
       let route=routes[req.method+' '+u.pathname],param;
       if(!route){
@@ -452,12 +484,12 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         }
       }
       if(!route)return send(404,{error:'Not found'});
-      authorize(req,u.pathname);
+      const who=authorize(req,u.pathname);
       // Every action (POST) is logged with its body and outcome; reads are logged only when they fail.
-      route=logged(route,req.method,u.pathname);
+      route=logged(route,req.method,u.pathname,who);
       let body=null;
       if(req.method==='POST'){let raw='';for await(const c of req){raw+=c;if(raw.length>1e5)return send(413,{error:'Body too large'});}try{body=raw?JSON.parse(raw):{};}catch{return send(400,{error:'Invalid JSON'});}}
-      send(200,await route(Object.fromEntries(u.searchParams),body,param));
+      send(200,await route(Object.fromEntries(u.searchParams),body,param,who));
     }catch(e){send(e.status&&e.status<600?e.status:500,{error:e.message,engain:e.body});}
   }
   return {handle,store,engain,runJob,startScheduler,close:()=>{for(const t of Object.values(timers))clearTimeout(t);store.close();}};
