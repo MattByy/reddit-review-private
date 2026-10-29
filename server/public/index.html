@@ -251,26 +251,45 @@ async function runFastCycle() {
     if (trackerResult.changed?.length) log += ` (${trackerResult.changed.length} status changes)`;
     log += '\n';
     
-    // Get fresh queue and show items flowing one by one
+    // Claim items from Queue 1 and move to Queue 2 (the "flow" the user wants to see)
+    log += '  → Claiming items from Queue 1 to Queue 2…\n';
     const queue = await api('/api/queue');
-    log += `  → Queue status: ${queue.count} items total\n`;
+    const itemsToClaim = queue.items.filter(i => !i.claimed_at).slice(0, 5); // Claim up to 5 items per cycle
+    let claimedCount = 0;
+    for (const item of itemsToClaim) {
+      try {
+        const claimResult = await api('/api/agent/task', {write: true});
+        if (claimResult.queue2) {
+          claimedCount++;
+          log += `     ✓ Claimed #${item.position} (${item.kind}) → Queue 2 #${claimResult.queue2.id}\n`;
+        }
+      } catch (e) {
+        // Item may have been claimed by another process
+      }
+    }
+    if (claimedCount === 0) log += '     (no unclaimed items available)\n';
+    log += '\n';
+    
+    // Get fresh queue and show items flowing one by one
+    const freshQueue = await api('/api/queue');
+    log += `  → Queue status: ${freshQueue.count} items total\n`;
     log += `     Position | Kind | Status | Score\n`;
     log += `     ${'─'.repeat(50)}\n`;
     
 // Log fast mode cycle to API for agent visibility
     api('/api/fast-mode', {event: 'cycle', cycle: fastModeRun, results: {threads: threadsResult.action, comments: commentsResult.action, tracker: trackerResult.action,
-      added_threads: threadsResult.added_threads || 0, published_new: commentsResult.published_new || 0, checked: trackerResult.checked || 0, queued: queue.count}}).catch(() => {});
+      added_threads: threadsResult.added_threads || 0, published_new: commentsResult.published_new || 0, checked: trackerResult.checked || 0, queued: freshQueue.count, claimed: claimedCount}}).catch(() => {});
     
     // Show first 10 items in queue (the "flow")
-    const itemsToShow = queue.items.slice(0, 10);
+    const itemsToShow = freshQueue.items.slice(0, 10);
     itemsToShow.forEach(item => {
       const kindLabel = item.kind === 'thread' ? 'THREAD' : 'COMMENT';
       const scoreDisplay = item.score ? item.score : '—';
       log += `     #${String(item.position).padStart(6)} | ${kindLabel.padEnd(6)} | ${String(item.status || 'active').padEnd(8)} | ${String(scoreDisplay).padStart(4)}\n`;
     });
     
-    if (queue.items.length > 10) {
-      log += `     ... and ${queue.items.length - 10} more items in queue\n`;
+    if (freshQueue.items.length > 10) {
+      log += `     ... and ${freshQueue.items.length - 10} more items in queue\n`;
     }
     
     log += '\n';
