@@ -135,7 +135,8 @@ async function draftRun(store,runId,{keys,fetchImpl=fetch,concurrency=4,log=()=>
         const r=await writer.complete({provider:d.provider,model:d.model,prompt:d.prompt_used,temperature:d.temperature,maxTokens:3000,keys,fetchImpl});
         const skipped=/^skip\.?$/i.test(r.text),truncated=r.finish_reason==='length';
         set.run(skipped?'skipped':truncated?'truncated':'written',r.text,null,r.finish_reason,r.latency_ms,JSON.stringify(skipped?{words:0,list:[]}:flags(r.text)),new Date().toISOString(),d.id);
-      }catch(e){set.run('failed',null,String(e.message).slice(0,500),null,null,null,new Date().toISOString(),d.id);log(`bench ${runId}: ${short(d.model)} failed: ${e.message}`);}
+        store.event('llm.bench',`Model test ${runId}: ${d.provider} ${d.model} wrote a draft in ${r.latency_ms} ms`,{bench_run:runId,draft_id:d.id,provider:d.provider,model:d.model,prompt:d.prompt_used,text:r.text,finish_reason:r.finish_reason,latency_ms:r.latency_ms,usage:r.usage});
+      }catch(e){store.event('llm.bench_error',`Model test ${runId}: ${d.provider} ${d.model} failed: ${e.message}`,{bench_run:runId,draft_id:d.id,provider:d.provider,model:d.model,error:e.message});set.run('failed',null,String(e.message).slice(0,500),null,null,null,new Date().toISOString(),d.id);log(`bench ${runId}: ${short(d.model)} failed: ${e.message}`);}
     }
   }
   await Promise.all(Array.from({length:Math.max(1,concurrency)},worker));

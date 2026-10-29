@@ -71,7 +71,7 @@ table.lb{width:100%;font-size:12px;border-collapse:collapse}table.lb th{text-ali
 </section>
 </aside>
 <section>
-  <div class="tabs"><button data-tab="queue" class="on">Queue 1</button><button data-tab="queue2">Queue 2 (with message)</button><button data-tab="sent">Sent (tracking)</button><button data-tab="prompts">Prompts</button><button data-tab="bench">Model test</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="ours">Our comments</button><button data-tab="history">Taken / removed</button></div>
+  <div class="tabs"><button data-tab="queue" class="on">Queue 1</button><button data-tab="queue2">Queue 2 (with message)</button><button data-tab="sent">Sent (tracking)</button><button data-tab="prompts">Prompts</button><button data-tab="bench">Model test</button><button data-tab="comments">Comments</button><button data-tab="threads">All threads</button><button data-tab="ours">Our comments</button><button data-tab="history">Taken / removed</button><button data-tab="logs">Logs</button></div>
   <div id="tab-queue">
     <div class="filters"><span class="muted" id="qcount"></span><button id="checkpub" class="ghost">Check published now</button><button id="refreshq" class="ghost">Refresh queue</button><button id="rebuild" class="ghost">Rebuild from scratch</button><button id="freshstart" class="ghost" title="Drop our already-published comments; only comments published from now on enter Queue 1">Fresh start (comments from now)</button><button id="takewrite">Get next item &amp; write with OpenRouter</button><button id="take" class="ghost">Get next item (placeholder)</button></div>
     <pre id="taken" hidden></pre>
@@ -124,6 +124,13 @@ table.lb{width:100%;font-size:12px;border-collapse:collapse}table.lb th{text-ali
     <div id="ours"></div>
   </div>
   <div id="tab-history" hidden><div id="history"></div></div>
+  <div id="tab-logs" hidden>
+    <div class="filters"><select id="ltype" style="max-width:220px"><option value="">Everything</option></select><input type="text" id="lq" placeholder="Search text (message, prompt, reply…)">
+      <input type="text" id="litem" placeholder="Item (t_… / p_…) or Queue 2 #" style="max-width:220px"><button class="ghost" id="lclear">Clear</button></div>
+    <p class="muted" id="linfo"></p>
+    <div id="logs"></div>
+    <button class="ghost" id="lmore" hidden>Load older</button>
+  </div>
 </section>
 </main>
 <script>
@@ -132,7 +139,7 @@ const cls=s=>s>=60?'hi':s>=35?'mid':'lo',fmt=n=>n==null?'–':Math.round(n).toLo
 async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j;}
 const LABELS={tracker_every_minutes:'Sent-status checker every (min)',queue_target:'Queue size (threads fill up to this)',threads_every_minutes:'Threads job every (min)',comments_every_minutes:'Comments job every (min)',thread_collect_minutes:'Ask Engain for threads if older than (min)',comment_limit:'New comments per refresh',comment_position:'Insert comments at',max_age_days:'Max age (days)',min_comments:'Min thread comments',min_thread_score:'Min thread score',min_comment_score:'Min comment score',mention_comments:'Competitor mentions (0 off, 1 on)'};
 let tab='queue';
-for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','queue2','sent','prompts','bench','comments','threads','ours','history'])$('#tab-'+t).hidden=t!==tab;refresh();};
+for(const b of document.querySelectorAll('.tabs button'))b.onclick=()=>{tab=b.dataset.tab;for(const x of document.querySelectorAll('.tabs button'))x.classList.toggle('on',x===b);for(const t of ['queue','queue2','sent','prompts','bench','comments','threads','ours','history','logs'])$('#tab-'+t).hidden=t!==tab;refresh();};
 
 async function status(){const s=await api('/api/status');$('#mode').textContent=s.mock?'mock data':'live Engain'+(s.project_name?' · '+s.project_name:'');
   $('#count').textContent=`${s.threads} threads · ${s.comments} mention comments · ${s.queued} queued`;
@@ -181,7 +188,7 @@ async function loadThreads(){
     ${t.rank.flags.map(f=>`<div class="flag">⚠ ${esc(f)}</div>`).join('')}${t.eligibility.reasons.map(f=>`<div class="flag">✕ ${esc(f)}</div>`).join('')}
     <details><summary>Why this score</summary>${why(t.rank.parts)}${t.reasons.length?'<br>Engain: '+t.reasons.map(esc).join('; '):''}</details></div></div>`).join('');
 }
-async function refresh(){status();try{await({queue:loadQueue,queue2:loadQueue2,sent:loadSent,prompts:loadPrompts,bench:loadBench,comments:loadComments,threads:loadThreads,ours:loadOurs,history:loadHistory})[tab]();loadJobs();}catch(e){$('#progress').textContent='Error: '+e.message;}}
+async function refresh(){status();try{await({queue:loadQueue,queue2:loadQueue2,sent:loadSent,prompts:loadPrompts,bench:loadBench,comments:loadComments,threads:loadThreads,ours:loadOurs,history:loadHistory,logs:loadLogs})[tab]();loadJobs();}catch(e){$('#progress').textContent='Error: '+e.message;}}
 
 // Fast mode: rapid 30-second cycles for live monitoring
 let fastModeTimer = null, fastModeRun = 0;
@@ -274,6 +281,34 @@ async function loadOurs(){
     <div class="meta">${x.history.map(e=>`${esc(String(e.at).slice(0,16).replace('T',' '))}: ${esc(e.from_status||'first seen')} → ${esc(e.to_status)}`).join(' · ')}</div></div></div>`).join('')||'<p class="muted">Nothing yet. Run the comments job.</p>';
 }
 $('#verdict').addEventListener('input',refresh);
+
+// Logs: the server's activity log (also in .data/logs/YYYY-MM-DD.jsonl), newest first.
+const LCOL={job:'var(--accent)',collect:'var(--accent)',queue:'var(--cmt)',queue2:'var(--cmt)',llm:'var(--warn)',send:'var(--good)',sent:'var(--good)',engain:'var(--good)',account:'var(--good)',http:'var(--muted)',server:'var(--muted)'};
+function logParams(before){
+  const p=new URLSearchParams({limit:200}),it=$('#litem').value.trim().replace(/^#/,'');
+  if($('#ltype').value)p.set('type',$('#ltype').value);if($('#lq').value.trim())p.set('q',$('#lq').value.trim());
+  if(/^\d+$/.test(it))p.set('queue2_id',it);else if(it)p.set('item_id',it);
+  if(before)p.set('before_id',before);return p;
+}
+const logRow=e=>{const area=e.type.split('.')[0],bad=/error|failed|rejected/.test(e.type);
+  return `<div class="item" style="grid-template-columns:130px minmax(0,1fr)"><div class="meta" style="display:block">${esc(String(e.at).slice(5,19).replace('T',' '))}<br><b style="color:${bad?'var(--bad)':LCOL[area]||'var(--muted)'}">${esc(e.type)}</b></div><div>
+    <div style="${bad?'color:var(--bad)':''}">${esc(e.message)}</div>
+    <div class="meta">${e.item_id?`<a href="#" data-litem="${esc(e.item_id)}">${esc(e.item_id)}</a>`:''}${e.queue2_id!=null?`<a href="#" data-litem="${e.queue2_id}">Queue 2 #${e.queue2_id}</a>`:''}</div>
+    <details><summary>Details</summary><pre>${esc(JSON.stringify(e.data,null,1))}</pre></details></div></div>`;};
+let logNext=null;
+async function loadLogs(more){
+  const [r,t]=await Promise.all([api('/api/logs?'+logParams(more?logNext:null)),more?null:api('/api/logs/types')]);
+  if(t){const sel=$('#ltype'),cur=sel.value,areas={};for(const x of t.types){const a=x.type.split('.')[0];areas[a]=(areas[a]||0)+x.n;}
+    sel.innerHTML='<option value="">Everything</option>'+Object.entries(areas).map(([a,n])=>`<option value="${a}">${a}.* (${n})</option>`+t.types.filter(x=>x.type.startsWith(a+'.')).map(x=>`<option value="${esc(x.type)}">&nbsp;&nbsp;${esc(x.type)} (${x.n})</option>`).join('')).join('');sel.value=cur;
+    $('#linfo').textContent=`Kept ${t.keep_days} days. Files: .data/logs/YYYY-MM-DD.jsonl`;}
+  logNext=r.next_before_id;$('#lmore').hidden=r.count<200;
+  const html=r.items.map(logRow).join('');
+  if(more)$('#logs').insertAdjacentHTML('beforeend',html);else $('#logs').innerHTML=html||'<p class="muted">Nothing logged for this filter.</p>';
+}
+for(const id of ['#ltype','#lq','#litem'])$(id).addEventListener('input',()=>{clearTimeout(window.ltimer);window.ltimer=setTimeout(()=>loadLogs(),250);});
+$('#lclear').onclick=()=>{$('#ltype').value='';$('#lq').value='';$('#litem').value='';loadLogs();};
+$('#lmore').onclick=()=>loadLogs(true);
+$('#logs').addEventListener('click',e=>{const a=e.target.closest('[data-litem]');if(!a)return;e.preventDefault();$('#litem').value=a.dataset.litem;loadLogs();});
 $('#refreshq').onclick=async()=>{await api('/api/queue/refresh',{});refresh();};
 $('#freshstart').onclick=async()=>{if(!window.confirm('Remove all already-published comments from Queue 1? Only comments published from now on will be added.'))return;await api('/api/queue/fresh-start',{});refresh();};
 $('#rebuild').onclick=async()=>{await api('/api/queue/refresh',{reset:true});refresh();};

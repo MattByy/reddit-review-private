@@ -27,6 +27,10 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   const writerOpts={...openrouter};
   const llmKeys=()=>({openrouter:writerOpts.apiKey??process.env.OPENROUTER_API_KEY,featherless:writerOpts.featherlessKey??process.env.FEATHERLESS_API_KEY});
   const store=open(dbFile||path.join(root,'.data',mock?'dev-mock.db':'dev.db'));
+  // Console lines also go to the activity log; `say` prints only, for lines that log their own event.
+  const say=log;log=m=>{say(m);store.event('server.log',String(m));};
+  const keepDays=Number(process.env.LOG_KEEP_DAYS)||30;store.pruneEvents(keepDays);
+  store.event('server.started',`Server started (${mock?'mock':'live'} Engain)`,{mock,keep_log_days:keepDays});
   const engain=client(mock?{apiKey:'mock',fetchImpl:require('./mock.cjs').mockFetch,limits:false,log}:{apiKey,log});
   const live=new Map();let active=null,projectName=null;
   // Model tests run in the background; one drafting pass per test at a time.
@@ -53,10 +57,12 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     active='starting';
     let pid;try{pid=await project();}catch(e){active=null;throw e;}
     const id=store.startRun(input);active=id;live.set(id,{step:'starting'});
+    store.event('collect.started',`Collection run ${id} started`,{run_id:id,input});
     const done=collect(input,{engain,store,projectId:pid,onProgress:p=>live.set(id,p)})
       .then(s=>{try{s.queue=queue.refreshQueue(store,{addThreads}).summary;}catch(e){s.errors.push('queue refresh: '+e.message);}store.finishRun(id,s);return s;},
         e=>{const s={errors:[e.message]};store.finishRun(id,s);return s;})
-      .finally(()=>{active=null;live.delete(id);log(`collection run ${id} finished`);});
+      .then(s=>{store.event(s.errors?.length?'collect.errors':'collect.finished',`Collection run ${id} finished: ${s.added||0} threads added, ${s.updated||0} updated`+(s.errors?.length?`, ${s.errors.length} errors`:''),{run_id:id,summary:s});return s;})
+      .finally(()=>{active=null;live.delete(id);say(`collection run ${id} finished`);});
     return {run_id:id,done};
   }
 
@@ -100,11 +106,14 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   async function runJob(name){
     if(running[name])return {action:'skipped',reason:name+' job is already running'};
     running[name]=true;const started=new Date().toISOString();
+    store.event('job.started',`Job ${name} started`,{job:name});
     try{
       const result=await jobs[name]();
-      store.setKv('job_'+name,{started,finished:new Date().toISOString(),result});log(`job ${name}: ${result.action}${result.reason?' ('+result.reason+')':''}`);
+      store.setKv('job_'+name,{started,finished:new Date().toISOString(),result});say(`job ${name}: ${result.action}${result.reason?' ('+result.reason+')':''}`);
+      store.event('job.finished',`Job ${name}: ${result.action}${result.reason?' ('+result.reason+')':''}`,{job:name,ms:Date.now()-Date.parse(started),result});
       return result;
-    }catch(e){store.setKv('job_'+name,{started,finished:new Date().toISOString(),error:e.message});log(`job ${name} failed: ${e.message}`);throw e;}
+    }catch(e){store.setKv('job_'+name,{started,finished:new Date().toISOString(),error:e.message});say(`job ${name} failed: ${e.message}`);
+      store.event('job.failed',`Job ${name} failed: ${e.message}`,{job:name,error:e.message,status:e.status??null,engain:e.body??null});throw e;}
     finally{running[name]=false;}
   }
   // In-process schedule; intervals are read from the queue settings before every run.
@@ -136,7 +145,11 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     for(const a of ready){
       let c=null;
       try{c=await engain.v2ThreadCheck(a.userAccountId,{projectId:pid,threadUrl:item.thread_url||item.url});}catch(e){log('thread check failed for '+a.userAccountId+': '+e.message);}
-      if(!c?.exists)return {...a,username:a.username?String(a.username).replace(/^u\//,''):null};
+      if(!c?.exists){
+        store.event('account.picked',`Picked account ${a.username||a.userAccountId} for ${item.item_id}`,{queue2_id:item.id,item_id:item.item_id,account:a.userAccountId,username:a.username||null,ready:ready.length});
+        return {...a,username:a.username?String(a.username).replace(/^u\//,''):null};
+      }
+      store.event('account.skipped',`Account ${a.username||a.userAccountId} already commented in this thread`,{queue2_id:item.id,item_id:item.item_id,account:a.userAccountId});
     }
     fail(409,`All ${ready.length} of your ready accounts already commented in this thread.`);
   }
@@ -203,6 +216,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
         else mode='pool';
       }
       if(!store.approveQueue2(id,body?.approved_by?String(body.approved_by).slice(0,80):'dashboard'))fail(409,'Only a ready item can be approved');
+      store.event('queue2.approved',`Queue 2 #${id}: approved by ${body?.approved_by||'dashboard'}, sending via ${mode}`,{queue2_id:id,item_id:item.item_id,approved_by:body?.approved_by||'dashboard',mode,account:userAccountId??null,message:item.message});
       const {sendQueue2}=require('./send-queue2.cjs');
       const sent=await sendQueue2({id,mode,userAccountId,posterAccount:body?.posterAccount,override},
         {engain,store,projectId:await project(),log});
@@ -228,7 +242,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       const t=tryTarget(body),provider=body?.provider||t.variant?.provider||'openrouter';
       const model=body?.model||t.variant?.model||(provider==='openrouter'?writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL:fail(422,'Give a Featherless model'));
       const temperature=body?.temperature!=null?Number(body.temperature):t.variant?.temperature??0.7;
-      const r=await writer.complete({provider,model,prompt:t.prompt,temperature,maxTokens:provider==='featherless'?3000:1500,keys:llmKeys(),fetchImpl:writerOpts.fetchImpl});
+      const r=await writer.complete({provider,model,prompt:t.prompt,temperature,maxTokens:provider==='featherless'?3000:1500,keys:llmKeys(),fetchImpl:writerOpts.fetchImpl})
+        .catch(e=>{store.event('llm.try_error',`Prompt try: ${provider} ${model} failed: ${e.message}`,{provider,model,prompt:t.prompt,error:e.message});throw e;});
+      store.event('llm.try',`Prompt try: ${provider} ${model} answered in ${r.latency_ms} ms (not saved)`,{provider,model,temperature,prompt:t.prompt,text:r.text,finish_reason:r.finish_reason,latency_ms:r.latency_ms,usage:r.usage});
       return {type:t.entry.kind,item:t.entry,provider,model,temperature,prompt:t.prompt,text:r.text,finish_reason:r.finish_reason,latency_ms:r.latency_ms,
         skipped:/^skip\.?$/i.test(r.text),disclosure:writer.checkDisclosure(r.text),flags:bench.flags(r.text).list};
     },
@@ -253,7 +269,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'GET /api/agent/queue2':async()=>queue.queue2List(store),
     'GET /api/agent/queue2/:id':async(_,__,id)=>queue.queue2Item(store,id)||fail(404,'No such queue 2 entry'),
     // Throw away an unsent Queue 2 entry (its Queue 1 item does not come back).
-    'POST /api/agent/queue2/:id/discard':async(_,__,id)=>{if(!store.discardQueue2(id))fail(409,'Only an existing, unsent entry can be discarded');return {ok:true,discarded:Number(id)};},
+    'POST /api/agent/queue2/:id/discard':async(_,__,id)=>{const item=store.queue2(id);if(!store.discardQueue2(id))fail(409,'Only an existing, unsent entry can be discarded');
+      store.event('queue2.discarded',`Queue 2 #${id} discarded`,{queue2_id:id,item_id:item?.item_id??null,message:item?.message??null});return {ok:true,discarded:Number(id)};},
     'POST /api/agent/queue2/:id':async(_,body,id)=>queue.setQueue2Message(store,id,body?.message),
     'POST /api/agent/queue2/:id/send':async(_,body,id)=>{
       const {sendQueue2}=require('./send-queue2.cjs');
@@ -295,6 +312,10 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       const {run_id}=await beginCollect(opts);return {started:true,run_id};
     },
     'GET /api/jobs':async()=>jobStatus(),
+    // The activity log, newest first. Filters: type (llm, send, queue, job... or an exact type),
+    // item_id, queue2_id, q (text), since (ISO date), before_id (paging), limit (max 2000).
+    'GET /api/logs':async q=>{const items=store.events(q);return {count:items.length,next_before_id:items.length?items[items.length-1].id:null,items};},
+    'GET /api/logs/types':async()=>({keep_days:keepDays,types:store.eventTypes()}),
     'GET /api/published':async()=>queue.publishedList(store),
     'GET /api/our-comments':async q=>{
       const rows=store.ourTasks(q.verdict||undefined),counts={};
@@ -344,6 +365,20 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     }
   }
 
+  function logged(route,method,pathname){
+    return async(q,body,param)=>{
+      const started=Date.now(),ref={queue2_id:/\/queue2\/\d+/.test(pathname)?Number(param):undefined};
+      try{
+        const out=await route(q,body,param);
+        if(method==='POST')store.event('http.request',`${method} ${pathname} -> 200 in ${Date.now()-started} ms`,{...ref,method,path:pathname,status:200,ms:Date.now()-started,body});
+        return out;
+      }catch(e){
+        store.event('http.error',`${method} ${pathname} -> ${e.status||500}: ${e.message}`,{...ref,method,path:pathname,query:q,status:e.status||500,ms:Date.now()-started,body,error:e.message,engain:e.body??null,stack:e.status?undefined:e.stack});
+        throw e;
+      }
+    };
+  }
+
   async function handle(req,res){
     const u=new URL(req.url,'http://localhost');
     const send=(status,value,type='application/json; charset=utf-8')=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store'});res.end(type.startsWith('application/json')?JSON.stringify(value,null,1):value);};
@@ -363,6 +398,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       }
       if(!route)return send(404,{error:'Not found'});
       authorize(req,u.pathname);
+      // Every action (POST) is logged with its body and outcome; reads are logged only when they fail.
+      route=logged(route,req.method,u.pathname);
       let body=null;
       if(req.method==='POST'){let raw='';for await(const c of req){raw+=c;if(raw.length>1e5)return send(413,{error:'Body too large'});}try{body=raw?JSON.parse(raw):{};}catch{return send(400,{error:'Invalid JSON'});}}
       send(200,await route(Object.fromEntries(u.searchParams),body,param));

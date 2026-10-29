@@ -143,6 +143,8 @@ function refreshQueue(store,{reset=false,addThreads=true,addComments=true}={}){
   list=[...list,...newThreads];
   list.splice(Math.min(cfg.comment_position-1,list.length),0,...incoming);
   store.writeQueue(list,retired);
+  for(const r of retired)store.event('queue.removed',`Queue 1: removed ${r.item_id} (${r.reason})`,{item_id:r.item_id,reason:r.reason});
+  for(const q of [...incoming,...newThreads])store.event('queue.added',`Queue 1: added ${q.kind} ${q.item_id} at #${list.indexOf(q)+1}`,{item_id:q.item_id,kind:q.kind,thread_id:q.thread_id,position:list.indexOf(q)+1,score:q.score});
   // Only a refresh that may insert comments moves the "seen until" mark, so none are skipped.
   if(addComments)store.setKv('queue_state',{comments_seen_until:now});
   const count=k=>list.filter(q=>q.kind===k).length;
@@ -224,7 +226,9 @@ function claimNext(store,agent,{message}={}){
       message:given??randomMessage(),message_source:given?'given':'random',item:{item_id:first.item_id,...described}};
   });
   store.writeQueue(store.queued());
-  if(!item)return {status:'empty',remaining:0,message:'Queue 1 is empty. The threads and comments jobs refill it.'};
+  if(!item){store.event('queue.empty','Get next item: Queue 1 is empty',{agent});return {status:'empty',remaining:0,message:'Queue 1 is empty. The threads and comments jobs refill it.'};}
+  store.event('queue.moved',`Queue 1 -> Queue 2: ${item.item_id} became Queue 2 #${item.queue2_id}`,{item_id:item.item_id,queue2_id:item.queue2_id,kind:item.kind,agent,
+    url:described.url,title:described.thread?.title??null,message_source:given?'given':'random'});
   return {task_id:item.item_id,...described,claimed_at:item.claimed_at,claimed_by:item.claimed_by,remaining:store.queued().length,
     queue2:queue2Entry(store.queue2(item.queue2_id))};
 }
@@ -232,6 +236,7 @@ const queue2List=store=>{const rows=store.queue2();return {count:rows.length,ite
 function setQueue2Message(store,id,message){
   const m=cleanMessage(message);if(!m)fail(422,'message is required');
   if(!store.setQueue2Message(id,m,'given'))fail(404,'No such queue 2 entry');
+  store.event('queue2.edited',`Queue 2 #${id}: message edited by hand (approval withdrawn)`,{queue2_id:id,item_id:store.queue2(id).item_id,message:m});
   return queue2Entry(store.queue2(id));
 }
 
@@ -244,6 +249,7 @@ function queueView(store,{history=30}={}){
 function setStatus(store,id,status,note){
   if(!['skipped','done'].includes(status))fail(422,'status must be skipped or done');
   if(!store.setQueueStatus(id,status,note))fail(404,'Item is not in the queue');
+  store.event('queue.status',`Queue 1: ${id} marked ${status}`,{item_id:id,status,note:note??null});
   store.writeQueue(store.queued());return {ok:true};
 }
 

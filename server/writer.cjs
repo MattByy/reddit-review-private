@@ -255,7 +255,8 @@ function cleanText(t){
   const m=t.match(/^"([^"]+)"$/);return m?m[1].trim():t;
 }
 // One chat call, one user message (no hidden system prompt). keys: {openrouter, featherless}.
-async function complete({provider='openrouter',model,prompt,temperature=0.7,maxTokens=1500,keys={},fetchImpl=fetch}){
+// trace(note) hears about every retry, so the activity log shows what the model API did.
+async function complete({provider='openrouter',model,prompt,temperature=0.7,maxTokens=1500,keys={},fetchImpl=fetch,trace=()=>{}}){
   const p=PROVIDERS[provider];if(!p)fail(422,'Unknown provider '+provider);
   if(!keys[provider])fail(503,`${p.key} is not set (add it to .env.local)`);
   const body={model,messages:[{role:'user',content:prompt}],max_tokens:maxTokens,temperature};
@@ -268,17 +269,17 @@ async function complete({provider='openrouter',model,prompt,temperature=0.7,maxT
     // A dropped connection is retried like a busy server.
     try{r=await fetchImpl(p.url,{method:'POST',headers:{Authorization:'Bearer '+keys[provider],'Content-Type':'application/json',...(provider==='openrouter'?{'X-Title':'Geonode thread collector'}:{})},
       body:JSON.stringify(body),signal:AbortSignal.timeout(120000)});}
-    catch(e){if(attempt<2&&e.name!=='TimeoutError'){await wait();continue;}throw e;}
+    catch(e){if(attempt<2&&e.name!=='TimeoutError'){trace(`connection failed (${e.message}), retrying`);await wait();continue;}throw e;}
     const j=await r.json().catch(()=>null);
     // Featherless answers 429 when the plan's concurrency is in use; wait and try again.
-    if(r.status===429&&attempt<4){await wait();continue;}
+    if(r.status===429&&attempt<4){trace(`${p.label} answered 429 (busy), retrying`);await wait();continue;}
     if(!r.ok)throw Error(j?.error?.message||`${p.label} ${r.status}`);
     const c=j?.choices?.[0],text=cleanText(c?.message?.content);
     // An empty answer now and then is a model hiccup; ask once more before giving up.
-    if(!text&&attempt<1){await wait();continue;}
+    if(!text&&attempt<1){trace('empty answer, asking once more');await wait();continue;}
     // Reasoning models (GLM, MiniMax) think first; a small token limit can end before the answer.
     if(!text)throw Error(p.label+' returned an empty message'+(c?.message?.reasoning||c?.message?.reasoning_content?' (only reasoning; the token limit ran out before the answer)':''));
-    return {text,finish_reason:c.finish_reason??null,latency_ms:Date.now()-started,usage:j.usage??null};
+    return {text,finish_reason:c.finish_reason??null,latency_ms:Date.now()-started,usage:j.usage??null,attempts:attempt+1,raw:c?.message?.content??null};
   }
 }
 
@@ -292,18 +293,24 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   if(!keys[provider])fail(503,`${PROVIDERS[provider].key} is not set (add it to .env.local)`);
   const prompt=render(variant.text,variables(entry,store,variant.text)),pv={prompt_variant_id:variant.id,prompt_variant_name:variant.name,provider};
   let res;
+  const temperature=variant.temperature??0.7,maxTokens=provider==='featherless'?3000:1500,ref={queue2_id:entry.id,item_id:entry.item_id};
+  store.event('llm.request',`Queue 2 #${entry.id}: asking ${provider} ${model} (prompt "${variant.name}")`,{...ref,provider,model,temperature,max_tokens:maxTokens,prompt_variant_id:variant.id,prompt_variant_name:variant.name,prompt});
+  const trace=note=>store.event('llm.retry',`Queue 2 #${entry.id}: ${provider} ${model}: ${note}`,{...ref,provider,model,note});
   // Some Featherless models reason before answering and need room for both.
-  try{res=await complete({provider,model,prompt,temperature:variant.temperature??0.7,maxTokens:provider==='featherless'?3000:1500,keys,fetchImpl});}
+  try{res=await complete({provider,model,prompt,temperature,maxTokens,keys,fetchImpl,trace});}
   catch(e){
+    store.event('llm.error',`Queue 2 #${entry.id}: ${provider} ${model} failed: ${e.message}`,{...ref,provider,model,error:e.message});
     store.setQueue2Draft(id,{write_status:'failed',write_error:String(e.message).slice(0,500),prompt_used:prompt,model,provider});
     fail(502,'Writing failed: '+e.message);
   }
+  const skipped=/^skip\.?$/i.test(res.text),outcome=res.finish_reason==='length'?'truncated':skipped?'skipped':'written';
+  store.event('llm.response',`Queue 2 #${entry.id}: ${provider} ${model} ${outcome} in ${res.latency_ms} ms`,{...ref,provider,model,outcome,text:res.text,raw:res.raw!==res.text?res.raw:undefined,
+    finish_reason:res.finish_reason,latency_ms:res.latency_ms,attempts:res.attempts,usage:res.usage});
   // A message cut off at the token limit is kept for reading but can never be approved.
   if(res.finish_reason==='length'){
     store.setQueue2Draft(id,{...pv,message:res.text,prompt_used:prompt,model,write_status:'truncated',write_error:'The model hit the length limit and the message is cut off. Rewrite or edit it.'});
     return store.queue2(id);
   }
-  const skipped=/^skip\.?$/i.test(res.text);
   store.setQueue2Draft(id,{...pv,message:skipped?'SKIP: the model found nothing useful to add.':res.text,prompt_used:prompt,model,write_status:skipped?'skipped':'written'});
   return store.queue2(id);
 }

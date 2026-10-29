@@ -31,10 +31,17 @@ function subredditFromUrl(url){
   return match?match[1]:null;
 }
 
-// Send one queue2 entry
-async function sendQueue2({id,mode,userAccountId,posterAccount,override},
-
-{engain,store,projectId,log=console.log}){
+// Send one queue2 entry. Every attempt lands in the activity log: a refusal before anything
+// reaches Engain is send.rejected; a call to Engain is send.request then send.ok or send.failed.
+async function sendQueue2(args,ctx){
+  try{return await send(args,ctx);}
+  catch(e){
+    if(!e.logged){const item=ctx.store.queue2(args.id);
+      ctx.store.event('send.rejected',`Queue 2 #${args.id}: not sent: ${e.message}`,{queue2_id:args.id,item_id:item?.item_id??null,mode:args.mode??null,error:e.message,status:e.status??null});}
+    throw e;
+  }
+}
+async function send({id,mode,userAccountId,posterAccount,override},{engain,store,projectId,log=console.log}){
   const item=store.queue2(id);
   if(!item)fail(404,'Queue2 entry not found');
   
@@ -94,8 +101,10 @@ async function sendQueue2({id,mode,userAccountId,posterAccount,override},
     fail(409,'Failed to reserve entry (already sending or not ready)');
   }
 
+  const ref={queue2_id:Number(id),item_id:item.item_id,kind:item.kind,mode,account:mode==='beta'?accountId:posterAccount??null,url:item.url};
   try{
     let response,taskId;
+    store.event('send.request',`Queue 2 #${id}: sending to Engain via ${mode==='beta'?'dedicated account '+accountId:'pool'}`,{...ref,message:item.message});
 
     if(mode==='pool'){
       // Pooled: comment vs reply endpoint
@@ -117,6 +126,7 @@ async function sendQueue2({id,mode,userAccountId,posterAccount,override},
     }
 
     if(!taskId){
+      store.event('send.failed',`Queue 2 #${id}: Engain answered without a task ID`,{...ref,response});
       store.failQueue2Send(id,'No task ID in response',JSON.stringify(response).slice(0,500));
       return {ok:false,status:'unknown',reason:'No task ID in Engain response',response};
     }
@@ -125,6 +135,7 @@ async function sendQueue2({id,mode,userAccountId,posterAccount,override},
     store.recordQueue2Send(id,taskId,response);
     store.recordQueue2Pace(subreddit);
     
+    store.event('send.ok',`Queue 2 #${id}: Engain task ${taskId} created (${response?.status||'submitted'})`,{...ref,task_id:taskId,response});
     log(`✓ Sent queue2 #${id} via ${mode}: task ${taskId}`);
     
     return {ok:true,status:'submitted',taskId,mode,queue2_id:id,item_id:item.item_id,response};
@@ -132,6 +143,8 @@ async function sendQueue2({id,mode,userAccountId,posterAccount,override},
   }catch(e){
     const reason=e.status===429?'Rate limited':e.status===403?'Forbidden':e.status>=500?'Server error':`Engain ${e.status||'error'}`;
     store.failQueue2Send(id,reason,e.message);
+    store.event('send.failed',`Queue 2 #${id}: Engain call failed: ${e.message}`,{...ref,reason,error:e.message,status:e.status??null,engain:e.body??null});
+    e.logged=true;
     throw e;
   }
 }
@@ -157,6 +170,7 @@ async function pollQueue2Status(id,{engain,store,log=console.log}){
 
   }catch(e){
     log(`Poll error for queue2 #${id}: ${e.message}`);
+    store.event('sent.poll_error',`Queue 2 #${id}: status check failed: ${e.message}`,{queue2_id:Number(id),item_id:item.item_id,task_id:item.engain_task_id,error:e.message});
     return {status:'error',reason:e.message};
   }
 }

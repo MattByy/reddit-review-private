@@ -9,6 +9,8 @@ const JSON_COLS=['sources','keywords','reasons','mentions','ranking_keywords'];
 
 function open(file){
   if(file!==':memory:')fs.mkdirSync(path.dirname(file),{recursive:true});
+  // The activity log is mirrored as one JSON line per event in .data/logs/YYYY-MM-DD.jsonl.
+  const logDir=file===':memory:'?null:path.join(path.dirname(file),'logs');
   const db=new DatabaseSync(file);
   db.exec(`
     create table if not exists threads(
@@ -38,6 +40,11 @@ function open(file){
       id integer primary key autoincrement, item_id text not null unique, kind text not null, thread_id text,
       url text, thread_url text, title text, message text not null, message_source text not null,
       item text not null, created_by text, created_at text not null, updated_at text not null);
+    create table if not exists events(id integer primary key autoincrement, at text not null, type text not null, message text,
+      item_id text, queue2_id integer, data text);
+    create index if not exists events_type on events(type);
+    create index if not exists events_item on events(item_id);
+    create index if not exists events_q2 on events(queue2_id);
   `);
   
   // Run queue2 send migration AFTER tables are created
@@ -75,6 +82,40 @@ function open(file){
   const union=(a,b)=>[...new Set([...(a||[]),...(b||[])])];
   const pick=(next,old)=>next??old??null;
 
+  // Activity log for debugging: every job, queue move, model call, send and status change.
+  // type is "area.what" (job.finished, llm.response, send.failed...). data.item_id and
+  // data.queue2_id are also stored as columns so one item's whole journey can be listed.
+  // Logging never throws: a full disk must not stop the pipeline.
+  const insertEvent=db.prepare('insert into events(at,type,message,item_id,queue2_id,data) values(?,?,?,?,?,?)');
+  function event(type,message,data={}){
+    try{
+      const at=new Date().toISOString(),item_id=data?.item_id??null,queue2_id=data?.queue2_id!=null?Number(data.queue2_id):null;
+      let json=JSON.stringify(data??{});if(json.length>100000)json=JSON.stringify({truncated:true,preview:json.slice(0,100000)});
+      const id=Number(insertEvent.run(at,type,message??null,item_id,queue2_id,json).lastInsertRowid);
+      if(logDir){fs.mkdirSync(logDir,{recursive:true});fs.appendFileSync(path.join(logDir,at.slice(0,10)+'.jsonl'),JSON.stringify({id,at,type,message,data:JSON.parse(json)})+'\n');}
+      return id;
+    }catch{return null;}
+  }
+  // Filters: type ("llm" matches llm.*), item_id, queue2_id, q (text in message or data), since, before_id.
+  function events({type,item_id,queue2_id,q,since,before_id,limit=200}={}){
+    const where=[],args=[];
+    if(type){where.push('(type=? or type like ?)');args.push(type,type+'.%');}
+    if(item_id){where.push('item_id=?');args.push(item_id);}
+    if(queue2_id!=null&&queue2_id!==''){where.push('queue2_id=?');args.push(Number(queue2_id));}
+    if(q){where.push('(message like ? or data like ?)');args.push('%'+q+'%','%'+q+'%');}
+    if(since){where.push('at>=?');args.push(since);}
+    if(before_id){where.push('id<?');args.push(Number(before_id));}
+    const n=Math.max(1,Math.min(Number(limit)||200,2000));
+    return db.prepare(`select * from events ${where.length?'where '+where.join(' and '):''} order by id desc limit ?`).all(...args,n).map(r=>({...r,data:r.data?JSON.parse(r.data):null}));
+  }
+  // Drops events (and log files) older than `days`.
+  function pruneEvents(days){
+    const cut=new Date(Date.now()-days*86400000).toISOString();
+    const n=db.prepare('delete from events where at<?').run(cut).changes;
+    if(logDir&&fs.existsSync(logDir))for(const f of fs.readdirSync(logDir))if(/^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f)&&f.slice(0,10)<cut.slice(0,10))fs.rmSync(path.join(logDir,f));
+    return n;
+  }
+
   // Merge rule: newest non-null metric wins; list fields are unioned so a thread found by
   // several sources keeps every source, keyword and reason.
   function upsert(t){
@@ -98,7 +139,8 @@ function open(file){
   }
 
   return {
-    db,upsert,
+    db,upsert,event,events,pruneEvents,
+    eventTypes:()=>db.prepare('select type,count(*) n,max(at) last from events group by type order by type').all().map(r=>({...r})),
     thread:id=>parse(db.prepare('select * from threads where thread_id=?').get(id)),
     threads:()=>db.prepare('select * from threads').all().map(parse),
     subreddit(name){const r=db.prepare('select * from subreddits where name=?').get(name);return r?{...JSON.parse(r.data),fetched_at:r.fetched_at}:null;},
@@ -127,6 +169,7 @@ function open(file){
         if(changed)db.prepare('insert into task_events(task_id,from_status,to_status,from_verdict,to_verdict,at) values(?,?,?,?,?,?)').run(t.task_id,old?.status??null,t.status,old?.verdict??null,t.verdict,now);
         db.exec('commit');
       }catch(e){db.exec('rollback');throw e;}
+      if(changed&&old)event('engain.task_status',`Our Engain task ${t.task_id}: ${old.status} -> ${t.status} (${t.verdict})`,{task_id:t.task_id,item_id:'p_'+t.task_id,type:t.type,from:old.status,to:t.status,verdict:t.verdict,reddit_url:t.reddit_url,subreddit:t.subreddit});
       return {added:!old,changed,from:old?.status??null,to:t.status,from_verdict:old?.verdict??null,verdict:t.verdict};
     },
     ourTasks(verdict){
@@ -241,7 +284,7 @@ function open(file){
     // Records Engain's current status for a sent item. A change is appended to queue2_events; an
     // item leaves the "to check" set once its status is final (it keeps the status, it is not removed).
     trackStatus(id,status,redditUrl){
-      const row=db.prepare('select id,engain_status,status_changed_at from queue2 where id=?').get(Number(id));if(!row)return null;
+      const row=db.prepare('select id,item_id,engain_task_id,engain_status,status_changed_at from queue2 where id=?').get(Number(id));if(!row)return null;
       const now=new Date().toISOString(),pending=PENDING_STATUSES.has(status),changed=row.engain_status!==status;
       const send=status==='published'?'published':status==='cancelled'?'cancelled':pending?'submitted':'failed';
       db.exec('begin');
@@ -253,6 +296,7 @@ function open(file){
           .run(status,pending?0:1,now,changed?now:row.status_changed_at,send,redditUrl??null,send,'Engain status: '+status,status,now,now,row.id);
         db.exec('commit');
       }catch(e){db.exec('rollback');throw e;}
+      if(changed)event('sent.status',`Queue 2 #${row.id}: ${row.engain_status||'sent'} -> ${status}`,{queue2_id:row.id,item_id:row.item_id,task_id:row.engain_task_id,from:row.engain_status??null,to:status,reddit_url:redditUrl??null});
       return {changed,from:row.engain_status??null,to:status};
     },
     toCheck:()=>db.prepare("select id,engain_task_id from queue2 where engain_task_id is not null and coalesce(settled,0)=0 order by sent_at").all(),
