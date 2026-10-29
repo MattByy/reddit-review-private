@@ -41,7 +41,7 @@ test('a prompt can use a Featherless model; the draft records provider and model
     assert.strictEqual(r.status,422,'a Featherless prompt needs a model');assert.match(r.body.error,/Featherless model/);
     r=await call(a,'POST','/api/prompts',{type:'thread',variants:[{name:'Humanlike',text:p.natural.thread,weight:100,provider:'featherless',model:'LessThanThreeAI/Qwen3.8-27B-Humanlike-Chat-2.0',temperature:1}]});
     assert.strictEqual(r.status,200,JSON.stringify(r.body));
-    assert.deepStrictEqual(Object.keys(r.body.variants[0]).sort(),['id','model','name','provider','temperature','text','weight']);
+    assert.deepStrictEqual(Object.keys(r.body.variants[0]).sort(),['id','model','name','provider','slug','temperature','text','weight']);
     const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
     assert.strictEqual(fm.calls[0].url,'https://api.featherless.ai/v1/chat/completions');assert.strictEqual(fm.calls[0].auth,'Bearer fl-key');
     assert.strictEqual(fm.calls[0].body.model,'LessThanThreeAI/Qwen3.8-27B-Humanlike-Chat-2.0');assert.strictEqual(fm.calls[0].body.temperature,1);
