@@ -90,6 +90,7 @@ async function setup() {
 - Do NOT mention GeoNode or any specific company
 - Don't sound promotional or like you're selling anything
 - Avoid overly polished language - be natural and slightly informal
+- NEVER mention working at any company - you're a regular user, not an employee
 
 **Goal:** The question should be structured so that helpful replies would naturally mention tools, services, or resources they've found useful - creating an opening for others to recommend solutions like proxy providers.
 
@@ -117,14 +118,15 @@ async function setup() {
 
 **Approach:**
 - Acknowledge the thread topic and add your perspective
-- Mention GeoNode naturally as part of your experience or recommendation
+- Mention GeoNode naturally as a tool or service you've used and found useful
 - Keep it conversational and helpful, not promotional
 - 3-5 sentences
 
 **How to mention GeoNode:**
 - Reference it as something you've used or found useful
 - Connect it to the thread topic in a specific way
-- Make it feel like a genuine share, not an advertisement
+- Make it feel like a genuine share from a regular user, not an advertisement
+- NEVER mention working at GeoNode - you're a regular user, not an employee
 
 **Tone:** Knowledgeable community member who's contributing useful information.`
     });
@@ -153,15 +155,16 @@ async function setup() {
 **Approach:**
 - Be the chill guy who doesn't really give a shit but knows his stuff
 - Explain what's going on in the thread in a straightforward way
-- Drop GeoNode into the conversation naturally - like you're just mentioning it in passing
+- Drop GeoNode into the conversation naturally - like you're just mentioning a tool you've used
 - Keep it conversational, maybe a bit laid-back
 - 3-5 sentences
 
 **How to mention GeoNode:**
-- Bring it up as something you happen to use or know about
+- Reference it as a tool or service you've found useful
 - Connect it to what the commenter said
 - Make it feel effortless, like you're just sharing what works for you
 - No hard sell, no enthusiasm overload
+- NEVER mention working at GeoNode - you're a regular user, not an employee
 
 **Tone:** Relaxed, knowledgeable, slightly casual - someone who's seen it all and is just offering a helpful perspective without trying too hard.`
     });
