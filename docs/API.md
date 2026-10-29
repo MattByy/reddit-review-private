@@ -319,11 +319,30 @@ The same events are appended to `.data/logs/YYYY-MM-DD.jsonl`, one JSON object p
 ```bash
 curl -s "$API/api/logs?item_id=t_abc123"     # one item's whole journey
 curl -s "$API/api/logs?queue2_id=17"         # everything about Queue 2 #17
-curl -s "$API/api/logs?type=llm"             # an area (job, collect, queue, queue2, llm, account, send, sent, engain, http, server) or an exact type (send.failed)
+curl -s "$API/api/logs?type=llm"             # an area (job, collect, queue, queue2, llm, account, send, sent, engain, fast, http, server) or an exact type (send.failed)
+curl -s "$API/api/logs?errors=1"             # only failures (types with error, failed or rejected)
 curl -s "$API/api/logs?q=429&since=2026-10-29T00:00:00Z&limit=500"
 curl -s "$API/api/logs?before_id=1234"       # older page (next_before_id from the last answer)
 curl -s $API/api/logs/types                  # every type with its count
 jq -c 'select(.type|startswith("send."))' .data/logs/2026-10-29.jsonl
+```
+
+Job events carry `source`: `schedule`, `cron`, `dashboard button` or `fast_mode #N`. Fast mode
+(the dashboard's 30-second cycles) logs `fast.started`, `fast.cycle` (or `fast.cycle_error`) and
+`fast.stopped`, including when the page is closed or reloaded.
+
+### For an agent checking what is happening
+
+The same log under `/api/agent/`, so an agent on another machine can read it with
+`Authorization: Bearer <AGENT_API_KEY>` (no key needed on this machine).
+
+```bash
+curl -s -H "Authorization: Bearer $AGENT_API_KEY" "$API/api/agent/logs/summary?minutes=60"
+#   counts per event type, recent_errors, latest events, jobs (running / next / last result),
+#   fast_mode (on/off), queues (Queue 1, Queue 2 ready, sent waiting for a status)
+curl -s -H "Authorization: Bearer $AGENT_API_KEY" "$API/api/agent/logs?errors=1&limit=50"
+curl -s -H "Authorization: Bearer $AGENT_API_KEY" "$API/api/agent/logs?item_id=t_abc123"   # all filters above work
+curl -s -H "Authorization: Bearer $AGENT_API_KEY" $API/api/agent/logs/types
 ```
 
 ## A full prompt-writing loop, start to finish

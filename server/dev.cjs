@@ -103,17 +103,19 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     return {action:'checked',...r};
   };
   const running={};
-  async function runJob(name){
-    if(running[name])return {action:'skipped',reason:name+' job is already running'};
+  // source says who started it: the scheduler, a cron call, the dashboard or fast mode ("fast_mode #3").
+  async function runJob(name,source='schedule'){
+    const by=source==='schedule'?'':` (${source})`;
+    if(running[name]){store.event('job.skipped',`Job ${name} skipped${by}: already running`,{job:name,source});return {action:'skipped',reason:name+' job is already running'};}
     running[name]=true;const started=new Date().toISOString();
-    store.event('job.started',`Job ${name} started`,{job:name});
+    store.event('job.started',`Job ${name} started${by}`,{job:name,source});
     try{
       const result=await jobs[name]();
       store.setKv('job_'+name,{started,finished:new Date().toISOString(),result});say(`job ${name}: ${result.action}${result.reason?' ('+result.reason+')':''}`);
-      store.event('job.finished',`Job ${name}: ${result.action}${result.reason?' ('+result.reason+')':''}`,{job:name,ms:Date.now()-Date.parse(started),result});
+      store.event('job.finished',`Job ${name}${by}: ${result.action}${result.reason?' ('+result.reason+')':''}`,{job:name,source,ms:Date.now()-Date.parse(started),result});
       return result;
     }catch(e){store.setKv('job_'+name,{started,finished:new Date().toISOString(),error:e.message});say(`job ${name} failed: ${e.message}`);
-      store.event('job.failed',`Job ${name} failed: ${e.message}`,{job:name,error:e.message,status:e.status??null,engain:e.body??null});throw e;}
+      store.event('job.failed',`Job ${name}${by} failed: ${e.message}`,{job:name,source,error:e.message,status:e.status??null,engain:e.body??null});throw e;}
     finally{running[name]=false;}
   }
   // In-process schedule; intervals are read from the queue settings before every run.
@@ -131,6 +133,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     plan('tracker','tracker_every_minutes',5000);
     const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min`);
   }
+  const jobSource=body=>body?.source?String(body.source).slice(0,40):'cron';
   const jobStatus=()=>Object.fromEntries(Object.keys(jobs).map(n=>[n,{running:!!running[n],next_run:next[n]||null,last:store.kv('job_'+n)}]));
 
   // A random ready account of ours that has not commented in this item's thread yet.
@@ -298,12 +301,12 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'GET /api/agent/project-id':async()=>({projectId:await project()}),
     'GET /api/agent/queue':async()=>{const v=queue.queueView(store,{history:0});return {count:v.count,items:v.items.map(({item_id,kind,position,score})=>({item_id,kind,position,score}))};},
     // Cron: the two jobs. They wait for the work to finish (a thread collection takes minutes).
-    'POST /api/cron/threads':async()=>runJob('threads'),
-    'POST /api/cron/comments':async()=>runJob('comments'),
-    'POST /api/cron/tracker':async()=>runJob('tracker'),
+    'POST /api/cron/threads':async(_,body)=>runJob('threads',jobSource(body)),
+    'POST /api/cron/comments':async(_,body)=>runJob('comments',jobSource(body)),
+    'POST /api/cron/tracker':async(_,body)=>runJob('tracker',jobSource(body)),
     // The tracking list and its counts over the last ?days= days (default 7, 0 = all time).
     'GET /api/sent':async q=>tracker.sentView(store,{days:q.days??7}),
-    'POST /api/cron/check-published':async()=>runJob('comments'),
+    'POST /api/cron/check-published':async(_,body)=>runJob('comments',jobSource(body)),
     // Cron: a full collection regardless of queue size, or {collect:false} to only refresh.
     'POST /api/cron/refresh':async(_,body)=>{
       const {collect:doCollect=true,...opts}=body||{};
@@ -316,6 +319,30 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     // item_id, queue2_id, q (text), since (ISO date), before_id (paging), limit (max 2000).
     'GET /api/logs':async q=>{const items=store.events(q);return {count:items.length,next_before_id:items.length?items[items.length-1].id:null,items};},
     'GET /api/logs/types':async()=>({keep_days:keepDays,types:store.eventTypes()}),
+    // Fast mode runs in the dashboard; it reports here so its start, cycles and stop are logged.
+    // {"event":"started"|"cycle"|"stopped","cycle":3,"results":{...},"error":"...","reason":"..."}
+    'POST /api/fast-mode':async(_,body)=>{
+      const ev=body?.event;if(!['started','cycle','stopped'].includes(ev))fail(422,'event must be started, cycle or stopped');
+      const n=Number(body.cycle)||null,data={cycle:n,interval_seconds:Number(body.interval_seconds)||30,results:body.results??undefined,error:body.error??undefined,reason:body.reason??undefined};
+      const msg=ev==='started'?`Fast mode started (every ${data.interval_seconds}s)`:ev==='stopped'?`Fast mode stopped after ${n||0} cycles`+(body.reason?` (${body.reason})`:''):
+        body.error?`Fast mode cycle #${n} failed: ${body.error}`:`Fast mode cycle #${n} done`+(body.results?.queued!=null?`: ${body.results.queued} in Queue 1`:'');
+      const id=store.event(ev==='cycle'&&body.error?'fast.cycle_error':'fast.'+ev,msg,data);
+      if(ev!=='cycle')store.setKv('fast_mode',{on:ev==='started',at:new Date().toISOString(),cycles:n});
+      return {ok:true,event_id:id};
+    },
+    // For agents (AGENT_API_KEY from another machine). The same log as /api/logs, plus a summary
+    // of what is happening: event counts, recent failures, jobs, fast mode and queue sizes.
+    'GET /api/agent/logs':async q=>{const items=store.events(q);return {count:items.length,next_before_id:items.length?items[items.length-1].id:null,items};},
+    'GET /api/agent/logs/types':async()=>({keep_days:keepDays,types:store.eventTypes()}),
+    'GET /api/agent/logs/summary':async q=>{
+      const minutes=Math.max(1,Math.min(Number(q.minutes)||60,43200)),since=new Date(Date.now()-minutes*60000).toISOString();
+      const q2=store.queue2(),last=store.events({limit:1})[0]||null;
+      return {since,minutes,counts:Object.fromEntries(store.eventTypes(since).map(t=>[t.type,t.n])),
+        recent_errors:store.events({errors:true,since,limit:Math.min(Number(q.errors)||20,200)}),
+        latest:store.events({since,limit:Math.min(Number(q.latest)||30,200)}).map(({id,at,type,message,item_id,queue2_id})=>({id,at,type,message,item_id,queue2_id})),
+        jobs:jobStatus(),fast_mode:store.kv('fast_mode'),last_event_at:last?.at??null,
+        queues:{queue1:store.queued().length,queue2_ready:q2.filter(r=>(r.send_status||'ready')==='ready').length,sent_waiting_for_status:store.toCheck().length}};
+    },
     'GET /api/published':async()=>queue.publishedList(store),
     'GET /api/our-comments':async q=>{
       const rows=store.ourTasks(q.verdict||undefined),counts={};

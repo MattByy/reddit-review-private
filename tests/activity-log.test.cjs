@@ -58,6 +58,43 @@ test('failures are logged: a model error and a refused send',async()=>{
   }finally{a.close();}
 });
 
+test('fast mode start, cycles and stop are logged, and its job runs are tagged',async()=>{
+  const a=app();
+  try{
+    await call(a,'POST','/api/fast-mode',{event:'started',interval_seconds:30});
+    await call(a,'POST','/api/cron/tracker',{source:'fast_mode #1'});
+    await call(a,'POST','/api/fast-mode',{event:'cycle',cycle:1,results:{queued:7}});
+    await call(a,'POST','/api/fast-mode',{event:'cycle',cycle:2,error:'boom'});
+    await call(a,'POST','/api/fast-mode',{event:'stopped',cycle:2,reason:'stop button'});
+    assert.strictEqual((await call(a,'POST','/api/fast-mode',{event:'nope'})).status,422);
+    const seq=types((await call(a,'GET','/api/logs?type=fast')).body.items);
+    assert.deepStrictEqual(seq,['fast.started','fast.cycle','fast.cycle_error','fast.stopped']);
+    const job=(await call(a,'GET','/api/logs?type=job.finished')).body.items[0];
+    assert.strictEqual(job.data.source,'fast_mode #1');assert.ok(job.message.includes('(fast_mode #1)'));
+  }finally{a.close();}
+});
+
+test('agent routes: the log, and a summary of what is happening',async()=>{
+  const a=app({openrouter:{apiKey:'k',fetchImpl:fakeOpenRouter(500)}});
+  try{
+    await ready(a);
+    await call(a,'POST','/api/agent/task',{write:true});
+    await call(a,'POST','/api/fast-mode',{event:'started'});
+    const s=(await call(a,'GET','/api/agent/logs/summary?minutes=10')).body;
+    assert.ok(s.counts['llm.error']>=1&&s.counts['collect.finished']===1);
+    assert.ok(s.recent_errors.length&&s.recent_errors.every(e=>/error|failed|rejected/.test(e.type)));
+    assert.strictEqual(s.fast_mode.on,true);assert.strictEqual(s.queues.queue2_ready,1);assert.ok(s.jobs.threads);assert.ok(s.latest.length);
+    const l=(await call(a,'GET','/api/agent/logs?errors=1')).body;
+    assert.ok(l.count&&l.items.every(e=>/error|failed|rejected/.test(e.type)));
+    // From another machine, agent routes need the key.
+    const b=app({agentKey:'secret'});
+    try{
+      let status;const req=(async function*(){})();Object.assign(req,{method:'GET',url:'/api/agent/logs/summary',socket:{remoteAddress:'10.0.0.5'},headers:{authorization:'Bearer secret'}});
+      await b.handle(req,{writeHead(x){status=x;},end(){}});assert.strictEqual(status,200);
+    }finally{b.close();}
+  }finally{a.close();}
+});
+
 test('events are also written to a daily JSON-lines file next to the database',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'logs-'));
   const a=app({dbFile:path.join(dir,'dev.db')});

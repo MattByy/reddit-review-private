@@ -96,9 +96,11 @@ function open(file){
       return id;
     }catch{return null;}
   }
-  // Filters: type ("llm" matches llm.*), item_id, queue2_id, q (text in message or data), since, before_id.
-  function events({type,item_id,queue2_id,q,since,before_id,limit=200}={}){
+  // Filters: type ("llm" matches llm.*), item_id, queue2_id, q (text in message or data), since, before_id,
+  // errors (only failures: types with error, failed or rejected in them).
+  function events({type,item_id,queue2_id,q,since,before_id,errors,limit=200}={}){
     const where=[],args=[];
+    if(errors&&errors!=='false'&&errors!=='0')where.push("(type like '%error%' or type like '%failed%' or type like '%rejected%')");
     if(type){where.push('(type=? or type like ?)');args.push(type,type+'.%');}
     if(item_id){where.push('item_id=?');args.push(item_id);}
     if(queue2_id!=null&&queue2_id!==''){where.push('queue2_id=?');args.push(Number(queue2_id));}
@@ -140,7 +142,7 @@ function open(file){
 
   return {
     db,upsert,event,events,pruneEvents,
-    eventTypes:()=>db.prepare('select type,count(*) n,max(at) last from events group by type order by type').all().map(r=>({...r})),
+    eventTypes:since=>db.prepare('select type,count(*) n,max(at) last from events where at>=? group by type order by type').all(since||'').map(r=>({...r})),
     thread:id=>parse(db.prepare('select * from threads where thread_id=?').get(id)),
     threads:()=>db.prepare('select * from threads').all().map(parse),
     subreddit(name){const r=db.prepare('select * from subreddits where name=?').get(name);return r?{...JSON.parse(r.data),fetched_at:r.fetched_at}:null;},
