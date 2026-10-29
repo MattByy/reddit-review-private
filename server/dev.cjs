@@ -136,13 +136,16 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   const jobSource=body=>body?.source?String(body.source).slice(0,40):'cron';
   const jobStatus=()=>Object.fromEntries(Object.keys(jobs).map(n=>[n,{running:!!running[n],next_run:next[n]||null,last:store.kv('job_'+n)}]));
 
+  // Engain still flags refunded accounts isReadyForSelection, but they have no Reddit username and
+  // a lifecycle other than active, and Engain refuses them ("Account is not ready for commenting").
+  const canPost=a=>!!a.isReadyForSelection&&a.lifecycleStatus==='active'&&!!a.username;
   // A random ready account of ours that has not commented in this item's thread yet.
   async function pickAccount(item){
     const pid=await project();
     let list;
     try{list=(await engain.v2Accounts(pid)).accounts||[];}
     catch(e){if(e.status===403||e.status===404)fail(409,`Your own accounts are not available to this key (HTTP ${e.status}), so this first comment was not sent.`);throw e;}
-    const ready=list.filter(a=>a.isReadyForSelection);
+    const ready=list.filter(canPost);
     if(!ready.length)fail(409,'None of your own accounts is ready to post, so this first comment was not sent.');
     for(let i=ready.length-1;i>0;i--){const j=randomInt(i+1);[ready[i],ready[j]]=[ready[j],ready[i]];}
     for(const a of ready){
@@ -214,15 +217,29 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       if(item.message_source==='random'||['skipped','truncated'].includes(item.write_status))fail(422,item.write_status==='truncated'?'This message is cut off. Rewrite or edit it first.':'There is no real message to approve. Write one first.');
       if(item.send_status&&item.send_status!=='ready')fail(409,'Only a ready item can be approved');
       let mode=body?.mode,userAccountId=body?.userAccountId,override=body?.override,account=null;
+      // From here on a failure takes the item out of Queue 2 into the send log (Retry puts it back).
+      const notSent=(e,reason)=>{
+        if(!e.logged){
+          store.failQueue2Send(id,reason,e.message);
+          store.event('send.failed',`Queue 2 #${id}: not sent: ${e.message}`,{queue2_id:Number(id),item_id:item.item_id,kind:item.kind,mode:mode??null,account:userAccountId??null,
+            url:item.url,reason,error:e.message,status:e.status??null,engain:e.body??null});
+          e.logged=true;
+        }
+        throw e;
+      };
       if(!mode){
-        if(item.kind==='thread'){account=await pickAccount(item);mode='dedicated';userAccountId=account.userAccountId;override={...override,thread_check:true};}
+        if(item.kind==='thread'){
+          try{account=await pickAccount(item);}catch(e){notSent(e,'No account to post from');}
+          mode='dedicated';userAccountId=account.userAccountId;override={...override,thread_check:true};
+        }
         else mode='pool';
       }
       if(!store.approveQueue2(id,body?.approved_by?String(body.approved_by).slice(0,80):'dashboard'))fail(409,'Only a ready item can be approved');
       store.event('queue2.approved',`Queue 2 #${id}: approved by ${body?.approved_by||'dashboard'}, sending via ${mode}`,{queue2_id:id,item_id:item.item_id,approved_by:body?.approved_by||'dashboard',mode,account:userAccountId??null,message:item.message});
       const {sendQueue2}=require('./send-queue2.cjs');
-      const sent=await sendQueue2({id,mode,userAccountId,posterAccount:body?.posterAccount,override},
-        {engain,store,projectId:await project(),log});
+      let sent;
+      try{sent=await sendQueue2({id,mode,userAccountId,posterAccount:body?.posterAccount,override},{engain,store,projectId:await project(),log});}
+      catch(e){notSent(e,e.status?`Engain ${e.status}`:'Not sent');}
       return {...sent,account:account&&{id:account.userAccountId,username:account.username||null,niche:account.niche||null},queue2:queue.queue2Item(store,id)};
     },
     // Prompt variants per type with their percentages, and how each one has done so far.
@@ -269,7 +286,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'POST /api/bench/:id/resume':async(_,__,id)=>{const v=bench.runView(store,Number(id));
       store.db.prepare("update bench_drafts set status='pending' where run_id=? and status='failed'").run(v.id);
       store.db.prepare("update bench_runs set status='running',finished_at=null where id=?").run(v.id);draftBench(v.id);return bench.runView(store,v.id);},
-    'GET /api/agent/queue2':async()=>queue.queue2List(store),
+    'GET /api/agent/queue2':async q=>queue.queue2List(store,q),
+    'POST /api/agent/queue2/:id/retry':async(_,__,id)=>queue.retryQueue2(store,id),
+    'GET /api/agent/send-log':async q=>queue.sendLog(store,q),
     'GET /api/agent/queue2/:id':async(_,__,id)=>queue.queue2Item(store,id)||fail(404,'No such queue 2 entry'),
     // Throw away an unsent Queue 2 entry (its Queue 1 item does not come back).
     'POST /api/agent/queue2/:id/discard':async(_,__,id)=>{const item=store.queue2(id);if(!store.discardQueue2(id))fail(409,'Only an existing, unsent entry can be discarded');
@@ -295,7 +314,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       try{
         const r=await engain.v2Accounts(await project());
         return {available:true,accounts:(r.accounts||[]).map(a=>({userAccountId:a.userAccountId,username:a.username?String(a.username).replace(/^u\//,''):null,
-          displayName:a.displayName||null,niche:a.niche||null,lifecycleStatus:a.lifecycleStatus||null,isKarmaBuilding:!!a.isKarmaBuilding,usable:!!a.isReadyForSelection}))};
+          displayName:a.displayName||null,niche:a.niche||null,lifecycleStatus:a.lifecycleStatus||null,isKarmaBuilding:!!a.isKarmaBuilding,usable:canPost(a)}))};
       }catch(e){if(e.status===403||e.status===404)return {available:false,accounts:[],reason:`Dedicated accounts are not available to this API key (HTTP ${e.status}${e.body?.error?.code?' '+e.body.error.code:''}).`};throw e;}
     },
     'GET /api/agent/project-id':async()=>({projectId:await project()}),
@@ -306,6 +325,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'POST /api/cron/tracker':async(_,body)=>runJob('tracker',jobSource(body)),
     // The tracking list and its counts over the last ?days= days (default 7, 0 = all time).
     'GET /api/sent':async q=>tracker.sentView(store,{days:q.days??7}),
+    'GET /api/send-log':async q=>queue.sendLog(store,q),
     'POST /api/cron/check-published':async(_,body)=>runJob('comments',jobSource(body)),
     // Cron: a full collection regardless of queue size, or {collect:false} to only refresh.
     'POST /api/cron/refresh':async(_,body)=>{

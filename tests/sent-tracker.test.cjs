@@ -56,7 +56,7 @@ test('sent items are tracked until their status is final, and keep it afterwards
     assert.strictEqual(pub.bucket_label,'Published');assert.strictEqual(pub.checking,false);assert.ok(pub.reddit_url);
     assert.deepStrictEqual(pub.history.map(h=>h.to_status),[pub.history[0].to_status,'published']);
     assert.strictEqual(v.items.find(i=>i.queue2_id===ids[1]).bucket_label,'Removed by AutoModerator');
-    const q2=(await call(a,'GET','/api/agent/queue2')).body.items.find(i=>i.queue2_id===ids[1]);
+    const q2=(await call(a,'GET','/api/agent/queue2?status=all')).body.items.find(i=>i.queue2_id===ids[1]);
     assert.strictEqual(q2.send_status,'failed');assert.match(q2.send_reason,/automod_removed/);
 
     // Only the pending one is asked about again; it publishes later.

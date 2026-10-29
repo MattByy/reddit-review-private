@@ -304,6 +304,9 @@ function open(file){
     toCheck:()=>db.prepare("select id,engain_task_id from queue2 where engain_task_id is not null and coalesce(settled,0)=0 order by sent_at").all(),
     sentSince(since){return db.prepare('select * from queue2 where engain_task_id is not null and (? is null or sent_at>=?) order by sent_at desc').all(since,since).map(r=>({...r,item:JSON.parse(r.item)}));},
     queue2Events:id=>db.prepare('select from_status,to_status,at from queue2_events where queue2_id=? order by id').all(Number(id)),
+    // A send that failed before Engain made a task goes back to Queue 2 as a fresh, unapproved draft.
+    retryQueue2(id){return db.prepare(`update queue2 set send_status='ready',approved_at=null,approved_by=null,send_error=null,send_reason=null,failed_at=null,
+      delivery_mode=null,user_account_id=null,poster_account=null,reserved_at=null,updated_at=? where id=? and send_status='failed' and engain_task_id is null`).run(new Date().toISOString(),Number(id)).changes>0;},
     failQueue2Send(id,reason,error){
       const now=new Date().toISOString();
       db.prepare(`update queue2 set send_status='failed',send_reason=?,send_error=?,failed_at=?,updated_at=?

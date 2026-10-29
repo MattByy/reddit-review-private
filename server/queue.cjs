@@ -232,7 +232,35 @@ function claimNext(store,agent,{message}={}){
   return {task_id:item.item_id,...described,claimed_at:item.claimed_at,claimed_by:item.claimed_by,remaining:store.queued().length,
     queue2:queue2Entry(store.queue2(item.queue2_id))};
 }
-const queue2List=store=>{const rows=store.queue2();return {count:rows.length,items:rows.map(queue2Entry)};};
+// Queue 2 holds only what still waits to be sent. Submitted items live on in the Sent list,
+// failed ones in the send log; status=all lists every entry.
+const WAITING=new Set([null,undefined,'ready','sending']);
+const queue2List=(store,{status}={})=>{const rows=store.queue2().filter(r=>status==='all'||WAITING.has(r.send_status));return {count:rows.length,items:rows.map(queue2Entry)};};
+// Every send attempt to Engain, newest first: result ok|failed, the request we made and Engain's answer.
+// Filters: result, q (text), queue2_id, limit.
+function sendLog(store,{result,q,queue2_id,limit=200}={}){
+  const ev=store.events({type:'send',q,queue2_id,limit:2000}),n=Math.max(1,Math.min(Number(limit)||200,1000));
+  const rows=[];
+  for(const e of ev){
+    if(!['send.ok','send.failed'].includes(e.type))continue;
+    const ok=e.type==='send.ok';if(result==='ok'&&!ok||result==='failed'&&ok)continue;
+    const d=e.data||{},req=ev.find(r=>r.type==='send.request'&&r.queue2_id===e.queue2_id&&r.id<e.id),cur=e.queue2_id!=null?store.queue2(e.queue2_id):null;
+    rows.push({id:e.id,at:e.at,result:ok?'ok':'failed',summary:e.message,queue2_id:e.queue2_id,item_id:e.item_id,kind:d.kind??cur?.kind??null,
+      mode:d.mode??null,account:d.account??null,url:d.url??cur?.url??null,message:req?.data?.message??cur?.message??null,
+      task_id:d.task_id??null,http_status:ok?200:d.status??null,reason:d.reason??null,error:d.error??null,
+      request:req?{at:req.at,...req.data}:null,response:ok?d.response??null:d.engain??null,
+      now:cur?cur.send_status:'deleted',can_retry:!!cur&&cur.send_status==='failed'&&!cur.engain_task_id});
+    if(rows.length>=n)break;
+  }
+  const all=rows.length;
+  return {count:all,failed:rows.filter(r=>r.result==='failed').length,ok:rows.filter(r=>r.result==='ok').length,items:rows};
+}
+function retryQueue2(store,id){
+  const r=store.queue2(id);if(!r)fail(404,'No such queue 2 entry');
+  if(!store.retryQueue2(id))fail(409,'Only a failed entry that Engain never accepted can go back to Queue 2');
+  store.event('queue2.retry',`Queue 2 #${id}: back in Queue 2 after a failed send`,{queue2_id:Number(id),item_id:r.item_id,error:r.send_error??null});
+  return queue2Entry(store.queue2(id));
+}
 function setQueue2Message(store,id,message){
   const m=cleanMessage(message);if(!m)fail(422,'message is required');
   if(!store.setQueue2Message(id,m,'given'))fail(404,'No such queue 2 entry');
@@ -279,4 +307,4 @@ function commentList(store,{q,brand,own,min_score=40,available,limit=100,offset=
 const publishedList=store=>evaluate(store).published;
 
 const queue2Item=(store,id)=>queue2Entry(store.queue2(id));
-module.exports={DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};
+module.exports={DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};

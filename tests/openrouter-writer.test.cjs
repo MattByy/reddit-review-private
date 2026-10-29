@@ -158,7 +158,7 @@ test('dedicated accounts (Engain v2): list, post a thread comment, once per thre
     await ready(a);
     const b=(await call(a,'GET','/api/agent/beta-accounts')).body;
     assert.strictEqual(b.available,true);
-    assert.deepStrictEqual(b.accounts.map(x=>[x.userAccountId,x.username,x.usable]),[['sn_mock_1','mockglen101',true],['sn_mock_2','mockrose202',true],['sn_mock_3',null,false]]);
+    assert.deepStrictEqual(b.accounts.map(x=>[x.userAccountId,x.username,x.usable]),[['sn_mock_1','mockglen101',true],['sn_mock_2','mockrose202',true],['sn_mock_3',null,false],['sn_mock_4',null,false]]);
 
     const q=(await call(a,'POST','/api/agent/task',{write:true})).body.queue2;
     assert.strictEqual(q.status,'thread');
@@ -175,6 +175,7 @@ test('dedicated accounts (Engain v2): list, post a thread comment, once per thre
     const dup=a.store.db.prepare("select id from queue2 where item_id='t_dup'").get().id;
     r=await call(a,'POST',`/api/agent/queue2/${dup}/approve`,{mode:'dedicated',userAccountId:'sn_mock_1'});
     assert.strictEqual(r.status,409);assert.match(r.body.error,/already has 1 comment/);
+    assert.strictEqual((await call(a,'POST',`/api/agent/queue2/${dup}/retry`,{})).status,200,'the refused item goes back to Queue 2');
     r=await call(a,'POST',`/api/agent/queue2/${dup}/approve`,{mode:'dedicated',userAccountId:'sn_mock_2'});
     assert.strictEqual(r.status,200,'another account may comment');
 
@@ -217,8 +218,8 @@ test('approve routes automatically: first comments from a random own account, re
     for(const id of ['sn_mock_1','sn_mock_2'])mock.tasks.push({_id:'pre_'+id,accountId:id,threadUrl:'https://www.reddit.com/r/proxies/comments/auto200/',status:'published'});
     let r=await call(a,'POST',`/api/agent/queue2/${t2}/approve`,{});
     assert.strictEqual(r.status,409);assert.match(r.body.error,/All 2 of your ready accounts already commented/);
-    let e=(await call(a,'GET','/api/agent/queue2')).body.items.find(x=>x.queue2_id===t2);
-    assert.strictEqual(e.send_status,'ready');assert.strictEqual(e.approved_at,null,'not marked approved when nothing was sent');
+    let e=(await call(a,'GET','/api/agent/queue2?status=all')).body.items.find(x=>x.queue2_id===t2);
+    assert.strictEqual(e.send_status,'failed','moved to the send log');assert.strictEqual(e.approved_at,null,'not marked approved when nothing was sent');
 
     // A reply goes through the pool without any account choice.
     r=await call(a,'POST',`/api/agent/queue2/${add('comment',300)}/approve`,{});
@@ -231,8 +232,8 @@ test('approve routes automatically: first comments from a random own account, re
     const t3=add('thread',400);
     r=await call(a,'POST',`/api/agent/queue2/${t3}/approve`,{});
     assert.strictEqual(r.status,409);assert.match(r.body.error,/not available/);
-    e=(await call(a,'GET','/api/agent/queue2')).body.items.find(x=>x.queue2_id===t3);
-    assert.strictEqual(e.send_status,'ready');assert.strictEqual(e.approved_at,null);
+    e=(await call(a,'GET','/api/agent/queue2?status=all')).body.items.find(x=>x.queue2_id===t3);
+    assert.strictEqual(e.send_status,'failed');assert.strictEqual(e.approved_at,null);
   }finally{mock.tasks.splice(saved);a.close();}
 });
 
@@ -333,5 +334,36 @@ test('writing without an OpenRouter key fails clearly',async()=>{
     const id=(await call(a,'POST','/api/agent/task',{})).body.queue2.queue2_id;
     const r=await call(a,'POST',`/api/agent/queue2/${id}/write`,{});
     assert.strictEqual(r.status,503);assert.match(r.body.error,/OPENROUTER_API_KEY/);
+  }finally{a.close();}
+});
+
+test('a send leaves Queue 2: OK ones go to Sent, failures to the send log, and Retry brings them back',async()=>{
+  const or=fakeOpenRouter(),a=app({fetchImpl:or.fetchImpl});
+  try{
+    await ready(a);
+    const accts=(await call(a,'GET','/api/agent/beta-accounts')).body.accounts;
+    assert.strictEqual(accts.find(x=>x.userAccountId==='sn_mock_4').usable,false,'a refunded account is not usable');
+    const waiting=async()=>(await call(a,'GET','/api/agent/queue2')).body.items.map(x=>x.queue2_id);
+    let t;do{t=(await call(a,'POST','/api/agent/task',{write:true})).body;}while(t.status!=='thread');
+    const bad=t.queue2.queue2_id;
+    let r=await call(a,'POST',`/api/agent/queue2/${bad}/approve`,{mode:'dedicated',userAccountId:'sn_mock_4'});
+    assert.strictEqual(r.status,400);assert.match(r.body.error,/not ready for commenting/);
+    assert.ok(!(await waiting()).includes(bad),'a failed send leaves Queue 2');
+    let log=(await call(a,'GET','/api/send-log?result=failed')).body;
+    const f=log.items.find(x=>x.queue2_id===bad);
+    assert.strictEqual(f.http_status,400);assert.strictEqual(f.response.code,'VALIDATION_ERROR');assert.strictEqual(f.now,'failed');assert.strictEqual(f.can_retry,true);
+    assert.strictEqual(f.request.account,'sn_mock_4');assert.ok(f.message);
+
+    const back=(await call(a,'POST',`/api/agent/queue2/${bad}/retry`,{})).body;
+    assert.strictEqual(back.send_status,'ready');assert.strictEqual(back.approved_at,null);
+    assert.ok((await waiting()).includes(bad),'Retry puts it back in Queue 2');
+
+    r=await call(a,'POST',`/api/agent/queue2/${bad}/approve`,{});
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));assert.notStrictEqual(r.body.account.id,'sn_mock_4','the picker never uses a refunded account');
+    assert.ok(!(await waiting()).includes(bad),'a submitted item leaves Queue 2');
+    assert.ok((await call(a,'GET','/api/sent?days=0')).body.items.some(x=>x.queue2_id===bad),'and is tracked on the Sent list');
+    log=(await call(a,'GET','/api/send-log')).body;
+    assert.strictEqual(log.items[0].queue2_id,bad);assert.strictEqual(log.items[0].result,'ok');assert.ok(log.items[0].task_id);
+    assert.ok((await call(a,'GET','/api/agent/queue2?status=all')).body.items.some(x=>x.queue2_id===bad),'status=all still lists it');
   }finally{a.close();}
 });

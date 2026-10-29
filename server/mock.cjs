@@ -143,10 +143,14 @@ async function mockFetch(url,options={}){
       {userAccountId:'sn_mock_1',username:'mockglen101',niche:'Proxy',isReadyForSelection:true,isKarmaBuilding:false,lifecycleStatus:'active'},
       {userAccountId:'sn_mock_2',username:'u/mockrose202',niche:'Scraping',isReadyForSelection:true,isKarmaBuilding:false,lifecycleStatus:'active'},
       {userAccountId:'sn_mock_3',niche:'Developer',isReadyForSelection:false,isKarmaBuilding:true,lifecycleStatus:'warming'},
+      // Like Engain's refunded accounts: flagged ready, but no username and refused when used.
+      {userAccountId:'sn_mock_4',niche:'SEO',isReadyForSelection:true,isKarmaBuilding:false,lifecycleStatus:'other',lifecycleLabel:'refunded'},
     ]});
   }
   if(u.pathname==='/api/v2/tasks/comment'&&method==='POST'){
-    const body=JSON.parse(options.body),tid='task_v2_'+Date.now()+'_'+tasks.length;
+    const body=JSON.parse(options.body);
+    if(body.accountId==='sn_mock_4')return json({error:'Account is not ready for commenting',code:'VALIDATION_ERROR'},400);
+    const tid='task_v2_'+Date.now()+'_'+tasks.length;
     const task={_id:tid,type:'comment',status:'in_review',threadUrl:body.url,content:body.content,projectId:body.projectId,accountId:body.accountId||null,
       postedFrom:body.accountId?'dedicated':'pool',account:body.accountId?{id:body.accountId,handle:'mock'}:null,subreddit:body.url?.split('/')[4]||'unknown',creationDate:new Date().toISOString()};
     tasks.push(task);
