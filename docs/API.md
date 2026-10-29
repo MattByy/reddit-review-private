@@ -265,7 +265,7 @@ j -X POST $API/api/agent/queue2/12/approve -d '{}'
 ```
 
 Routing is automatic. The pool and our own accounts take turns in a thread:
-- **Nothing of ours in the thread yet:** the post goes through Engain's pool.
+- **Nothing of ours in the thread yet:** the post goes from a random ready account of ours, so the follow-up reply goes through the pool.
 - **Our first post there came from the pool:** the next one goes from a random ready account of ours. Accounts that already commented in that thread are skipped.
 - **Our first post there came from our accounts:** the next one goes through the pool.
 - "Our posts" are Engain's task list plus our Queue 2 sends it hasn't listed yet. Cancelled and failed tasks never reached Reddit, so they don't count; removed ones do.

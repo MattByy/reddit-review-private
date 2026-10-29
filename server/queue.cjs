@@ -250,10 +250,11 @@ function claimNext(store,agent,{message}={}){
 // failed ones in the send log; status=all lists every entry.
 const WAITING=new Set([null,undefined,'ready','sending']);
 // Pool and our own accounts take turns in a thread: the next post goes out the other way from our
-// first post there. A thread with nothing of ours starts from the pool.
+// first post there. A thread with nothing of ours starts from our accounts, so the follow-up reply
+// (which our accounts cannot post) goes through the pool.
 function threadDelivery(store,threadId){
   const posts=threadId?store.threadPosts(threadId):[],first=posts[0]?.source??null;
-  return {first,next:first==='pool'?'dedicated':'pool',posts:posts.length};
+  return {first,next:first==='dedicated'?'pool':'dedicated',posts:posts.length};
 }
 // A waiting entry also says how it will be sent (next_delivery), so the page can show it.
 const withDelivery=(store,r)=>{const e=queue2Entry(r);if(e&&WAITING.has(r.send_status))e.next_delivery=threadDelivery(store,r.thread_id);return e;};

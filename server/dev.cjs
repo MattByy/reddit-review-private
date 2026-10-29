@@ -210,9 +210,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     },
     'POST /api/agent/queue2/:id/write':async(_,__,id)=>{await writer.writeQueue2(store,id,writerOpts);return queue.queue2Item(store,id)||{queue2_id:Number(id),write_status:'skipped',discarded:true};},
     // Approve and send in one step. Routing is automatic unless body.mode is given: pool and our
-    // own accounts take turns in a thread (queue.threadDelivery). Our first post there goes from the
-    // pool, the next from a random ready account of ours (Engain v2) that has not commented in the
-    // thread, then the pool again. Our accounts cannot post replies (v2), so a reply whose turn is
+    // own accounts take turns in a thread (queue.threadDelivery). Our first post there goes from a
+    // random ready account of ours (Engain v2) that has not commented in the thread, the next through
+    // the pool, and so on. Our accounts cannot post replies (v2), so a reply whose turn is
     // ours is refused rather than sent through the pool.
     'POST /api/agent/queue2/:id/approve':async(_,body,id)=>{
       const item=store.queue2(id);if(!item)fail(404,'No such queue 2 entry');

@@ -199,20 +199,20 @@ test('approve routes automatically: pool and our accounts take turns in a thread
     thread_url:`https://www.reddit.com/r/proxies/comments/auto${n}/`,posted_from:from,created_at:'2026-01-01T00:00:00Z'});
   const waiting=async id=>(await call(a,'GET','/api/agent/queue2?status=all')).body.items.find(x=>x.queue2_id===id);
   try{
-    // Nothing of ours in the thread: the first post goes through the pool.
+    // Nothing of ours in the thread: the first post comes from one of our accounts.
     let q=add('thread',1);
-    assert.deepStrictEqual((await waiting(q)).next_delivery,{first:null,next:'pool',posts:0});
+    assert.deepStrictEqual((await waiting(q)).next_delivery,{first:null,next:'dedicated',posts:0});
     let r=await call(a,'POST',`/api/agent/queue2/${q}/approve`,{});
     assert.strictEqual(r.status,200,JSON.stringify(r.body));
-    assert.strictEqual(r.body.account,null);assert.strictEqual(r.body.queue2.delivery_mode,'pool');assert.strictEqual(mock.tasks.at(-1).type,'comment');
+    assert.ok(['sn_mock_1','sn_mock_2'].includes(r.body.account.id));assert.strictEqual(r.body.queue2.delivery_mode,'beta');
     const chosen=(await call(a,'GET','/api/logs?queue2_id='+q)).body.items.find(e=>e.type==='delivery.chosen');
-    assert.match(chosen.message,/nothing of ours in this thread yet, so this one goes via the pool/);
+    assert.match(chosen.message,/nothing of ours in this thread yet, so this one goes via our accounts/);
 
-    // That send counts before Engain's task list has it: the next post in the thread comes from our accounts.
-    q=add('thread',1,'second');
-    assert.deepStrictEqual((await waiting(q)).next_delivery,{first:'pool',next:'dedicated',posts:1});
+    // That send counts before Engain's task list has it: the follow-up reply goes through the pool.
+    q=add('comment',1);
+    assert.deepStrictEqual((await waiting(q)).next_delivery,{first:'dedicated',next:'pool',posts:1});
     r=await call(a,'POST',`/api/agent/queue2/${q}/approve`,{});
-    assert.strictEqual(r.status,200,JSON.stringify(r.body));assert.strictEqual(r.body.queue2.delivery_mode,'beta');
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));assert.strictEqual(r.body.queue2.delivery_mode,'pool');assert.strictEqual(mock.tasks.at(-1).type,'reply');
 
     // Started from the pool: a random ready account of ours.
     const used=new Set();

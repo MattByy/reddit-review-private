@@ -451,7 +451,7 @@ async function loadQueue2(){
   const r=await api('/api/agent/queue2');$('#q2count').textContent=r.count+' items';
   if(betaAccounts===null){try{const b=await api('/api/agent/beta-accounts');allAccounts=b.accounts||[];betaAccounts=allAccounts.filter(a=>a.usable);betaNote=b.available?(betaAccounts.length?'':'No usable accounts in Engain Accounts.'):b.reason;}catch(e){betaAccounts=[];betaNote='Could not load your accounts: '+e.message;}}
   $('#q2count').textContent=r.count+' waiting to send · sent ones move to Sent (tracking), failed ones to Send log'+(betaNote?' · Own accounts unavailable: '+betaNote:'');
-  // Pool and our accounts take turns in a thread; the server picks, this only says which way it will go.
+  // Our accounts and the pool take turns in a thread (ours first); the server picks, this only says which way it will go.
   const deliveryNote=x=>{const d=x.next_delivery||{},was=d.first?`our first post here came from ${d.first==='pool'?'the pool':'your accounts'}`:'nothing of ours in this thread yet';
     if(d.next==='dedicated')return x.status==='thread'?`Posts from a random account of yours (${was})`:`Won't send: it's your accounts' turn (${was}), and they can't post replies`;
     return `Posts through the Engain pool (${was})`;};
