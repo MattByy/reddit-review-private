@@ -76,7 +76,7 @@ test('a newly published comment goes in at position 5 and pushes the rest down; 
   try{
     const before=await queued(a),targets=[14,15,16].map(mockId);
     targets.forEach((tid,i)=>a.store.saveTask({task_id:'new_'+i,type:'comment',status:'published',verdict:'approved',reddit_url:`https://www.reddit.com/r/proxies/comments/${tid}/x/new${i}/`,
-      thread_url:`https://www.reddit.com/r/proxies/comments/${tid}/need_proxies/`,thread_id:tid,content:'Just published',subreddit:'proxies',
+      thread_url:`https://www.reddit.com/r/proxies/comments/${tid}/need_proxies/`,thread_id:tid,content:'Just published',subreddit:'proxies',posted_from:'dedicated',
       published_at:new Date(Date.now()-i*60000).toISOString(),parent_task_id:null,labels:[]}));
     assert.strictEqual((await call(a,'POST','/api/queue/refresh',{})).body.added_comments,3);
     const after=await queued(a);
@@ -100,7 +100,7 @@ test('comments job records every status change and keeps the queue in step',asyn
 
     // Moderators remove one of our published comments; a new one gets published.
     mock.tasks.find(t=>t._id==='t1').status='mod_removed';
-    mock.tasks.push({_id:'t5',type:'comment',status:'published',threadUrl:mock.post(14).url,redditUrl:mock.post(14).url+'ours5/',content:'Fresh one',publishedAt:new Date().toISOString(),labels:[],subreddit:'proxies'});
+    mock.tasks.push({_id:'t5',accountId:'sn_mock_1',type:'comment',status:'published',threadUrl:mock.post(14).url,redditUrl:mock.post(14).url+'ours5/',content:'Fresh one',publishedAt:new Date().toISOString(),labels:[],subreddit:'proxies'});
     r=(await call(a,'POST','/api/cron/comments',{})).body;
     assert.deepStrictEqual(r.status_changes.map(c=>[c.task_id,c.from,c.to,c.verdict]),[['t1','published','mod_removed','disapproved']]);
     assert.strictEqual(r.published_new,1);assert.strictEqual(r.added_comments,1);
@@ -151,7 +151,7 @@ test('our published comments still go in when the queue is full',async()=>{
     await call(a,'POST','/api/settings',{queue_target:5});
     await call(a,'POST','/api/cron/threads',{});
     assert.strictEqual((await queued(a)).length,5);
-    mock.tasks.push({_id:'t6',type:'comment',status:'published',threadUrl:mock.post(15).url,redditUrl:mock.post(15).url+'ours6/',content:'Another',publishedAt:new Date().toISOString(),labels:[],subreddit:'proxies'});
+    mock.tasks.push({_id:'t6',accountId:'sn_mock_1',type:'comment',status:'published',threadUrl:mock.post(15).url,redditUrl:mock.post(15).url+'ours6/',content:'Another',publishedAt:new Date().toISOString(),labels:[],subreddit:'proxies'});
     const r=(await call(a,'POST','/api/cron/comments',{})).body;
     assert.strictEqual(r.added_comments,1);
     const q=await queued(a);

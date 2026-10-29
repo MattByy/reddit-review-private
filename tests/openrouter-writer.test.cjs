@@ -440,11 +440,11 @@ test('a published comment comes back into Queue 1 with where it came from',async
     await ready(a);
     let t;do{t=(await call(a,'POST','/api/agent/task',{write:true})).body;}while(t.status!=='thread');
     const id=t.queue2.queue2_id;
-    const sent=(await call(a,'POST',`/api/agent/queue2/${id}/approve`,{mode:'pool'})).body;
+    const sent=(await call(a,'POST',`/api/agent/queue2/${id}/approve`,{})).body;
     assert.ok(sent.taskId);
     let o=(await call(a,'GET','/api/agent/origin/'+sent.taskId)).body;
     assert.strictEqual(o.queue2_id,id);assert.strictEqual(o.item_id,t.task_id);assert.strictEqual(o.prompt.slug,'thread-default');
-    assert.strictEqual(o.model,'anthropic/claude-sonnet-5.5');assert.strictEqual(o.delivery,'pool');assert.ok(o.sent_at);assert.strictEqual(o.thread_url,t.queue2.thread_url);
+    assert.strictEqual(o.model,'anthropic/claude-sonnet-5.5');assert.strictEqual(o.delivery,'dedicated');assert.ok(o.sent_at);assert.strictEqual(o.thread_url,t.queue2.thread_url);
     assert.strictEqual((await call(a,'GET','/api/agent/origin/nope')).status,404);
 
     // Engain publishes it; the comments job brings it back into Queue 1 carrying its origin.
@@ -456,4 +456,24 @@ test('a published comment comes back into Queue 1 with where it came from',async
     assert.ok(item,'back in Queue 1');assert.strictEqual(item.comment.origin.prompt.slug,'thread-default');assert.strictEqual(item.comment.origin.item_id,t.task_id);
     assert.ok(item.comment.origin.history.length>=1);
   }finally{mock.tasks.splice(0,mock.tasks.length,...saved);a.close();}
+});
+
+test('follow-ups only under comments from our own accounts',async()=>{
+  const queue=require('../server/queue.cjs'),a=app({fetchImpl:fakeOpenRouter().fetchImpl});
+  try{
+    const now=new Date().toISOString();
+    for(const from of ['pool','dedicated'])a.store.saveTask({task_id:'fu_'+from,type:'comment',status:'published',verdict:'approved',posted_from:from,thread_id:'fu'+from,
+      reddit_url:`https://www.reddit.com/r/proxies/comments/fu${from}/x/c/`,thread_url:`https://www.reddit.com/r/proxies/comments/fu${from}/x/`,published_at:now,created_at:now,labels:[]});
+    const ev=queue.evaluate(a.store);
+    assert.deepStrictEqual(ev.publishedById.fu_dedicated.eligibility,{queueable:true,reasons:[]});
+    assert.strictEqual(ev.publishedById.fu_pool.eligibility.queueable,false);
+    assert.match(ev.publishedById.fu_pool.eligibility.reasons.join(),/only comments from your own accounts get a follow-up/);
+    // Our accounts' tasks come without publishedAt: created after the fresh start counts, created before does not.
+    queue.setCommentsSince(a.store,new Date(Date.now()-3600000).toISOString());
+    for(const [id,created] of [['fu_new',now],['fu_old','2026-09-27T15:26:46Z']])a.store.saveTask({task_id:id,type:'comment',status:'published',verdict:'approved',posted_from:'dedicated',thread_id:id,
+      reddit_url:`https://www.reddit.com/r/proxies/comments/${id}/x/c/`,published_at:null,created_at:created,labels:[]});
+    const ev2=queue.evaluate(a.store);
+    assert.deepStrictEqual(ev2.publishedById.fu_new.eligibility,{queueable:true,reasons:[]});
+    assert.match(ev2.publishedById.fu_old.eligibility.reasons.join(),/before the fresh start/);
+  }finally{a.close();}
 });

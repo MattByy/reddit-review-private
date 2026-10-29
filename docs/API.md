@@ -47,7 +47,7 @@ Engain ──collect──▶ threads + comments ──rank──▶ Queue 1 ─
                                        Sent tracking ◀──approve & send─────┘
 ```
 
-1. **Queue 1** holds ranked items: `thread` means comment on a thread; `comment` means follow up under our own published comment.
+1. **Queue 1** holds ranked items: `thread` means comment on a thread; `comment` means follow up under our own published comment. Only comments posted from our own accounts after the fresh start get a follow-up (the reply then goes through the pool); pool comments and older ones are ignored.
 2. **Taking #1** moves it to **Queue 2**, where a message is written: by a model from the type's prompts (split by percentage), or given by you.
 3. **Approve** sends it. Engain's pool and our own accounts take turns in each thread (see Routing below).
 4. **Sent** tracks Engain's status until it is final.

@@ -99,9 +99,14 @@ function evaluate(store){
   // Every task of ours is evaluated, so a queued comment that is later removed drops out.
   const publishedById={},since=commentsSince(store);
   const publishedRows=store.ourTasks().filter(p=>['comment','reply'].includes(p.type)&&p.reddit_url).map(p=>{
-    const r=[],age=p.published_at?(Date.now()-Date.parse(p.published_at))/DAY:null;
+    // Engain sends no publishedAt for our own accounts' tasks: fall back to when we first saw it
+    // published, and judge the fresh start by when it was created (always before publishing).
+    const pub=p.published_at||p.published_seen_at,made=p.published_at||p.created_at;
+    const r=[],age=pub?(Date.now()-Date.parse(pub))/DAY:null;
     if(p.status!=='published')r.push(`Engain status is now ${p.status} (${p.verdict})`);
-    if(since&&(!p.published_at||p.published_at<since))r.push('Published before the fresh start ('+since.slice(0,16).replace('T',' ')+' UTC)');
+    // Follow-ups only under comments from our own accounts: the reply then goes through the pool.
+    if(p.posted_from!=='dedicated')r.push('Posted through the pool; only comments from your own accounts get a follow-up');
+    if(since&&(!made||made<since))r.push('Published before the fresh start ('+since.slice(0,16).replace('T',' ')+' UTC)');
     if(age==null)r.push('Publish date unknown');else if(age>cfg.max_age_days)r.push(`Published more than ${cfg.max_age_days} days ago`);
     if(handledItems.has('p_'+p.task_id))r.push('Already '+handledItems.get('p_'+p.task_id)+' from the queue');
     const row={...p,first_seen:p.published_seen_at,age_days:age==null?null:Math.round(age*10)/10,origin:originFor(store,p.task_id),eligibility:{queueable:r.length===0,reasons:r}};

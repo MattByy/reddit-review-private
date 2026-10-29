@@ -23,9 +23,9 @@ function opportunity(n,type){
 const searched=new Set(['residential proxies']);
 // Our Engain tasks. Exported so tests can publish or remove one between checks.
 const tasks=[
-  {_id:'t1',type:'comment',status:'published',threadUrl:post(0).url,redditUrl:post(0).url+'ours1/',content:'Our published comment',
+  {_id:'t1',type:'comment',status:'published',accountId:'sn_mock_1',threadUrl:post(0).url,redditUrl:post(0).url+'ours1/',content:'Our published comment',
     publishedAt:new Date(Date.now()-86400000).toISOString(),parentTaskId:null,labels:['geonode-agent'],subreddit:post(0).url.split('/')[4]},
-  {_id:'t4',type:'reply',status:'published',threadUrl:post(6).url,redditUrl:post(6).url+'ours2/',content:'Our published reply',
+  {_id:'t4',type:'reply',status:'published',accountId:'sn_mock_2',threadUrl:post(6).url,redditUrl:post(6).url+'ours2/',content:'Our published reply',
     publishedAt:new Date(Date.now()-3600000).toISOString(),parentTaskId:'t9',labels:[],subreddit:post(6).url.split('/')[4]},
   {_id:'t2',type:'comment',status:'cancelled',threadUrl:post(1).url},
   {_id:'t3',type:'comment',status:'mod_removed',threadUrl:post(2).url},
