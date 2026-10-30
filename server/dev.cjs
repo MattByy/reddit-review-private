@@ -107,6 +107,34 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     const r=await tracker.checkSent(store,engain,await project(),{log});
     return {action:'checked',...r};
   };
+  // Auto-send: one item per run, spread over the day by the scheduler (queue.senderDelay). Sends a
+  // ready Queue 2 draft, else drafts the next Queue 1 item and sends that. Off while send_per_day is 0.
+  const sendable=i=>i&&i.send_status==='ready'&&!i.approved_at&&i.message_source!=='random'&&!['skipped','truncated','failed'].includes(i.write_status)
+    // Our accounts can't post replies, so a reply whose turn is ours waits.
+    &&!(i.status!=='thread'&&i.next_delivery?.next==='dedicated');
+  jobs.sender=async()=>{
+    const cfg=queue.settings(store),w=queue.sendWindow(cfg);
+    if(!cfg.send_per_day)return {action:'off',reason:'Auto-send is off (send_per_day is 0)'};
+    if(!w.open)return {action:'waiting',reason:`Outside sending hours (${cfg.send_from_hour}:00-${cfg.send_to_hour}:00 Warsaw time)`};
+    const today=store.sentSince(w.day_start).length;
+    if(today>=cfg.send_per_day)return {action:'none',reason:`Sent ${today} today (max ${cfg.send_per_day})`};
+    const errors=[];
+    for(let tries=0;tries<3;tries++){
+      let item=queue.queue2List(store).items.find(sendable);
+      if(!item){
+        const r=queue.claimNext(store,'auto-sender');
+        if(!r.queue2)return {action:'none',reason:'Queue 1 is empty',errors};
+        try{await writer.writeQueue2(store,r.queue2.queue2_id,writerOpts);}catch(e){errors.push(`draft #${r.queue2.queue2_id}: ${e.message}`);}
+        item=queue.queue2Item(store,r.queue2.queue2_id);
+        if(!sendable(item))continue;
+      }
+      try{
+        const s=await routes['POST /api/agent/queue2/:id/approve'](null,{approved_by:'auto-sender'},String(item.queue2_id));
+        return {action:'sent',queue2_id:item.queue2_id,kind:item.status,mode:s.queue2?.delivery_mode??null,sent_today:today+1,max:cfg.send_per_day,errors};
+      }catch(e){errors.push(`#${item.queue2_id}: ${e.message}`);}
+    }
+    return {action:'none',reason:'Nothing could be sent in 3 tries',errors};
+  };
   const running={};
   // source says who started it: the scheduler, a cron call, the dashboard or fast mode ("fast_mode #3").
   async function runJob(name,source='schedule'){
@@ -126,17 +154,20 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // In-process schedule; intervals are read from the queue settings before every run.
   const timers={},next={};
   function startScheduler(){
-    const plan=(name,minutesKey,delay)=>{
+    const plan=(name,nextDelay,delay)=>{
       next[name]=new Date(Date.now()+delay).toISOString();
       timers[name]=setTimeout(async()=>{
         await runJob(name).catch(()=>{});
-        plan(name,minutesKey,queue.settings(store)[minutesKey]*60000);
+        plan(name,nextDelay,nextDelay());
       },delay);
     };
-    plan('comments','comments_every_minutes',3000);
-    plan('threads','threads_every_minutes',8000);
-    plan('tracker','tracker_every_minutes',5000);
-    const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min`);
+    const every=key=>()=>queue.settings(store)[key]*60000;
+    plan('comments',every('comments_every_minutes'),3000);
+    plan('threads',every('threads_every_minutes'),8000);
+    plan('tracker',every('tracker_every_minutes'),5000);
+    plan('sender',()=>queue.senderDelay(queue.settings(store)),20000);
+    const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min, `+
+      (c.send_per_day?`auto-send ${c.send_per_day} a day between ${c.send_from_hour}:00 and ${c.send_to_hour}:00 Warsaw time`:'auto-send off'));
   }
   const jobSource=body=>body?.source?String(body.source).slice(0,40):'cron';
   const jobStatus=()=>Object.fromEntries(Object.keys(jobs).map(n=>[n,{running:!!running[n],next_run:next[n]||null,last:store.kv('job_'+n)}]));
@@ -347,6 +378,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'POST /api/cron/threads':async(_,body)=>runJob('threads',jobSource(body)),
     'POST /api/cron/comments':async(_,body)=>runJob('comments',jobSource(body)),
     'POST /api/cron/tracker':async(_,body)=>runJob('tracker',jobSource(body)),
+    'POST /api/cron/sender':async(_,body)=>runJob('sender',jobSource(body)),
     // The tracking list and its counts over the last ?days= days (default 7, 0 = all time).
     'GET /api/sent':async q=>tracker.sentView(store,{days:q.days??7}),
     'GET /api/send-log':async q=>queue.sendLog(store,q),

@@ -238,6 +238,8 @@ j -X POST $API/api/settings -d '{"queue_target":80,"max_age_days":60}'
 | `mention_comments` | 0 | 1 adds competitor-mention items |
 | `thread_collect_minutes` | 60 | Ask Engain for new threads when the last collection is older than this |
 | `threads_every_minutes` / `comments_every_minutes` / `tracker_every_minutes` | 10 / 30 / 10 | Job intervals |
+| `send_per_day` | 0 | Auto-send: how many items the server sends by itself per day. 0 is off. |
+| `send_from_hour` / `send_to_hour` | 9 / 17 | Auto-send hours, Warsaw time, every day. The sends are spread evenly over these hours (40 a day over 9–17 = one about every 12 minutes, each gap randomly 30% shorter or longer). |
 
 ## Queue 2: writing, approving, sending
 
