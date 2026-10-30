@@ -154,7 +154,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // Logs only when it starts failing or recovers, not every minute.
   const mir=mirror(supabase);
   async function syncMirror(){
-    if(!mir)return {action:'off',reason:'SUPABASE_URL and SUPABASE_SERVICE_KEY are not set'};
+    if(!mir)return {action:'off',reason:'SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_SECRET_SERVICE_ROLE) are not set'};
     const was=store.kv('mirror_last');
     try{
       const r=await mir.sync(store,{jobs:jobStatus()});store.setKv('mirror_last',{ok:true,...r});

@@ -7,7 +7,7 @@ const BATCH=500;
 const json=s=>{try{return s==null?null:JSON.parse(s);}catch{return s;}};
 const subredditOf=url=>/\/r\/([^/]+)/.exec(url||'')?.[1]??null;
 
-function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_KEY,fetchImpl=fetch}={}){
+function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_KEY??process.env.SUPABASE_SECRET_SERVICE_ROLE,fetchImpl=fetch}={}){
   if(!url||!key)return null;
   const base=url.replace(/\/+$/,'')+'/rest/v1/';
   async function rest(method,path,body,prefer){
