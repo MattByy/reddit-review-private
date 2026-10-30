@@ -23,6 +23,7 @@ create table if not exists queue2 (
   url text,
   thread_url text,
   message text,
+  message_source text,
   write_status text,
   model text,
   provider text,
@@ -71,9 +72,13 @@ create table if not exists commands (
   payload jsonb, status text not null default 'pending', result jsonb, done_at timestamptz);
 create index if not exists commands_pending on commands (id) where status = 'pending';
 
+-- Copies of pages and API answers (the Prompts page and its data) for the hosted Prompts page.
+create table if not exists snapshots (key text primary key, type text not null, body text not null, synced_at timestamptz not null);
+
 alter table queue1 enable row level security;
 alter table queue2 enable row level security;
 alter table events enable row level security;
 alter table status enable row level security;
 alter table api_keys enable row level security;
 alter table commands enable row level security;
+alter table snapshots enable row level security;

@@ -9,7 +9,7 @@ const {createApp}=require('../server/dev.cjs');
 const DRAFT='Rotating the exit IP per request usually gets past that kind of block (I work at Geonode).';
 const fakeOpenRouter=(status=200)=>async()=>new Response(JSON.stringify(status===200?{choices:[{message:{content:DRAFT},finish_reason:'stop'}],usage:{total_tokens:42}}:{error:{message:'upstream down'}}),
   {status,headers:{'Content-Type':'application/json'}});
-const app=(opts={})=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',fetchImpl:fakeOpenRouter()},...opts});
+const app=(opts={})=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',featherlessKey:'k',fetchImpl:fakeOpenRouter()},...opts});
 async function call(a,method,url,body){
   let status,out;const req=(async function*(){if(body)yield JSON.stringify(body);})();
   Object.assign(req,{method,url,socket:{remoteAddress:'127.0.0.1'},headers:{}});
@@ -46,7 +46,7 @@ test('one item: queued, moved to Queue 2, drafted, approved and sent, all in the
 });
 
 test('failures are logged: a model error and a refused send',async()=>{
-  const a=app({openrouter:{apiKey:'k',fetchImpl:fakeOpenRouter(500)}});
+  const a=app({openrouter:{apiKey:'k',featherlessKey:'k',fetchImpl:fakeOpenRouter(500)}});
   try{
     await ready(a);
     const r=(await call(a,'POST','/api/agent/task',{write:true})).body,id=r.queue2.queue2_id;
@@ -75,7 +75,7 @@ test('fast mode start, cycles and stop are logged, and its job runs are tagged',
 });
 
 test('agent routes: the log, and a summary of what is happening',async()=>{
-  const a=app({openrouter:{apiKey:'k',fetchImpl:fakeOpenRouter(500)}});
+  const a=app({openrouter:{apiKey:'k',featherlessKey:'k',fetchImpl:fakeOpenRouter(500)}});
   try{
     await ready(a);
     await call(a,'POST','/api/agent/task',{write:true});

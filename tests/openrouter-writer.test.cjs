@@ -2,7 +2,7 @@
 const test=require('node:test');
 const assert=require('node:assert');
 const {createApp}=require('../server/dev.cjs');
-const {DEFAULT_PROMPTS}=require('../server/writer.cjs');
+const writer=require('../server/writer.cjs'),{DEFAULT_PROMPTS}=writer;
 
 const DRAFT='Rotating the exit IP per request usually gets past that kind of block (I work at Geonode).';
 function fakeOpenRouter(reply=()=>({status:200,body:{choices:[{message:{content:DRAFT}}]}})){
@@ -11,7 +11,9 @@ function fakeOpenRouter(reply=()=>({status:200,body:{choices:[{message:{content:
     return new Response(JSON.stringify(r.body),{status:r.status,headers:{'Content-Type':'application/json'}});};
   return {calls,fetchImpl};
 }
-const app=(or,opts={})=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'test-or-key',...or},...opts});
+// These tests are about OpenRouter, so the default prompts (MiniMax on Featherless) are switched to it.
+const onOpenRouter=a=>{for(const t of ['thread','comment'])writer.updateVariant(a.store,'v_default_'+t,{provider:'openrouter'});return a;};
+const app=(or,opts={})=>onOpenRouter(createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'test-or-key',...or},...opts}));
 async function call(a,method,url,body){
   let status,out;const req=(async function*(){if(body)yield JSON.stringify(body);})();
   Object.assign(req,{method,url,socket:{remoteAddress:'127.0.0.1'},headers:{}});
@@ -34,7 +36,7 @@ test('get next item with write: OpenRouter drafts from the thread prompt, nothin
     assert.strictEqual(q.model,'anthropic/claude-sonnet-5.5');assert.strictEqual(or.calls[0].body.model,'anthropic/claude-sonnet-5.5');
     assert.strictEqual(or.calls[0].auth,'Bearer test-or-key');
     assert.strictEqual(q.prompt_used,or.calls[0].body.messages[0].content,'the saved prompt is exactly what the model received');
-    assert.ok(q.prompt_used.includes('Thread title: '+r.thread.title));assert.ok(q.prompt_used.includes('I work at Geonode'));
+    assert.ok(q.prompt_used.includes('Thread title: '+r.thread.title));assert.ok(q.prompt_used.includes('r/'+r.thread.subreddit));
     assert.ok(!/\{\{\w+\}\}/.test(q.prompt_used),'every variable is filled');
     assert.strictEqual(or.calls[0].body.messages.length,1,'no hidden system prompt');
     assert.strictEqual(q.send_status,'ready');assert.strictEqual(q.approved_at,null);assert.strictEqual(q.engain_task_id,null);
@@ -281,7 +283,9 @@ test('prompt variants: visible per type, editable, validated to 100%',async()=>{
     assert.deepStrictEqual(Object.keys(p.variants),['thread','comment','mention']);
     for(const k of ['thread','comment','mention']){
       assert.deepStrictEqual(p.variants[k].map(v=>[v.name,v.weight]),[['Default',100]]);
-      assert.strictEqual(p.variants[k][0].text,DEFAULT_PROMPTS[k]);assert.ok(/I work (at|for) Geonode/.test(p.variants[k][0].text));
+      assert.strictEqual(p.variants[k][0].text,DEFAULT_PROMPTS[k]);
+      // Replies recommend Geonode, so they say so; the comment only asks which tools people use.
+      if(k!=='thread')assert.ok(/I work (at|for) Geonode/.test(p.variants[k][0].text));
     }
     assert.strictEqual(p.openrouter_key,true);assert.ok(p.variables.comment.includes('our_comment'));
     const bad=async(v,re)=>{const r=await call(a,'POST','/api/prompts',v);assert.strictEqual(r.status,422,JSON.stringify(r.body));assert.match(r.body.error,re);};
@@ -365,7 +369,7 @@ test('an edited prompt is exactly what the model receives',async()=>{
 });
 
 test('writing without an OpenRouter key fails clearly',async()=>{
-  const a=createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:''}});
+  const a=onOpenRouter(createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:''}}));
   try{
     await ready(a);
     const id=(await call(a,'POST','/api/agent/task',{})).body.queue2.queue2_id;

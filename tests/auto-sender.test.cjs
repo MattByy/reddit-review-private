@@ -7,7 +7,7 @@ const queue=require('../server/queue.cjs');
 const DRAFT='Rotating the exit IP per request usually gets past that kind of block (I work at Geonode).';
 const fakeOpenRouter=()=>async()=>new Response(JSON.stringify({choices:[{message:{content:DRAFT},finish_reason:'stop'}],usage:{total_tokens:42}}),
   {status:200,headers:{'Content-Type':'application/json'}});
-const app=()=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',fetchImpl:fakeOpenRouter()}});
+const app=()=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',featherlessKey:'k',fetchImpl:fakeOpenRouter()}});
 async function call(a,method,url,body){
   let status,out;const req=(async function*(){if(body)yield JSON.stringify(body);})();
   Object.assign(req,{method,url,socket:{remoteAddress:'127.0.0.1'},headers:{}});

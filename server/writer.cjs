@@ -11,27 +11,35 @@ const PROVIDERS={
   featherless:{label:'Featherless',url:'https://api.featherless.ai/v1/chat/completions',key:'FEATHERLESS_API_KEY'},
 };
 const VARIABLES={
-  thread:['subreddit','title','body','url','style_examples'],
-  comment:['subreddit','title','body','url','our_comment','our_comment_url','style_examples'],
+  thread:['subreddit','subreddit_rules','title','body','url','style_examples'],
+  comment:['subreddit','subreddit_rules','title','body','url','our_comment','our_comment_url','style_examples'],
   mention:['subreddit','title','body','url','their_comment','brand','style_examples'],
 };
 const DEFAULT_PROMPTS={
-  thread:`You are writing a Reddit comment on behalf of Geonode, a company that sells proxies and web-scraping infrastructure. It will be posted publicly in r/{{subreddit}}.
+  thread:`You write Reddit comments on behalf of Geonode, a company that sells proxies and web-scraping infrastructure.
 
+Subreddit: r/{{subreddit}}
+Subreddit rules: {{subreddit_rules}}
 Thread title: {{title}}
 Thread text:
 {{body}}
 
-Write one comment that:
-- Directly helps with what the thread asks or discusses. Be specific and practical.
-- Is 2 to 5 sentences of plain, conversational English. No headings, lists, emojis or links.
-- States the affiliation in the comment itself, for example "(I work at Geonode)" or "Disclosure: I work for Geonode".
-- Mentions Geonode's product only if it is genuinely relevant, and never claims it is the best or only option.
-- Does not invent personal experiences, customers, numbers or results.
-- Does not pose as an independent user and does not attack competitors.
-- Stays on topic and respects the subreddit's rules.
+Write one short comment asking which tools people would recommend for a use case discussed in the thread.
 
-If you cannot write something genuinely useful, reply with exactly: SKIP
+Connect your question to a specific detail in the post. Include enough context for someone to recommend a suitable tool, such as a scraper, browser automation tool, scraping API, or proxy service. Choose the category that actually fits the discussion.
+
+Vary the phrasing naturally. Possible structures include:
+- “For [use case from the thread], what [tool category] would you recommend?”
+- “With [constraint mentioned in the thread], would you use [approach A] or [approach B]? Any tools you’d suggest?”
+- “Which [tool category] would you suggest for [specific requirement from the thread]?”
+
+Rules:
+- Use 1–3 short sentences in plain, conversational English.
+- Ask for recommendations openly, without steering toward a particular brand.
+- Ground the context in the thread. Do not invent requirements, personal experiences, or a problem you claim to have.
+- Avoid generic praise, marketing language, forced slang, headings, lists, emojis, and links.
+- Respect the supplied subreddit rules.
+- If the thread is unrelated to these tools, or already answers your question, output exactly: SKIP
 
 Output only the comment text.`,
   comment:`You are writing a short follow-up for Geonode, a company that sells proxies and web-scraping infrastructure. It replies under a comment Geonode already posted in r/{{subreddit}}.
@@ -142,7 +150,9 @@ const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 // Prompt variants. Each type (thread, comment, mention) has 1-5 prompts with a weight in percent;
 // the weights of a type add up to 100. A prompt at 0% is paused. Stored under kv 'prompt_variants'.
 const TYPES=Object.keys(DEFAULT_PROMPTS),MAX_PROMPTS=5;
-const defaultVariant=type=>({id:'v_default_'+type,slug:type+'-default',name:'Default',text:DEFAULT_PROMPTS[type],weight:100});
+// Comments and replies are written by MiniMax-M3 on Featherless (picked 2026-10-30 in a side-by-side test).
+const DEFAULT_WRITER={provider:'featherless',model:'MiniMaxAI/MiniMax-M3',temperature:0.8};
+const defaultVariant=type=>({id:'v_default_'+type,slug:type+'-default',name:'Default',text:DEFAULT_PROMPTS[type],weight:100,...(type==='mention'?{}:DEFAULT_WRITER)});
 // Every prompt has a readable slug, unique across all types ("thread-default", "thread-natural-2").
 // It is made from the type and name once, then kept through renames; it can be edited.
 // Each draft and send records it, so stats and a comment's origin still name the prompt later.
@@ -263,11 +273,22 @@ const clip=(s,n)=>{s=String(s??'').trim();return s.length>n?s.slice(0,n)+'…':s
 // {{style_examples}} is filled only when a prompt uses it (store given).
 function variables(entry,store,template=''){
   const it=entry.item||{},t=it.thread||{};
-  const v={subreddit:t.subreddit||it.comment?.subreddit||'',title:t.title||entry.title||'',body:clip(t.body,4000)||'(no text)',url:entry.url||''};
+  const v={subreddit:t.subreddit||it.comment?.subreddit||'',subreddit_rules:rulesText(t.subreddit_rules),title:t.title||entry.title||'',body:clip(t.body,4000)||'(no text)',url:entry.url||''};
   if(entry.kind==='comment')Object.assign(v,{our_comment:clip(it.comment?.content,3000),our_comment_url:it.comment?.reddit_url||entry.url||''});
   if(entry.kind==='mention')Object.assign(v,{their_comment:clip(it.mention?.body,3000),brand:it.mention?.brand||''});
   if(store&&template.includes('{{style_examples}}'))v.style_examples=styleExamples(store,v.subreddit);
   return v;
+}
+// What Engain knows about the subreddit's rules, in words: "Strict moderation (40/100). No self-promotion, no links."
+function rulesText(r){
+  if(!r)return 'Not known; keep it plain and non-promotional.';
+  const f=r.flags||{},parts=[];
+  if(r.moderation_level!=null)parts.push(`${r.moderation_level>=60?'Very strict':r.moderation_level>=30?'Strict':'Light'} moderation (${r.moderation_level}/100).`);
+  const bans=[f.bansSelfPromotion&&'no self-promotion',f.bansLinks&&'no links'].filter(Boolean);
+  if(bans.length)parts.push(bans.join(', ').replace(/^./,c=>c.toUpperCase())+'.');
+  if(f.hasKarmaOrAgeGate)parts.push('New or low-karma accounts are filtered.');
+  if(f.holdsPostsForApproval)parts.push('Posts are held for mod approval.');
+  return parts.join(' ')||'No special rules known.';
 }
 // Two or three real comments people wrote (the mention comments Engain collects), preferring the
 // same subreddit. They show tone only; comments that mention Geonode are left out.
@@ -350,4 +371,4 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   return store.queue2(id);
 }
 
-module.exports={MAX_PROMPTS,backfillSlugs,DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};
+module.exports={DEFAULT_WRITER,MAX_PROMPTS,backfillSlugs,DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};

@@ -187,6 +187,7 @@ function statusOf(r){
     return `<span class="${c}">${esc(s)}</span> · via ${r.delivery_mode==='dedicated'?'our accounts':'pool'} · sent ${ago(r.sent_at)}`;}
   if(r.send_status==='sending')return '<span class="s-warn">Sending…</span>';
   if(['skipped','truncated','failed'].includes(r.write_status))return `<span class="s-bad">Draft ${esc(r.write_status)}</span>`;
+  if(r.message_source==='random')return '<span class="s-warn">No draft yet</span> · the writer has not written this one (yet)';
   return `<span class="s-good">Ready</span> · written ${ago(r.written_at||r.created_at)}`;
 }
 function itemsView(rows,kind){
@@ -223,7 +224,7 @@ function renderControls(st){
   if(!s){box.innerHTML='<h2>Controls</h2><p class="muted small">Waiting for the computer to sync its settings.</p>';return;}
   const fu=st.data.fast_until&&Date.parse(st.data.fast_until)>Date.now()?Date.parse(st.data.fast_until):0;
   const num=(id,v,min,max)=>`<input type="number" id="${id}" value="${v}" min="${min}" max="${max}" step="1">`;
-  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
+  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
   const cmdState=c=>c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?`<span class="s-good">done</span>${c.result?.action?' · '+esc(c.result.action)+(c.result.reason?': '+esc(c.result.reason):''):''}`:
     `<span class="s-bad">${esc(c.status)}</span>${c.result?.error||c.result?.reason?' · '+esc(c.result.error||c.result.reason):''}`;
   box.innerHTML=`<div class="crow"><span class="name">Writer</span>

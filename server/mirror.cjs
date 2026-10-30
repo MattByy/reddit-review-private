@@ -26,7 +26,7 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
     await upsert('queue1',q1);await prune('queue1','item_id',q1.map(r=>r.item_id));
 
     const q2=store.db.prepare('select * from queue2').all().map(r=>({id:r.id,item_id:r.item_id,kind:r.kind,subreddit:subredditOf(r.thread_url||r.url),title:r.title,url:r.url,thread_url:r.thread_url,
-      message:r.message,write_status:r.write_status,model:r.model,provider:r.provider,prompt_variant_slug:r.prompt_variant_slug,send_status:r.send_status,delivery_mode:r.delivery_mode,
+      message:r.message,message_source:r.message_source,write_status:r.write_status,model:r.model,provider:r.provider,prompt_variant_slug:r.prompt_variant_slug,send_status:r.send_status,delivery_mode:r.delivery_mode,
       approved_by:r.approved_by,approved_at:r.approved_at,engain_task_id:r.engain_task_id,engain_status:r.engain_status,reddit_url:r.reddit_url,send_error:r.send_error,
       created_at:r.created_at,written_at:r.written_at,sent_at:r.sent_at,published_at:r.published_at,updated_at:r.updated_at}));
     await upsert('queue2',q2);await prune('queue2','id',q2.map(r=>r.id));
@@ -49,7 +49,11 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
   // Commands from the hosted page, oldest first; finish() writes back the outcome.
   const pending=()=>rest('GET','commands?status=eq.pending&order=id.asc&limit=20&select=id,at,by,kind,payload');
   const finish=(id,status,result)=>rest('PATCH',`commands?id=eq.${Number(id)}`,{status,result:result??null,done_at:new Date().toISOString()},'return=minimal');
-  return {sync,pending,finish};
+  // Pages and API answers for the hosted Prompts page: [{key:'GET /api/prompts',type,body}].
+  // Answers to the Prompts page's commands can hold a new key's secret; wipe any left after 2 minutes.
+  const scrub=()=>rest('PATCH',`commands?kind=eq.api&done_at=lt.${new Date(Date.now()-120000).toISOString()}&result->>body=not.is.null`,{result:null},'return=minimal');
+  const putSnapshots=rows=>upsert('snapshots',rows.map(r=>({...r,synced_at:new Date().toISOString()})));
+  return {sync,pending,finish,putSnapshots,scrub};
 }
 
 module.exports={mirror};

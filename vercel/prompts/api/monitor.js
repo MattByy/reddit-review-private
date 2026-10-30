@@ -4,7 +4,7 @@
 // GET /api/monitor             status, Queue 1, Queue 2 and the latest events
 // GET /api/monitor?events=1&before=<id>&type=<prefix>   older events (100 per page)
 // POST /api/monitor {"kind":"settings","payload":{...}} | {"kind":"run","payload":{"job"}} | {"kind":"fast","payload":{"minutes"}}
-//   queues a command for the computer, which picks it up within 10 seconds (server/dev.cjs applyCommand).
+//   queues a command for the computer, which picks it up within a few seconds (server/dev.cjs applyCommand).
 const {supabase,who,readJson,reply:send}=require('../lib/auth.js');
 
 // The computer checks commands again; this keeps obvious mistakes off the queue.

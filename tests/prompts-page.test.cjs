@@ -3,7 +3,7 @@ const test=require('node:test');
 const assert=require('node:assert');
 const {createApp}=require('../server/dev.cjs');
 
-const app=()=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',fetchImpl:async()=>new Response(JSON.stringify({choices:[{message:{content:'A useful note (I work at Geonode).'}}]}),{status:200,headers:{'Content-Type':'application/json'}})}});
+const app=()=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',featherlessKey:'k',fetchImpl:async()=>new Response(JSON.stringify({choices:[{message:{content:'A useful note (I work at Geonode).'}}]}),{status:200,headers:{'Content-Type':'application/json'}})}});
 // remote: called from another machine; key: bearer token.
 async function call(a,method,url,body,{remote=false,key}={}){
   let status,out,type;const req=(async function*(){if(body)yield JSON.stringify(body);})();

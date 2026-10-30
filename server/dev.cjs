@@ -157,7 +157,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     if(!mir)return {action:'off',reason:'SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_SECRET_SERVICE_ROLE) are not set'};
     const was=store.kv('mirror_last');
     try{
-      const r=await mir.sync(store,{jobs:jobStatus(),fast_until:fastUntil>Date.now()?new Date(fastUntil).toISOString():null});store.setKv('mirror_last',{ok:true,...r});
+      const r=await mir.sync(store,{jobs:jobStatus(),fast_until:fastUntil>Date.now()?new Date(fastUntil).toISOString():null});
+      await sendSnapshots();await mir.scrub();store.setKv('mirror_last',{ok:true,...r});
       if(was&&!was.ok)log('Supabase mirror working again');
       return {action:'synced',...r};
     }catch(e){
@@ -172,6 +173,23 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // so nothing surprising happens when the computer comes back after a long time offline.
   const REMOTE_SETTINGS=['write_every_minutes','queue2_target','send_per_day','send_from_hour','send_to_hour'];
   const REMOTE_JOBS=['writer','sender','threads','comments','tracker'];
+  // The hosted Prompts page: its reads come from snapshots, its changes arrive as "api" commands.
+  const REMOTE_API=/^\/api\/(prompts(\/(weights|preview|try))?|prompt-variants(\/[\w-]+(\/delete)?)?|keys(\/[\w-]+\/revoke)?|models)$/;
+  const SNAPSHOTS=['GET /api/prompts','GET /api/keys','GET /api/models'],PAGES=['GET /prompts','GET /docs/prompts-api'];
+  // A route called from inside, as the computer itself would (so it is local and logged).
+  async function internal(method,url,body){
+    let status,type,out;
+    const req=(async function*(){if(body!=null)yield JSON.stringify(body);})();
+    Object.assign(req,{method,url,socket:{remoteAddress:'127.0.0.1'},headers:{}});
+    await handle(req,{writeHead(s,h){status=s;type=h?.['Content-Type']||'';},end(v){out=String(v??'');}});
+    return {status,type,body:out};
+  }
+  let pagesSent=false;
+  async function sendSnapshots(){
+    const keys=[...SNAPSHOTS,...(pagesSent?[]:PAGES)],rows=[];
+    for(const k of keys){const [m,u]=k.split(' '),r=await internal(m,u);if(r.status===200)rows.push({key:k,type:r.type,body:r.body});}
+    await mir.putSnapshots(rows);pagesSent=true;
+  }
   let fastUntil=0,commandsBusy=false;
   const fast=()=>fastUntil>Date.now();
   async function applyCommand(c){
@@ -188,6 +206,14 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     if(c.kind==='run'){
       if(!REMOTE_JOBS.includes(p.job))fail(422,'Unknown job: '+p.job);
       return ['done',await runJob(p.job,by)];
+    }
+    if(c.kind==='api'){
+      const method=String(p.method||'GET').toUpperCase(),u=new URL(String(p.path||''),'http://x');
+      if(!['GET','POST'].includes(method)||!REMOTE_API.test(u.pathname))fail(422,'Not reachable from the hosted page: '+method+' '+u.pathname);
+      const r=await internal(method,u.pathname+u.search,method==='POST'?(p.body??{}):null);
+      // The page reloads right after a change, so its snapshots must already show it.
+      if(method==='POST')await sendSnapshots().catch(e=>log('snapshots failed: '+e.message));
+      return ['done',{status:r.status,type:r.type,body:r.body}];
     }
     if(c.kind==='fast'){
       const min=Number(p.minutes);if(!Number.isInteger(min)||min<0||min>60)fail(422,'minutes must be 0 to 60');
@@ -206,7 +232,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       for(const c of list){
         let status,result;
         try{[status,result]=await applyCommand(c);}catch(e){status='failed';result={error:e.message};}
-        store.event('command.'+status,`Hosted page command #${c.id} (${c.kind}) ${status}`,{id:c.id,kind:c.kind,payload:c.payload,by:c.by,result});
+        // An api command's answer can hold a new key's secret: the log keeps only its status.
+        store.event('command.'+status,`Hosted page command #${c.id} (${c.kind}${c.kind==='api'?' '+c.payload?.method+' '+c.payload?.path:''}) ${status}`,
+          {id:c.id,kind:c.kind,payload:c.kind==='api'?{method:c.payload?.method,path:c.payload?.path}:c.payload,by:c.by,result:c.kind==='api'?{status:result?.status}:result});
         await mir.finish(c.id,status,result);
       }
       if(list.length)await syncMirror();
@@ -248,7 +276,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     plan('sender',()=>queue.senderDelay(queue.settings(store)),20000);
     if(mir){
       plan('mirror',()=>fast()?10000:60000,2000,syncMirror);
-      plan('commands',()=>10000,5000,processCommands);
+      plan('commands',()=>3000,5000,processCommands);
     }
     plan('writer',()=>fast()?60000:(queue.settings(store).write_every_minutes||10)*60000,30000);
     const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min, `+

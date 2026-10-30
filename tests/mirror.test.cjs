@@ -10,7 +10,7 @@ function fakeSupabase(status=201){
   const fetchImpl=async(url,opts)=>{calls.push({url,method:opts.method,headers:opts.headers,body:opts.body&&JSON.parse(opts.body)});return new Response(status<300?'':'{"message":"relation \\"queue1\\" does not exist"}',{status});};
   return {calls,fetchImpl};
 }
-const app=(supabase)=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',fetchImpl:fakeOpenRouter()},supabase});
+const app=(supabase)=>createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',featherlessKey:'k',fetchImpl:fakeOpenRouter()},supabase});
 async function call(a,method,url,body){
   let status,out;const req=(async function*(){if(body)yield JSON.stringify(body);})();
   Object.assign(req,{method,url,socket:{remoteAddress:'127.0.0.1'},headers:{}});
@@ -69,7 +69,7 @@ test('commands from the hosted page: settings, run now and fast mode are applied
   const done=[];
   const fetchImpl=async(url,opts)=>{
     if(opts.method==='GET'&&url.includes('/commands?'))return new Response(JSON.stringify(done.length?[]:cmds),{status:200});
-    if(opts.method==='PATCH')done.push({id:Number(/id=eq\.(\d+)/.exec(url)[1]),...JSON.parse(opts.body)});
+    const m=/commands\?id=eq\.(\d+)/.exec(url);if(opts.method==='PATCH'&&m)done.push({id:Number(m[1]),...JSON.parse(opts.body)});
     return new Response('',{status:201});
   };
   const a=app({url:'https://x.supabase.co',key:'k',fetchImpl});
@@ -86,5 +86,32 @@ test('commands from the hosted page: settings, run now and fast mode are applied
     assert.strictEqual(by(5).status,'expired');
     const log=(await call(a,'GET','/api/logs?type=settings')).body.items;
     assert.ok(log.some(e=>e.message.includes('send_per_day 0 -> 35')&&e.message.includes('Matas')));
+  }finally{a.close();}
+});
+
+test('the hosted Prompts page: snapshots of the page and its data, and changes arriving as api commands',async()=>{
+  const now=new Date().toISOString(),done=[],snaps={};let served=false;
+  const cmds=[{id:7,at:now,by:'login:matas',kind:'api',payload:{method:'POST',path:'/api/prompt-variants/thread-default',body:{model:'moonshotai/Kimi-K2.6'}}},
+    {id:8,at:now,by:'login:matas',kind:'api',payload:{method:'POST',path:'/api/agent/queue2/1/approve',body:{}}},
+    {id:9,at:now,by:'login:matas',kind:'api',payload:{method:'POST',path:'/api/keys',body:{name:'agent'}}}];
+  const fetchImpl=async(url,opts)=>{
+    if(opts.method==='GET'&&url.includes('/commands?')){const r=served?[]:cmds;served=true;return new Response(JSON.stringify(r),{status:200});}
+    if(opts.method==='POST'&&url.endsWith('/snapshots'))for(const r of JSON.parse(opts.body))snaps[r.key]=r;
+    const m=/commands\?id=eq\.(\d+)/.exec(url);if(opts.method==='PATCH'&&m)done.push({id:Number(m[1]),...JSON.parse(opts.body)});
+    return new Response('',{status:201});
+  };
+  const a=app({url:'https://x.supabase.co',key:'k',fetchImpl});
+  try{
+    await call(a,'POST','/api/cron/mirror',{});
+    assert.match(snaps['GET /prompts'].body,/<title>Prompts/);assert.ok(snaps['GET /docs/prompts-api']);
+    assert.strictEqual(JSON.parse(snaps['GET /api/prompts'].body).variants.thread[0].model,'MiniMaxAI/MiniMax-M3');
+    await call(a,'POST','/api/cron/commands',{});
+    const by=id=>done.find(d=>d.id===id);
+    assert.strictEqual(by(7).status,'done');assert.strictEqual(by(7).result.status,200);
+    assert.strictEqual(JSON.parse(snaps['GET /api/prompts'].body).variants.thread[0].model,'moonshotai/Kimi-K2.6','the snapshot already shows the change');
+    assert.strictEqual(by(8).status,'failed');assert.match(by(8).result.error,/Not reachable from the hosted page/);
+    assert.strictEqual(by(9).status,'done');assert.match(JSON.parse(by(9).result.body).key,/^gnk_/);
+    const log=JSON.stringify((await call(a,'GET','/api/logs?type=command')).body.items);
+    assert.ok(!/gnk_[A-Za-z0-9_-]{20,}/.test(log),'the activity log never holds the new key');
   }finally{a.close();}
 });

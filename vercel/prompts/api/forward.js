@@ -1,18 +1,24 @@
-// Forwards the Prompts page and its API to the server on the always-on computer
-// (PROMPTS_SERVER_URL, e.g. its ngrok or Tailscale Funnel address). Only the prompt routes pass;
-// the server checks the API key on every call, so this function holds no secrets.
+// The Prompts page and its API on Vercel. Only the prompt routes pass.
+// With PROMPTS_SERVER_URL set (a tunnel to the always-on computer), calls are forwarded there and the
+// server checks the API key. Without it, everything goes through Supabase: pages and reads come from
+// the snapshots the computer uploads, and changes become "api" commands that the computer applies
+// within a few seconds (server/dev.cjs applyCommand). Then the caller must be signed in on the monitor
+// (session cookie) or send an API key; "Prompts only" keys are enough here.
+const {sha256,cookie,SESSION,supabase,readJson}=require('../lib/auth.js');
 const ALLOW=/^\/(prompts|docs\/prompts-api|api\/(prompts(\/[\w-]+)?|prompt-variants(\/[\w-]+(\/delete)?)?|models|keys(\/me|\/[\w-]+\/revoke)?))$/;
 const PASS=['authorization','content-type','accept'];
+const PAGES=new Set(['/prompts','/docs/prompts-api']),SNAPSHOT=new Set(['/api/prompts','/api/keys','/api/models']);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 module.exports=async(req,res)=>{
   const u=new URL(req.url,'http://x'),path=u.searchParams.get('p')||'/prompts';u.searchParams.delete('p');
   const page=!path.startsWith('/api/');
   const reply=(status,body)=>{res.statusCode=status;res.setHeader('Cache-Control','no-store');
-    if(page){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prompts</title><body style="font:15px system-ui;max-width:560px;margin:60px auto;padding:0 16px;color:#1c1917"><h2>Prompts</h2><p>${body}</p></body>`);}
+    if(page){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prompts</title><body style="font:15px system-ui;max-width:560px;margin:60px auto;padding:0 16px;color:#1c1917"><h2>Prompts</h2><p>${body}</p><p><a href="/">← Monitor</a></p></body>`);}
     else{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({error:body}));}};
   if(!ALLOW.test(path))return reply(404,'Not found');
   const base=(process.env.PROMPTS_SERVER_URL||'').replace(/\/+$/,'');
-  if(!base)return reply(503,'Not connected yet: set PROMPTS_SERVER_URL on this Vercel project to the address of the always-on computer.');
+  if(!base)return viaSupabase(req,res,path,u,page,reply);
   const headers={'x-forwarded-for':String(req.headers['x-forwarded-for']||req.socket?.remoteAddress||'vercel'),'ngrok-skip-browser-warning':'1'};
   for(const h of PASS)if(req.headers[h])headers[h]=req.headers[h];
   let body;
@@ -24,3 +30,42 @@ module.exports=async(req,res)=>{
     res.end(Buffer.from(await r.arrayBuffer()));
   }catch(e){reply(502,`The always-on computer did not answer (${e.name==='TimeoutError'?'timed out':e.message}). Is the server and its tunnel running?`);}
 };
+
+async function viaSupabase(req,res,path,u,page,reply){
+  const db=supabase();
+  if(!db)return reply(503,'Not connected yet: set SUPABASE_URL and SUPABASE_SERVICE_KEY on this Vercel project.');
+  const send=(status,type,body)=>{res.statusCode=status;res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type',type||'application/json');res.end(body);};
+  try{
+    // The page itself holds no data, so it is served to anyone (as on the computer).
+    if(PAGES.has(path)){
+      const [s]=await db(`snapshots?key=eq.${encodeURIComponent('GET '+path)}&select=type,body`);
+      return s?send(200,s.type,s.body):reply(503,'The always-on computer has not uploaded this page yet. Is it running with the Supabase keys?');
+    }
+    // Who is calling: the monitor's session, or an API key (any scope) mirrored from the computer.
+    let who=null;
+    const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
+    if(token){const [k]=await db(`api_keys?hash=eq.${sha256(token)}&revoked_at=is.null&select=id,name,scope,prefix`);if(k)who={by:'key:'+k.name,key:k};}
+    else{const s=cookie(req,SESSION);if(s){const [row]=await db(`monitor_sessions?token_hash=eq.${sha256(s)}&expires_at=gt.${new Date().toISOString()}&select=username`);if(row)who={by:'login:'+row.username,key:null,full:true};}}
+    if(!who)return reply(401,'Sign in on the monitor first, or send an API key');
+    const full=who.full||who.key?.scope==='full';
+    if(/^\/api\/keys(\/|$)/.test(path)&&path!=='/api/keys/me'&&!full)return reply(403,'Managing keys needs an "Everything" key');
+    if(path==='/api/keys/me')return send(200,null,JSON.stringify({by:who.by,key:who.key&&{id:who.key.id,name:who.key.name,scope:who.key.scope,prefix:who.key.prefix}}));
+    if(req.method==='GET'&&SNAPSHOT.has(path)&&!u.search){
+      const [s]=await db(`snapshots?key=eq.${encodeURIComponent('GET '+path)}&select=type,body`);
+      if(s)return send(200,s.type,s.body);
+    }
+    // Anything else (a change, a preview, a model search) is done by the computer.
+    const body=req.method==='POST'?await readJson(req):null;
+    const [c]=await db('commands',{body:{by:who.by,kind:'api',payload:{method:req.method,path:path+(u.search||''),body}}});
+    for(const end=Date.now()+50000;Date.now()<end;){
+      await sleep(800);
+      const [d]=await db(`commands?id=eq.${c.id}&select=status,result`);
+      if(d.status==='pending')continue;
+      // The answer can hold a new key's secret: it is wiped from Supabase once read.
+      await db(`commands?id=eq.${c.id}`,{method:'PATCH',body:{result:d.status==='done'?{status:d.result?.status}:d.result}});
+      if(d.status!=='done')return reply(d.status==='expired'?504:422,d.result?.error||d.result?.reason||'The computer could not do this');
+      return send(d.result.status,d.result.type,d.result.body);
+    }
+    return reply(504,'The always-on computer did not answer within 50 seconds. Is it running?');
+  }catch(e){reply(e.status||502,e.message);}
+}
