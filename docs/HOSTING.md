@@ -20,6 +20,8 @@ cp .env.example .env.local      # ENGAIN_API_KEY, OPENROUTER_API_KEY, FEATHERLES
 npm run dev                      # http://127.0.0.1:3000, scheduled jobs on
 ```
 
+**Copy `.data/dev.db` from the old computer before the first start** (with the server stopped on both). It holds the prompts (comments and replies are written by MiniMax-M3 on Featherless), the send history, and which threads we already posted in. Without it the server starts empty, with the built-in OpenRouter prompts, and it could post twice in a thread.
+
 Keep it running. On macOS, a `launchd` agent or simply `caffeinate -s npm run dev` in a terminal that stays open works. The server keeps listening only on 127.0.0.1, and the tunnel connects to that.
 
 **Auto-send** is off until you turn it on. On the dashboard, under settings, set **Auto-send per day** (for example 35). The server then sends that many a day by itself, spread over 9:00–17:00 Warsaw time. Each run sends one ready Queue 2 draft, or drafts the next Queue 1 item and sends it. No browser tab needs to stay open. Set it back to 0 to stop.
