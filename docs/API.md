@@ -240,6 +240,8 @@ j -X POST $API/api/settings -d '{"queue_target":80,"max_age_days":60}'
 | `threads_every_minutes` / `comments_every_minutes` / `tracker_every_minutes` | 10 / 30 / 10 | Job intervals |
 | `send_per_day` | 0 | Auto-send: how many items the server sends by itself per day. 0 is off. |
 | `send_from_hour` / `send_to_hour` | 9 / 17 | Auto-send hours, Warsaw time, every day. The sends are spread evenly over these hours (40 a day over 9–17 = one about every 12 minutes, each gap randomly 30% shorter or longer). |
+| `write_every_minutes` | 30 | Writer: every N minutes the next Queue 1 item is drafted (by the prompt's model, MiniMax-M3) into Queue 2. Nothing is sent. 0 is off. `POST /api/cron/writer` runs it once now. |
+| `queue2_target` | 20 | The writer rests while Queue 2 holds this many drafts ready to send. |
 
 ## Queue 2: writing, approving, sending
 

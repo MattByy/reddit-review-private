@@ -11,10 +11,10 @@ const {rank,rankComment,REMOVED}=require('./collect.cjs');
 // our published comments always go in, even past it.
 const DEFAULTS={queue_target:50,comment_limit:20,comment_position:5,max_age_days:120,min_comments:3,min_thread_score:0,min_comment_score:40,mention_comments:0,
   thread_collect_minutes:60,threads_every_minutes:10,comments_every_minutes:30,tracker_every_minutes:10,
-  send_per_day:0,send_from_hour:9,send_to_hour:17};
+  send_per_day:0,send_from_hour:9,send_to_hour:17,write_every_minutes:30,queue2_target:20};
 const LIMITS={queue_target:[1,500],comment_limit:[0,200],comment_position:[1,500],max_age_days:[14,3650],min_comments:[0,100000],min_thread_score:[0,100],min_comment_score:[0,100],mention_comments:[0,1],
   thread_collect_minutes:[5,1440],threads_every_minutes:[1,1440],comments_every_minutes:[1,1440],tracker_every_minutes:[1,1440],
-  send_per_day:[0,500],send_from_hour:[0,23],send_to_hour:[1,24]};
+  send_per_day:[0,500],send_from_hour:[0,23],send_to_hour:[1,24],write_every_minutes:[0,1440],queue2_target:[1,200]};
 const OWN=/geonode/i;
 const DAY=86400000;
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};

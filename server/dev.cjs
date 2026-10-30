@@ -135,6 +135,20 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     }
     return {action:'none',reason:'Nothing could be sent in 3 tries',errors};
   };
+  // Writer: every write_every_minutes, the next Queue 1 item is drafted into Queue 2 (never sent).
+  // It rests while Queue 2 already holds queue2_target drafts ready to send. 0 turns it off.
+  jobs.writer=async()=>{
+    const cfg=queue.settings(store);
+    if(!cfg.write_every_minutes)return {action:'off',reason:'The writer is off (write_every_minutes is 0)'};
+    const waiting=queue.queue2List(store).items.filter(sendable).length;
+    if(waiting>=cfg.queue2_target)return {action:'none',reason:`Queue 2 has ${waiting} drafts ready (target ${cfg.queue2_target})`};
+    const r=queue.claimNext(store,'writer');
+    if(!r.queue2)return {action:'none',reason:'Queue 1 is empty'};
+    const id=r.queue2.queue2_id;
+    try{await writer.writeQueue2(store,id,writerOpts);}catch(e){return {action:'failed',queue2_id:id,reason:e.message};}
+    const item=queue.queue2Item(store,id);
+    return {action:item?item.write_status:'skipped',queue2_id:id,kind:r.queue2.kind??item?.status??null,model:item?.model??null,ready:waiting+(sendable(item)?1:0)};
+  };
   const running={};
   // source says who started it: the scheduler, a cron call, the dashboard or fast mode ("fast_mode #3").
   async function runJob(name,source='schedule'){
@@ -166,8 +180,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     plan('threads',every('threads_every_minutes'),8000);
     plan('tracker',every('tracker_every_minutes'),5000);
     plan('sender',()=>queue.senderDelay(queue.settings(store)),20000);
+    plan('writer',()=>(queue.settings(store).write_every_minutes||10)*60000,30000);
     const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min, `+
-      (c.send_per_day?`auto-send ${c.send_per_day} a day between ${c.send_from_hour}:00 and ${c.send_to_hour}:00 Warsaw time`:'auto-send off'));
+      (c.write_every_minutes?`writer every ${c.write_every_minutes} min, `:'writer off, ')+(c.send_per_day?`auto-send ${c.send_per_day} a day between ${c.send_from_hour}:00 and ${c.send_to_hour}:00 Warsaw time`:'auto-send off'));
   }
   const jobSource=body=>body?.source?String(body.source).slice(0,40):'cron';
   const jobStatus=()=>Object.fromEntries(Object.keys(jobs).map(n=>[n,{running:!!running[n],next_run:next[n]||null,last:store.kv('job_'+n)}]));
@@ -379,6 +394,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'POST /api/cron/comments':async(_,body)=>runJob('comments',jobSource(body)),
     'POST /api/cron/tracker':async(_,body)=>runJob('tracker',jobSource(body)),
     'POST /api/cron/sender':async(_,body)=>runJob('sender',jobSource(body)),
+    'POST /api/cron/writer':async(_,body)=>runJob('writer',jobSource(body)),
     // The tracking list and its counts over the last ?days= days (default 7, 0 = all time).
     'GET /api/sent':async q=>tracker.sentView(store,{days:q.days??7}),
     'GET /api/send-log':async q=>queue.sendLog(store,q),

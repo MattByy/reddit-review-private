@@ -68,3 +68,20 @@ test('outside the hours it sends nothing',async()=>{
     assert.strictEqual((await call(a,'POST','/api/cron/sender',{})).body.action,'waiting');
   }finally{a.close();}
 });
+
+test('the writer drafts one Queue 1 item into Queue 2 per run, sends nothing, and rests when Queue 2 is full',async()=>{
+  const a=app();
+  try{
+    await ready(a);
+    queue.saveSettings(a.store,{queue2_target:2});
+    const one=(await call(a,'POST','/api/cron/writer',{})).body;
+    assert.strictEqual(one.action,'written',JSON.stringify(one));
+    const item=(await call(a,'GET','/api/agent/queue2/'+one.queue2_id)).body;
+    assert.strictEqual(item.message,DRAFT);assert.strictEqual(item.approved_at,null);assert.strictEqual(item.engain_task_id??null,null);
+    assert.strictEqual((await call(a,'POST','/api/cron/writer',{})).body.action,'written');
+    const full=(await call(a,'POST','/api/cron/writer',{})).body;
+    assert.strictEqual(full.action,'none');assert.match(full.reason,/2 drafts ready/);
+    queue.saveSettings(a.store,{write_every_minutes:0});
+    assert.strictEqual((await call(a,'POST','/api/cron/writer',{})).body.action,'off');
+  }finally{a.close();}
+});
