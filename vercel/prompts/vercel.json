@@ -5,7 +5,7 @@
     { "source": "/monitor", "destination": "/monitor.html" },
     { "source": "/prompts", "destination": "/api/forward?p=/prompts" },
     { "source": "/docs/prompts-api", "destination": "/api/forward?p=/docs/prompts-api" },
-    { "source": "/api/:path((?!forward$|monitor$).*)", "destination": "/api/forward?p=/api/:path" }
+    { "source": "/api/:path((?!forward$|monitor$|login$).*)", "destination": "/api/forward?p=/api/:path" }
   ],
-  "functions": { "api/forward.js": { "maxDuration": 120 }, "api/monitor.js": { "maxDuration": 30 } }
+  "functions": { "api/forward.js": { "maxDuration": 120 }, "api/monitor.js": { "maxDuration": 30 }, "api/login.js": { "maxDuration": 15 } }
 }

@@ -1,6 +1,6 @@
 // Mirror to Supabase: every minute the server copies Queue 1, Queue 2, new activity-log events and a
 // status row into the tables of supabase/schema.sql, so a hosted page can follow the system.
-// Read-only copy: nothing is ever read back. Off unless SUPABASE_URL and SUPABASE_SERVICE_KEY are set.
+// The copy is one-way; the only thing read back is the commands table (pending()/finish()). Off unless SUPABASE_URL and SUPABASE_SERVICE_KEY are set.
 const queue=require('./queue.cjs');
 
 const BATCH=500;
@@ -14,6 +14,7 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
     const res=await fetchImpl(base+path,{method,headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',...(prefer?{Prefer:prefer}:{})},
       body:body==null?undefined:JSON.stringify(body)});
     if(!res.ok)throw Object.assign(Error(`Supabase ${method} ${path.split('?')[0]}: HTTP ${res.status} ${(await res.text()).slice(0,200)}`),{status:res.status});
+    return method==='GET'?res.json():null;
   }
   const upsert=async(table,rows)=>{if(!rows.length)return;for(let i=0;i<rows.length;i+=BATCH)await rest('POST',table,rows.slice(i,i+BATCH),'resolution=merge-duplicates,return=minimal');};
   // Rows that left the local table leave the mirror too.
@@ -45,7 +46,10 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
       sent:q2.filter(r=>r.engain_task_id).length}}}]);
     return {queue1:q1.length,queue2:q2.length,events:ev.length,synced_at};
   }
-  return {sync};
+  // Commands from the hosted page, oldest first; finish() writes back the outcome.
+  const pending=()=>rest('GET','commands?status=eq.pending&order=id.asc&limit=20&select=id,at,by,kind,payload');
+  const finish=(id,status,result)=>rest('PATCH',`commands?id=eq.${Number(id)}`,{status,result:result??null,done_at:new Date().toISOString()},'return=minimal');
+  return {sync,pending,finish};
 }
 
 module.exports={mirror};

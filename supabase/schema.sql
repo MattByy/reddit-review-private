@@ -65,8 +65,15 @@ create table if not exists status (
   data jsonb
 );
 
+-- Commands from the hosted page (settings, run a job now, fast mode); the computer polls them.
+create table if not exists commands (
+  id bigint generated always as identity primary key, at timestamptz not null default now(), by text, kind text not null,
+  payload jsonb, status text not null default 'pending', result jsonb, done_at timestamptz);
+create index if not exists commands_pending on commands (id) where status = 'pending';
+
 alter table queue1 enable row level security;
 alter table queue2 enable row level security;
 alter table events enable row level security;
 alter table status enable row level security;
 alter table api_keys enable row level security;
+alter table commands enable row level security;

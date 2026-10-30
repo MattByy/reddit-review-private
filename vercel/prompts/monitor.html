@@ -32,7 +32,7 @@ main.wrap{padding-top:22px;padding-bottom:80px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
 .signin{max-width:460px;margin:40px auto;padding:22px}
 .signin h2{margin:0 0 6px;font-size:18px}
-.signin .row{display:flex;gap:8px;margin-top:14px}.signin input{flex:1;min-width:0}
+.signin .row{display:flex;gap:8px;margin-top:10px}.signin input{flex:1;min-width:0}
 .err{color:var(--bad);font-size:13px;margin-top:10px}
 .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:16px}
 .kpi{padding:14px 16px;border-left:1px solid var(--line)}.kpi:first-child{border-left:0}
@@ -61,6 +61,22 @@ main.wrap{padding-top:22px;padding-bottom:80px}
 @media(max-width:720px){.ev{grid-template-columns:1fr}.ev .ty{font-size:11px}}
 .bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .more{display:block;margin:12px auto 0}
+.controls{padding:14px 16px;margin-bottom:16px}
+.controls h2{font-size:14px;margin:0}
+.crow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)}
+.crow:first-of-type{border-top:0}
+.crow .name{font-weight:600;width:96px}
+.crow input[type=number]{width:72px;padding:5px 7px}
+.crow label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--line);margin-top:4px}
+.fast-on{background:var(--warn);color:#fff}
+.cmds{margin-top:10px;font-size:12px;color:var(--muted)}
+.cmds div{padding:2px 0}
+.switch{position:relative;width:36px;height:20px;flex:none}
+.switch input{opacity:0;width:0;height:0}
+.switch span{position:absolute;inset:0;background:var(--line);border-radius:99px;cursor:pointer;transition:.15s}
+.switch span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.15s}
+.switch input:checked+span{background:var(--good)}.switch input:checked+span:before{transform:translateX(16px)}
 .banner{padding:11px 14px;margin-bottom:14px;border-radius:10px;font-size:13px;background:color-mix(in srgb,var(--bad) 10%,transparent);color:var(--bad)}
 </style>
 </head>
@@ -76,14 +92,18 @@ main.wrap{padding-top:22px;padding-bottom:80px}
 <main class="wrap">
   <section class="panel signin" id="signin" hidden>
     <h2>Sign in</h2>
-    <p class="muted small">Paste an API key with <b>Everything</b> scope. Create one on the always-on computer at <span class="mono">127.0.0.1:3000/prompts</span> under API keys. It is kept in this browser only.</p>
-    <div class="row"><input type="password" id="keyin" placeholder="gnk_…" autocomplete="off"><button id="keygo">Sign in</button></div>
+    <form id="loginform">
+      <div class="row"><input type="text" id="user" placeholder="Username" autocomplete="username" autocapitalize="none" required></div>
+      <div class="row"><input type="password" id="pass" placeholder="Password" autocomplete="current-password" required></div>
+      <div class="row"><button id="logingo" type="submit" style="flex:1">Sign in</button></div>
+    </form>
     <div class="err" id="signerr" hidden></div>
   </section>
 
   <div id="app" hidden>
     <div class="banner" id="stale" hidden></div>
     <div class="panel kpis" id="kpis"></div>
+    <div class="panel controls" id="controls"></div>
     <div class="jobs" id="jobs"></div>
     <div class="tabs" id="tabs"></div>
     <div id="view"></div>
@@ -105,20 +125,20 @@ function warsawDayStart(){
 
 let data=null,tab=localGet('gn_monitor_tab')||'queue2',evType='',older=[],timer=null;
 async function api(q=''){
-  const r=await fetch('/api/monitor'+q,{headers:{Authorization:'Bearer '+(localGet('gn_key')||'')}});
+  const r=await fetch('/api/monitor'+q,{credentials:'same-origin'});
   const body=await r.json().catch(()=>({error:'HTTP '+r.status}));
   if(!r.ok)throw Object.assign(Error(body.error||'HTTP '+r.status),{status:r.status});
   return body;
 }
+let signedIn=false;
 function showSignin(msg){
-  $('#app').hidden=true;$('#signin').hidden=false;$('#signout').hidden=true;$('#sync').hidden=true;
+  signedIn=false;  $('#app').hidden=true;$('#signin').hidden=false;$('#signout').hidden=true;$('#sync').hidden=true;
   $('#signerr').hidden=!msg;$('#signerr').textContent=msg||'';
 }
 async function load(){
-  if(!localGet('gn_key'))return showSignin();
   try{data=await api(evType?'?type='+evType:'');older=[];}
-  catch(e){if(e.status===401||e.status===403)return showSignin(e.message);$('#stale').hidden=false;$('#stale').textContent='Could not load: '+e.message;return;}
-  $('#signin').hidden=true;$('#app').hidden=false;$('#signout').hidden=false;render();
+  catch(e){if(e.status===401||e.status===403)return showSignin(e.status===403?e.message:signedIn?'Your session ended. Please sign in again.':'');$('#stale').hidden=false;$('#stale').textContent='Could not load: '+e.message;return;}
+  signedIn=true;$('#signin').hidden=true;$('#app').hidden=false;$('#signout').hidden=false;render();
 }
 
 const WAITING=new Set(['ready','sending',null]);
@@ -138,6 +158,7 @@ function render(){
   $('#kpis').innerHTML=[[data.queue1.length,'Queue 1'],[waiting.length,'Queue 2 waiting'],[sentToday+(s.send_per_day?' / '+s.send_per_day:''),'Sent today'],[sent.filter(r=>r.engain_task_id).length,'Sent (all)'],[published,'Published']]
     .map(([v,l])=>`<div class="kpi"><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`).join('');
 
+  if(!controlsDirty&&!$('#controls').contains(document.activeElement))renderControls(st);
   const jobs=st?.data?.jobs||{},NAMES={writer:'Writer',sender:'Auto-send',threads:'Threads',comments:'Comments',tracker:'Status checker'};
   const sub2={writer:s.write_every_minutes?`every ${s.write_every_minutes} min, up to ${s.queue2_target} waiting`:'off',
     sender:s.send_per_day?`${s.send_per_day}/day, ${s.send_from_hour}:00–${s.send_to_hour}:00 Warsaw`:'off'};
@@ -194,15 +215,75 @@ async function loadOlder(){
   const evs=[...data.events,...older],last=evs.at(-1);if(!last)return;
   try{const r=await api(`?events=1&before=${last.id}${evType?'&type='+evType:''}`);older.push(...r.events);render();}catch(e){alertBox(e.message);}
 }
+// Controls: each change becomes a command in Supabase; the computer applies it within ~10 s.
+let controlsDirty=false,fastPoll=null;
+const pendingCmds=()=>(data?.commands||[]).filter(c=>c.status==='pending');
+function renderControls(st){
+  const s=st?.data?.settings,box=$('#controls');
+  if(!s){box.innerHTML='<h2>Controls</h2><p class="muted small">Waiting for the computer to sync its settings.</p>';return;}
+  const fu=st.data.fast_until&&Date.parse(st.data.fast_until)>Date.now()?Date.parse(st.data.fast_until):0;
+  const num=(id,v,min,max)=>`<input type="number" id="${id}" value="${v}" min="${min}" max="${max}" step="1">`;
+  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
+  const cmdState=c=>c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?`<span class="s-good">done</span>${c.result?.action?' · '+esc(c.result.action)+(c.result.reason?': '+esc(c.result.reason):''):''}`:
+    `<span class="s-bad">${esc(c.status)}</span>${c.result?.error||c.result?.reason?' · '+esc(c.result.error||c.result.reason):''}`;
+  box.innerHTML=`<div class="crow"><span class="name">Writer</span>
+      <label class="switch"><input type="checkbox" id="c_wr_on" ${s.write_every_minutes?'checked':''}><span></span></label>
+      <label>every ${num('c_wr_min',s.write_every_minutes||30,1,1440)} min</label>
+      <label>pause at ${num('c_q2',s.queue2_target,1,200)} in Queue 2</label></div>
+    <div class="crow"><span class="name">Auto-send</span>
+      <label class="switch"><input type="checkbox" id="c_as_on" ${s.send_per_day?'checked':''}><span></span></label>
+      <label>${num('c_as_n',s.send_per_day||35,1,500)} per day</label>
+      <label>from ${num('c_as_from',s.send_from_hour,0,23)} to ${num('c_as_to',s.send_to_hour,1,24)} h (Warsaw)</label></div>
+    <div class="actions">
+      <button id="c_save" disabled>Save changes</button>
+      <button class="ghost" data-run="writer">Write one now</button>
+      <button class="ghost" data-run="sender">Send one now</button>
+      <button class="ghost" data-run="threads">Collect threads now</button>
+      <button class="${fu?'fast-on':'ghost'}" id="c_fast">${fu?`Fast mode · ${Math.max(1,Math.ceil((fu-Date.now())/60000))} min left · Stop`:'Fast mode (15 min)'}</button>
+    </div>
+    <div class="cmds">${(data.commands||[]).slice(0,5).map(c=>`<div>${ago(c.at)} · ${esc(cmdText(c))} · ${cmdState(c)}</div>`).join('')}</div>`;
+}
+function wanted(){
+  const v=id=>Math.round(Number($('#'+id).value)),s=data.status.data.settings;
+  const w={write_every_minutes:$('#c_wr_on').checked?v('c_wr_min'):0,queue2_target:v('c_q2'),
+    send_per_day:$('#c_as_on').checked?v('c_as_n'):0,send_from_hour:v('c_as_from'),send_to_hour:v('c_as_to')};
+  return Object.fromEntries(Object.entries(w).filter(([k,x])=>x!==s[k]));
+}
+document.addEventListener('input',e=>{if(e.target.closest('#controls')&&e.target.id?.startsWith('c_')){controlsDirty=Object.keys(wanted()).length>0;$('#c_save').disabled=!controlsDirty;}});
+async function command(kind,payload){
+  try{
+    await fetch('/api/monitor',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,payload})})
+      .then(async r=>{if(!r.ok)throw Error((await r.json().catch(()=>({}))).error||'HTTP '+r.status);});
+    controlsDirty=false;await load();watchPending();
+  }catch(e){alertBox('Could not send the command: '+e.message);}
+}
+// While a command waits, check every 3 s so the result shows up quickly.
+function watchPending(){
+  clearInterval(fastPoll);
+  fastPoll=setInterval(async()=>{if(!pendingCmds().length){clearInterval(fastPoll);return;}await load();},3000);
+}
+document.addEventListener('click',e=>{
+  if(e.target.id==='c_save'){const w=wanted();if(Object.keys(w).length){if(w.send_per_day>0&&!data.status.data.settings.send_per_day&&!confirm(`Turn on auto-send: ${w.send_per_day} messages a day to Engain?`))return;command('settings',w);}}
+  const r=e.target.closest('[data-run]');
+  if(r){if(r.dataset.run==='sender'&&!confirm('Send one message to Engain now (if auto-send is on and it is within the sending hours)?'))return;command('run',{job:r.dataset.run});}
+  if(e.target.id==='c_fast'){const on=e.target.classList.contains('fast-on');command('fast',{minutes:on?0:15});}
+});
 function alertBox(m){$('#stale').hidden=false;$('#stale').textContent=m;}
 
-$('#keygo').onclick=()=>{const v=$('#keyin').value.trim();if(!v)return;localSet('gn_key',v);load();};
-$('#keyin').onkeydown=e=>{if(e.key==='Enter')$('#keygo').click();};
-$('#signout').onclick=()=>{localSet('gn_key',null);showSignin();};
+$('#loginform').onsubmit=async e=>{
+  e.preventDefault();const b=$('#logingo');b.disabled=true;
+  try{
+    const r=await fetch('/api/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('#user').value,password:$('#pass').value})});
+    const body=await r.json().catch(()=>({error:'HTTP '+r.status}));
+    if(!r.ok)return showSignin(body.error);
+    $('#pass').value='';await load();
+  }finally{b.disabled=false;}
+};
+$('#signout').onclick=async()=>{await fetch('/api/login?logout=1',{method:'POST',credentials:'same-origin'}).catch(()=>{});showSignin();};
 load();
 // Refresh every 30 s while the page is visible; the mirror updates every minute.
 // Not while older events are loaded, so the list doesn't jump back.
-setInterval(()=>{if(!document.hidden&&localGet('gn_key')&&!older.length)load();},30000);
+setInterval(()=>{if(!document.hidden&&signedIn&&!older.length)load();},30000);
 setInterval(()=>{if(data&&!$('#app').hidden)render();},10000);
 </script>
 </body>

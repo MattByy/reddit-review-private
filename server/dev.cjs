@@ -140,7 +140,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // It rests while Queue 2 already holds queue2_target drafts ready to send. 0 turns it off.
   jobs.writer=async()=>{
     const cfg=queue.settings(store);
-    if(!cfg.write_every_minutes)return {action:'off',reason:'The writer is off (write_every_minutes is 0)'};
+    if(!cfg.write_every_minutes&&!fast())return {action:'off',reason:'The writer is off (write_every_minutes is 0)'};
     const waiting=queue.queue2List(store).items.filter(sendable).length;
     if(waiting>=cfg.queue2_target)return {action:'none',reason:`Queue 2 has ${waiting} drafts ready (target ${cfg.queue2_target})`};
     const r=queue.claimNext(store,'writer');
@@ -157,7 +157,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     if(!mir)return {action:'off',reason:'SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_SECRET_SERVICE_ROLE) are not set'};
     const was=store.kv('mirror_last');
     try{
-      const r=await mir.sync(store,{jobs:jobStatus()});store.setKv('mirror_last',{ok:true,...r});
+      const r=await mir.sync(store,{jobs:jobStatus(),fast_until:fastUntil>Date.now()?new Date(fastUntil).toISOString():null});store.setKv('mirror_last',{ok:true,...r});
       if(was&&!was.ok)log('Supabase mirror working again');
       return {action:'synced',...r};
     }catch(e){
@@ -165,6 +165,54 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       if(!was||was.ok||was.error!==e.message)log('Supabase mirror failed: '+e.message);
       return {action:'failed',reason:e.message};
     }
+  }
+  // Commands from the hosted page (via the commands table): change settings, run a job now, or fast
+  // mode, in which the writer runs every minute and the mirror syncs every 10 s so the page shows
+  // it live. Sending is never faster than auto-send allows. Commands older than 15 minutes expire,
+  // so nothing surprising happens when the computer comes back after a long time offline.
+  const REMOTE_SETTINGS=['write_every_minutes','queue2_target','send_per_day','send_from_hour','send_to_hour'];
+  const REMOTE_JOBS=['writer','sender','threads','comments','tracker'];
+  let fastUntil=0,commandsBusy=false;
+  const fast=()=>fastUntil>Date.now();
+  async function applyCommand(c){
+    const by=`hosted page (${String(c.by||'?').slice(0,40)})`,p=c.payload||{};
+    if(Date.now()-Date.parse(c.at)>15*60000)return ['expired',{reason:'Older than 15 minutes when the computer saw it'}];
+    if(c.kind==='settings'){
+      const bad=Object.keys(p).filter(k=>!REMOTE_SETTINGS.includes(k));if(bad.length)fail(422,'Not changeable from the hosted page: '+bad.join(', '));
+      const before=queue.settings(store),after=queue.saveSettings(store,p);
+      const changed=Object.fromEntries(Object.keys(p).filter(k=>before[k]!==after[k]).map(k=>[k,[before[k],after[k]]]));
+      store.event('settings.changed',`Settings changed by ${by}: `+(Object.entries(changed).map(([k,[a,b]])=>`${k} ${a} -> ${b}`).join(', ')||'nothing new'),{by,changed});
+      replan('writer');replan('sender');
+      return ['done',{changed}];
+    }
+    if(c.kind==='run'){
+      if(!REMOTE_JOBS.includes(p.job))fail(422,'Unknown job: '+p.job);
+      return ['done',await runJob(p.job,by)];
+    }
+    if(c.kind==='fast'){
+      const min=Number(p.minutes);if(!Number.isInteger(min)||min<0||min>60)fail(422,'minutes must be 0 to 60');
+      fastUntil=min?Date.now()+min*60000:0;
+      store.event('fast_mode.'+(min?'started':'stopped'),min?`Fast mode for ${min} min, started by ${by}`:`Fast mode stopped by ${by}`,{by,minutes:min});
+      replan('writer');replan('mirror');
+      return ['done',{fast_until:min?new Date(fastUntil).toISOString():null}];
+    }
+    fail(422,'Unknown command: '+c.kind);
+  }
+  async function processCommands(){
+    if(!mir||commandsBusy)return {action:'skipped'};
+    commandsBusy=true;
+    try{
+      const list=await mir.pending();
+      for(const c of list){
+        let status,result;
+        try{[status,result]=await applyCommand(c);}catch(e){status='failed';result={error:e.message};}
+        store.event('command.'+status,`Hosted page command #${c.id} (${c.kind}) ${status}`,{id:c.id,kind:c.kind,payload:c.payload,by:c.by,result});
+        await mir.finish(c.id,status,result);
+      }
+      if(list.length)await syncMirror();
+      return {action:'checked',commands:list.length};
+    }catch(e){return {action:'failed',reason:e.message};}
+    finally{commandsBusy=false;}
   }
   const running={};
   // source says who started it: the scheduler, a cron call, the dashboard or fast mode ("fast_mode #3").
@@ -184,21 +232,25 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   }
   // In-process schedule; intervals are read from the queue settings before every run.
   const timers={},next={};
+  // plans[name] = [nextDelay, run]; replan(name) runs it again soon, for a change made from the hosted page.
+  const plans={};
+  const plan=(name,nextDelay,delay,run=()=>runJob(name).catch(()=>{}))=>{
+    plans[name]=[nextDelay,run];clearTimeout(timers[name]);
+    next[name]=new Date(Date.now()+delay).toISOString();
+    timers[name]=setTimeout(async()=>{await run();plan(name,nextDelay,nextDelay(),run);},delay);
+  };
+  const replan=(name,delay=1000)=>{if(plans[name])plan(name,plans[name][0],delay,plans[name][1]);};
   function startScheduler(){
-    const plan=(name,nextDelay,delay)=>{
-      next[name]=new Date(Date.now()+delay).toISOString();
-      timers[name]=setTimeout(async()=>{
-        await runJob(name).catch(()=>{});
-        plan(name,nextDelay,nextDelay());
-      },delay);
-    };
     const every=key=>()=>queue.settings(store)[key]*60000;
     plan('comments',every('comments_every_minutes'),3000);
     plan('threads',every('threads_every_minutes'),8000);
     plan('tracker',every('tracker_every_minutes'),5000);
     plan('sender',()=>queue.senderDelay(queue.settings(store)),20000);
-    if(mir){const tick=()=>{timers.mirror=setTimeout(async()=>{await syncMirror();tick();},60000);};syncMirror().then(tick);}
-    plan('writer',()=>(queue.settings(store).write_every_minutes||10)*60000,30000);
+    if(mir){
+      plan('mirror',()=>fast()?10000:60000,2000,syncMirror);
+      plan('commands',()=>10000,5000,processCommands);
+    }
+    plan('writer',()=>fast()?60000:(queue.settings(store).write_every_minutes||10)*60000,30000);
     const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min, `+
       (c.write_every_minutes?`writer every ${c.write_every_minutes} min, `:'writer off, ')+(c.send_per_day?`auto-send ${c.send_per_day} a day between ${c.send_from_hour}:00 and ${c.send_to_hour}:00 Warsaw time`:'auto-send off'));
   }
@@ -414,6 +466,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'POST /api/cron/sender':async(_,body)=>runJob('sender',jobSource(body)),
     'POST /api/cron/writer':async(_,body)=>runJob('writer',jobSource(body)),
     'POST /api/cron/mirror':async()=>syncMirror(),
+    'POST /api/cron/commands':async()=>processCommands(),
     'GET /api/mirror':async()=>({configured:!!mir,last:store.kv('mirror_last')}),
     // The tracking list and its counts over the last ?days= days (default 7, 0 = all time).
     'GET /api/sent':async q=>tracker.sentView(store,{days:q.days??7}),

@@ -58,3 +58,33 @@ test('a failure is reported and kept, not thrown',async()=>{
     assert.strictEqual((await call(a,'GET','/api/mirror')).body.last.ok,false);
   }finally{a.close();}
 });
+
+test('commands from the hosted page: settings, run now and fast mode are applied and reported back; old ones expire',async()=>{
+  const now=new Date().toISOString(),old=new Date(Date.now()-20*60000).toISOString();
+  const cmds=[{id:1,at:now,by:'Matas',kind:'settings',payload:{send_per_day:35,write_every_minutes:10}},
+    {id:2,at:now,by:'Matas',kind:'run',payload:{job:'writer'}},
+    {id:3,at:now,by:'Matas',kind:'fast',payload:{minutes:15}},
+    {id:4,at:now,by:'Matas',kind:'settings',payload:{queue_target:5}},
+    {id:5,at:old,by:'Matas',kind:'run',payload:{job:'sender'}}];
+  const done=[];
+  const fetchImpl=async(url,opts)=>{
+    if(opts.method==='GET'&&url.includes('/commands?'))return new Response(JSON.stringify(done.length?[]:cmds),{status:200});
+    if(opts.method==='PATCH')done.push({id:Number(/id=eq\.(\d+)/.exec(url)[1]),...JSON.parse(opts.body)});
+    return new Response('',{status:201});
+  };
+  const a=app({url:'https://x.supabase.co',key:'k',fetchImpl});
+  try{
+    await ready(a);
+    const r=(await call(a,'POST','/api/cron/commands',{})).body;
+    assert.strictEqual(r.commands,5,JSON.stringify(r));
+    const by=id=>done.find(d=>d.id===id);
+    assert.strictEqual(by(1).status,'done');assert.deepStrictEqual(by(1).result.changed.send_per_day,[0,35]);
+    const cfg=(await call(a,'GET','/api/settings')).body;assert.strictEqual(cfg.send_per_day,35);assert.strictEqual(cfg.write_every_minutes,10);
+    assert.strictEqual(by(2).status,'done');assert.strictEqual(by(2).result.action,'written');
+    assert.strictEqual(by(3).status,'done');assert.ok(Date.parse(by(3).result.fast_until)>Date.now()+14*60000);
+    assert.strictEqual(by(4).status,'failed');assert.match(by(4).result.error,/Not changeable/);
+    assert.strictEqual(by(5).status,'expired');
+    const log=(await call(a,'GET','/api/logs?type=settings')).body.items;
+    assert.ok(log.some(e=>e.message.includes('send_per_day 0 -> 35')&&e.message.includes('Matas')));
+  }finally{a.close();}
+});
