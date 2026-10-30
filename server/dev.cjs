@@ -167,7 +167,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       return {action:'failed',reason:e.message};
     }
   }
-  // Commands from the hosted page (via the commands table): change settings, run a job now, or fast
+  // Commands from the hosted page (via the commands table): change settings, run a job now, remove a
+  // Queue 2 draft, or fast
   // mode, in which the writer runs every minute and the mirror syncs every 10 s so the page shows
   // it live. Sending is never faster than auto-send allows. Commands older than 15 minutes expire,
   // so nothing surprising happens when the computer comes back after a long time offline.
@@ -206,6 +207,13 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     if(c.kind==='run'){
       if(!REMOTE_JOBS.includes(p.job))fail(422,'Unknown job: '+p.job);
       return ['done',await runJob(p.job,by)];
+    }
+    // Remove an unsent draft from Queue 2 (its Queue 1 item does not come back).
+    if(c.kind==='discard'){
+      const id=Number(p.queue2_id);if(!Number.isInteger(id))fail(422,'queue2_id must be a number');
+      const r=await internal('POST',`/api/agent/queue2/${id}/discard`,{});
+      if(r.status!==200)fail(r.status,JSON.parse(r.body||'{}').error||'Could not remove it');
+      return ['done',{removed:id}];
     }
     if(c.kind==='api'){
       const method=String(p.method||'GET').toUpperCase(),u=new URL(String(p.path||''),'http://x');

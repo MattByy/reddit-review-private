@@ -115,3 +115,23 @@ test('the hosted Prompts page: snapshots of the page and its data, and changes a
     assert.ok(!/gnk_[A-Za-z0-9_-]{20,}/.test(log),'the activity log never holds the new key');
   }finally{a.close();}
 });
+
+test('removing a Queue 2 draft from the hosted page',async()=>{
+  const done=[];let list=[];
+  const fetchImpl=async(url,opts)=>{
+    if(opts.method==='GET'&&url.includes('/commands?')){const r=list;list=[];return new Response(JSON.stringify(r),{status:200});}
+    const m=/commands\?id=eq\.(\d+)/.exec(url);if(opts.method==='PATCH'&&m)done.push({id:Number(m[1]),...JSON.parse(opts.body)});
+    return new Response('',{status:201});
+  };
+  const a=app({url:'https://x.supabase.co',key:'k',fetchImpl});
+  try{
+    await ready(a);
+    const id=(await call(a,'POST','/api/cron/writer',{})).body.queue2_id;
+    const now=new Date().toISOString();
+    list=[{id:1,at:now,by:'matas',kind:'discard',payload:{queue2_id:id}},{id:2,at:now,by:'matas',kind:'discard',payload:{queue2_id:id}}];
+    await call(a,'POST','/api/cron/commands',{});
+    assert.strictEqual(done.find(d=>d.id===1).status,'done');
+    assert.strictEqual((await call(a,'GET','/api/agent/queue2/'+id)).status,404,'gone from Queue 2');
+    assert.strictEqual(done.find(d=>d.id===2).status,'failed','removing it twice is reported, not hidden');
+  }finally{a.close();}
+});

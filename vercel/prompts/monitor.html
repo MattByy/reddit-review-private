@@ -52,6 +52,8 @@ main.wrap{padding-top:22px;padding-bottom:80px}
 .item{padding:13px 16px;border-top:1px solid var(--line)}.item:first-child{border-top:0}
 .item .h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
 .item .title{font-weight:600;margin-top:3px;overflow-wrap:anywhere}
+.item .rm{margin-left:auto}
+.item.removing{opacity:.4;pointer-events:none}
 .item .msg{margin-top:6px;padding:9px 11px;background:var(--chip);border-radius:9px;white-space:pre-wrap;overflow-wrap:anywhere}
 .k{font-size:11px;font-weight:650;padding:1px 7px;border-radius:99px;background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent)}
 .s-good{color:var(--good)}.s-bad{color:var(--bad)}.s-warn{color:var(--warn)}
@@ -151,7 +153,7 @@ function render(){
   $('#stale').textContent=synced?`The always-on computer has not synced for ${dur(Math.round(age))}. Is the server running and online?`:'Nothing has reached Supabase yet. Start the server with the Supabase keys in .env.local.';
 
   const q2=data.queue2,today=warsawDayStart();
-  const waiting=q2.filter(r=>WAITING.has(r.send_status)),sent=q2.filter(r=>r.engain_task_id||r.send_status==='failed');
+  const waiting=q2.filter(r=>WAITING.has(r.send_status)&&!removing.has(r.id)),sent=q2.filter(r=>r.engain_task_id||r.send_status==='failed');
   const sentToday=q2.filter(r=>r.engain_task_id&&Date.parse(r.sent_at)>=today).length;
   const published=q2.filter(r=>r.published_at||/^(approved|published|completed)$/i.test(r.engain_status||'')).length;
   const s=st?.data?.settings||{};
@@ -194,7 +196,8 @@ function itemsView(rows,kind){
   if(!rows.length)return `<div class="panel empty">${kind==='sent'?'Nothing sent yet.':'Queue 2 is empty. The writer adds a draft every few minutes.'}</div>`;
   return `<div class="panel list">${rows.map(r=>`<div class="item">
     <div class="h"><span class="k">${r.kind==='thread'?'Comment':r.kind==='comment'?'Reply':esc(r.kind)}</span>${sub(r)}<span>#${r.id}</span><span>${statusOf(r)}</span>
-      ${r.model?`<span class="mono">${esc(r.model.split('/').pop())}</span>`:''}${r.prompt_variant_slug?`<span>${esc(r.prompt_variant_slug)}</span>`:''}</div>
+      ${r.model?`<span class="mono">${esc(r.model.split('/').pop())}</span>`:''}${r.prompt_variant_slug?`<span>${esc(r.prompt_variant_slug)}</span>`:''}
+      ${kind==='queue2'&&r.send_status!=='sending'?`<button class="ghost sm rm" data-discard="${r.id}">Remove</button>`:''}</div>
     <div class="title"><a href="${esc(r.thread_url||r.url)}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></div>
     ${r.message?`<div class="msg">${esc(r.message)}</div>`:''}
     ${r.reddit_url?`<div class="small" style="margin-top:6px"><a href="${esc(r.reddit_url)}" target="_blank" rel="noopener">View on Reddit →</a></div>`:''}
@@ -218,13 +221,15 @@ async function loadOlder(){
 }
 // Controls: each change becomes a command in Supabase; the computer applies it within ~10 s.
 let controlsDirty=false,fastPoll=null;
+// Drafts removed on this page stay hidden while the computer catches up.
+const removing=new Set();
 const pendingCmds=()=>(data?.commands||[]).filter(c=>c.status==='pending');
 function renderControls(st){
   const s=st?.data?.settings,box=$('#controls');
   if(!s){box.innerHTML='<h2>Controls</h2><p class="muted small">Waiting for the computer to sync its settings.</p>';return;}
   const fu=st.data.fast_until&&Date.parse(st.data.fast_until)>Date.now()?Date.parse(st.data.fast_until):0;
   const num=(id,v,min,max)=>`<input type="number" id="${id}" value="${v}" min="${min}" max="${max}" step="1">`;
-  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
+  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='discard'?'Remove draft #'+p.queue2_id:c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
   const cmdState=c=>c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?`<span class="s-good">done</span>${c.result?.action?' · '+esc(c.result.action)+(c.result.reason?': '+esc(c.result.reason):''):''}`:
     `<span class="s-bad">${esc(c.status)}</span>${c.result?.error||c.result?.reason?' · '+esc(c.result.error||c.result.reason):''}`;
   box.innerHTML=`<div class="crow"><span class="name">Writer</span>
@@ -267,6 +272,9 @@ document.addEventListener('click',e=>{
   if(e.target.id==='c_save'){const w=wanted();if(Object.keys(w).length){if(w.send_per_day>0&&!data.status.data.settings.send_per_day&&!confirm(`Turn on auto-send: ${w.send_per_day} messages a day to Engain?`))return;command('settings',w);}}
   const r=e.target.closest('[data-run]');
   if(r){if(r.dataset.run==='sender'&&!confirm('Send one message to Engain now (if auto-send is on and it is within the sending hours)?'))return;command('run',{job:r.dataset.run});}
+  const d=e.target.closest('[data-discard]');
+  if(d){const id=Number(d.dataset.discard);if(!confirm(`Remove draft #${id} from Queue 2? It will not be sent.`))return;
+    removing.add(id);d.closest('.item').classList.add('removing');command('discard',{queue2_id:id});}
   if(e.target.id==='c_fast'){const on=e.target.classList.contains('fast-on');command('fast',{minutes:on?0:15});}
 });
 function alertBox(m){$('#stale').hidden=false;$('#stale').textContent=m;}
