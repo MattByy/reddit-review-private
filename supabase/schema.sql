@@ -53,6 +53,11 @@ create table if not exists events (
 );
 create index if not exists events_at on events (at desc);
 
+-- API keys of the always-on computer (sha256 hashes only), checked by the hosted page.
+create table if not exists api_keys (
+  id text primary key, name text not null, scope text not null, prefix text not null, hash text not null unique,
+  created_at timestamptz, revoked_at timestamptz);
+
 -- One row: jobs, settings and counts, as of synced_at.
 create table if not exists status (
   id text primary key,
@@ -64,3 +69,4 @@ alter table queue1 enable row level security;
 alter table queue2 enable row level security;
 alter table events enable row level security;
 alter table status enable row level security;
+alter table api_keys enable row level security;

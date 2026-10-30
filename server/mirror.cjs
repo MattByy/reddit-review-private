@@ -30,6 +30,10 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
       created_at:r.created_at,written_at:r.written_at,sent_at:r.sent_at,published_at:r.published_at,updated_at:r.updated_at}));
     await upsert('queue2',q2);await prune('queue2','id',q2.map(r=>r.id));
 
+    // Key hashes (never the keys), so the hosted page accepts the same keys and honours revoking.
+    const keys=store.db.prepare('select id,name,scope,prefix,hash,created_at,revoked_at from api_keys').all();
+    await upsert('api_keys',keys);await prune('api_keys','id',keys.map(k=>k.id));
+
     // Events only grow: send the ones after the last id that reached Supabase.
     const state=store.kv('mirror_state')||{events_id:0};
     const ev=store.db.prepare('select * from events where id>? order by id limit 5000').all(state.events_id).map(e=>({...e,data:json(e.data)}));

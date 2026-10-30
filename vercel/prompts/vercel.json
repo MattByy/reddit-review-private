@@ -1,10 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/", "destination": "/api/forward?p=/prompts" },
+    { "source": "/", "destination": "/monitor.html" },
+    { "source": "/monitor", "destination": "/monitor.html" },
     { "source": "/prompts", "destination": "/api/forward?p=/prompts" },
     { "source": "/docs/prompts-api", "destination": "/api/forward?p=/docs/prompts-api" },
-    { "source": "/api/:path((?!forward$).*)", "destination": "/api/forward?p=/api/:path" }
+    { "source": "/api/:path((?!forward$|monitor$).*)", "destination": "/api/forward?p=/api/:path" }
   ],
-  "functions": { "api/forward.js": { "maxDuration": 120 } }
+  "functions": { "api/forward.js": { "maxDuration": 120 }, "api/monitor.js": { "maxDuration": 30 } }
 }

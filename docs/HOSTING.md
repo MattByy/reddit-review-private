@@ -32,6 +32,8 @@ Keep it running. On macOS, a `launchd` agent or simply `caffeinate -s npm run de
 
 Every minute the server then copies Queue 1, Queue 2, new activity-log events and a status row (jobs, settings, counts) to Supabase. It only writes; nothing is read back, and the computer keeps working if Supabase is down. `GET /api/mirror` shows the last sync, and `POST /api/cron/mirror` syncs now. The tables have row level security with no policies, so only the service key can read them.
 
+**Hosted monitor.** https://geonode-prompts.vercel.app shows Queue 1, Queue 2 (with the drafts), what was sent and its Engain status, the jobs and the activity log, read from the Supabase mirror. It refreshes every 30 seconds and warns when the computer has not synced for 3 minutes. Sign in with an **Everything** key from the Prompts page; the mirror copies the key hashes, so revoking a key locks it out within a minute. It needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` on the Vercel project (set), not the tunnel.
+
 ## 2. Give it a public address (tunnel)
 
 ngrok is installed on the dev Mac. A free account includes one fixed domain:
