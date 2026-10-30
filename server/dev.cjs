@@ -15,6 +15,7 @@ const queue=require('./queue.cjs');
 const writer=require('./writer.cjs');
 const tracker=require('./tracker.cjs');
 const bench=require('./bench.cjs');
+const {mirror}=require('./mirror.cjs');
 
 const LOOPBACK=new Set(['127.0.0.1','::1','::ffff:127.0.0.1']);
 // A tunnel (ngrok, Cloudflare, Tailscale Funnel) or the Vercel proxy connects from this machine too,
@@ -26,7 +27,7 @@ const bearer=(req,secret)=>timingSafeEqual(digest(String(req.headers?.authorizat
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
 function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectId=process.env.ENGAIN_PROJECT_ID,
-  agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,openrouter={},log=console.log}={}){
+  agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,openrouter={},supabase={},log=console.log}={}){
   // Writer settings; tests pass {fetchImpl,apiKey,featherlessKey}. Defaults come from the environment.
   const writerOpts={...openrouter};
   const llmKeys=()=>({openrouter:writerOpts.apiKey??process.env.OPENROUTER_API_KEY,featherless:writerOpts.featherlessKey??process.env.FEATHERLESS_API_KEY});
@@ -149,6 +150,22 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     const item=queue.queue2Item(store,id);
     return {action:item?item.write_status:'skipped',queue2_id:id,kind:r.queue2.kind??item?.status??null,model:item?.model??null,ready:waiting+(sendable(item)?1:0)};
   };
+  // Supabase mirror (server/mirror.cjs), every minute while the scheduler runs. Off without its keys.
+  // Logs only when it starts failing or recovers, not every minute.
+  const mir=mirror(supabase);
+  async function syncMirror(){
+    if(!mir)return {action:'off',reason:'SUPABASE_URL and SUPABASE_SERVICE_KEY are not set'};
+    const was=store.kv('mirror_last');
+    try{
+      const r=await mir.sync(store,{jobs:jobStatus()});store.setKv('mirror_last',{ok:true,...r});
+      if(was&&!was.ok)log('Supabase mirror working again');
+      return {action:'synced',...r};
+    }catch(e){
+      store.setKv('mirror_last',{ok:false,at:new Date().toISOString(),error:e.message});
+      if(!was||was.ok||was.error!==e.message)log('Supabase mirror failed: '+e.message);
+      return {action:'failed',reason:e.message};
+    }
+  }
   const running={};
   // source says who started it: the scheduler, a cron call, the dashboard or fast mode ("fast_mode #3").
   async function runJob(name,source='schedule'){
@@ -180,6 +197,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     plan('threads',every('threads_every_minutes'),8000);
     plan('tracker',every('tracker_every_minutes'),5000);
     plan('sender',()=>queue.senderDelay(queue.settings(store)),20000);
+    if(mir){const tick=()=>{timers.mirror=setTimeout(async()=>{await syncMirror();tick();},60000);};syncMirror().then(tick);}
     plan('writer',()=>(queue.settings(store).write_every_minutes||10)*60000,30000);
     const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min, `+
       (c.write_every_minutes?`writer every ${c.write_every_minutes} min, `:'writer off, ')+(c.send_per_day?`auto-send ${c.send_per_day} a day between ${c.send_from_hour}:00 and ${c.send_to_hour}:00 Warsaw time`:'auto-send off'));
@@ -395,6 +413,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     'POST /api/cron/tracker':async(_,body)=>runJob('tracker',jobSource(body)),
     'POST /api/cron/sender':async(_,body)=>runJob('sender',jobSource(body)),
     'POST /api/cron/writer':async(_,body)=>runJob('writer',jobSource(body)),
+    'POST /api/cron/mirror':async()=>syncMirror(),
+    'GET /api/mirror':async()=>({configured:!!mir,last:store.kv('mirror_last')}),
     // The tracking list and its counts over the last ?days= days (default 7, 0 = all time).
     'GET /api/sent':async q=>tracker.sentView(store,{days:q.days??7}),
     'GET /api/send-log':async q=>queue.sendLog(store,q),

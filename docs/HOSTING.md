@@ -26,6 +26,12 @@ Keep it running. On macOS, a `launchd` agent or simply `caffeinate -s npm run de
 
 **Auto-send** is off until you turn it on. On the dashboard, under settings, set **Auto-send per day** (for example 35). The server then sends that many a day by itself, spread over 9:00–17:00 Warsaw time. Each run sends one ready Queue 2 draft, or drafts the next Queue 1 item and sends it. No browser tab needs to stay open. Set it back to 0 to stop.
 
+**Supabase mirror (optional).** To follow everything on a hosted page:
+1. Run `supabase/schema.sql` once in the Supabase SQL editor.
+2. Add `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (the service role key) to `.env.local` and restart.
+
+Every minute the server then copies Queue 1, Queue 2, new activity-log events and a status row (jobs, settings, counts) to Supabase. It only writes; nothing is read back, and the computer keeps working if Supabase is down. `GET /api/mirror` shows the last sync, and `POST /api/cron/mirror` syncs now. The tables have row level security with no policies, so only the service key can read them.
+
 ## 2. Give it a public address (tunnel)
 
 ngrok is installed on the dev Mac. A free account includes one fixed domain:
