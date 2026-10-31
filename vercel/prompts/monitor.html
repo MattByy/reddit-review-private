@@ -384,9 +384,14 @@ function renderOrgs(){
   const orgs=data?.you?.orgs||[],sel=$('#orgsel');
   $('#orgname').textContent=data?.org?.name||'Monitor';document.title=(data?.org?.name||'')+' · Monitor';
   sel.hidden=orgs.length<2&&!data?.you?.owner;
-  sel.innerHTML=orgs.map(o=>`<option value="${esc(o.slug)}" ${o.slug===data?.org?.slug?'selected':''}>${esc(o.name)} (${esc(o.role)})</option>`).join('');
+  sel.innerHTML=orgs.map(o=>`<option value="${esc(o.slug)}" ${o.slug===data?.org?.slug?'selected':''}>${esc(o.name)} (${esc(o.role)})</option>`).join('')
+    +(data?.you?.owner?'<option value="__add">+ Add organization…</option>':'');
 }
-$('#orgsel').onchange=e=>{setOrg(e.target.value);selected.clear();editing.clear();removing.clear();team=null;load();};
+$('#orgsel').onchange=e=>{
+  // "+ Add organization…" opens the form on the Organization tab instead of switching.
+  if(e.target.value==='__add'){e.target.value=data.org.slug;tab='org';localSet('gn_monitor_tab',tab);render();
+    setTimeout(()=>{$('#no_name')?.scrollIntoView({behavior:'smooth',block:'center'});$('#no_name')?.focus();},300);return;}
+  setOrg(e.target.value);selected.clear();editing.clear();removing.clear();team=null;load();};
 
 // The Organization tab: members, invites and settings for admins; adding organizations for owners.
 let team=null,teamBusy=false,lastLink=null;
