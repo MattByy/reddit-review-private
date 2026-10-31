@@ -189,7 +189,7 @@ test('update pulls only a clean fast-forward, after the command is marked done; 
     if(c==='status --porcelain --untracked-files=no')return dirty;if(c==='rev-list --count HEAD..origin/main')return '2';
     if(c==='diff --name-only HEAD origin/main')return 'server/writer.cjs\nvercel/prompts/monitor.html';
     if(c==='merge --ff-only origin/main'){head='bbb2222';return '';}return '';};
-  const {a,run,status}=commandRig({git,canRestart:true,restart:()=>restarts++});
+  const {a,run,status}=commandRig({git,restart:Object.assign(()=>{restarts++;},{mode:'watch'})});
   try{
     dirty=' M server/dev.cjs';
     const blocked=await run('update',{});
@@ -202,7 +202,7 @@ test('update pulls only a clean fast-forward, after the command is marked done; 
     const r=await run('restart',{});
     assert.strictEqual(r.status,'done');assert.strictEqual(restarts,1);
   }finally{a.close();}
-  const plain=commandRig({git,canRestart:false,restart:()=>restarts++});
+  const plain=commandRig({git,restart:null});
   try{assert.strictEqual((await plain.run('restart',{})).status,'failed');assert.strictEqual(restarts,1);}finally{plain.a.close();}
 });
 
@@ -238,5 +238,18 @@ test('edit from the hosted page: the draft is sent as written, a sent one cannot
     assert.strictEqual((await run('batch',{action:'retry',queue2_ids:[id]})).result.done,1);
     const back=a.store.queue2(id);assert.strictEqual(back.send_status,'ready');assert.strictEqual(back.engain_task_id,null);
     assert.ok(a.store.events({type:'queue2.retry',limit:5}).some(x=>x.data?.old_task_id===task),'the old task is kept in the log');
+  }finally{a.close();}
+});
+
+test('update outside watch mode restarts the server itself after the merge',async()=>{
+  let head='aaa1111';const order=[];
+  const git=args=>{const c=args.join(' ');if(c==='rev-parse --short HEAD')return head;if(c==='rev-parse --short origin/main')return 'bbb2222';
+    if(c==='rev-list --count HEAD..origin/main')return '1';if(c==='diff --name-only HEAD origin/main')return 'server/dev.cjs';
+    if(c==='merge --ff-only origin/main'){order.push('merge');head='bbb2222';}return '';};
+  const {a,run,status}=commandRig({git,restart:Object.assign(async()=>{order.push('restart');},{mode:'respawn'})});
+  try{
+    const u=await run('update',{});
+    assert.strictEqual(u.result.restarts,true);assert.deepStrictEqual(order,['merge','restart']);
+    assert.strictEqual(status.at(-1).data.server.restart_mode,'respawn');
   }finally{a.close();}
 });

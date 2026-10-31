@@ -292,9 +292,10 @@ function renderControls(st){
       <button class="ghost" data-run="threads">Collect threads now</button>
       <button class="${fu?'fast-on':'ghost'}" id="c_fast">${fu?`Fast mode · ${Math.max(1,Math.ceil((fu-Date.now())/60000))} min left · Stop`:'Fast mode (15 min)'}</button>
     </div>
-    <div class="srv"><span class="name">Server</span>${srv.commit?`<span class="mono">${esc(srv.commit)}</span>`:''}<span class="muted">${srv.started_at?'started '+ago(srv.started_at):'version unknown (update the server once by hand)'}</span>
+    <div class="srv"><span class="name">Server</span>${srv.commit?`<span class="mono" title="The code this server is running">running ${esc(srv.commit)}</span>`:''}<span class="muted">${srv.started_at?'started '+ago(srv.started_at):'version unknown (update the server once by hand)'}</span>
+      ${srv.disk_commit&&srv.commit&&srv.disk_commit!==srv.commit?`<span class="s-warn">${esc(srv.disk_commit)} is pulled but not running yet: Restart</span>`:''}
       <button class="ghost sm" id="c_update">Update from GitHub</button>
-      <button class="ghost sm" id="c_restart" ${srv.can_restart===false?'disabled title="Started without npm run dev, so it cannot restart itself"':''}>Restart</button></div>
+      <button class="ghost sm" id="c_restart" ${srv.can_restart===false?'disabled title="This server cannot restart itself; restart it by hand once to get the version that can"':''}>Restart</button></div>
     <div class="cmds">${(data.commands||[]).slice(0,5).map(c=>`<div>${ago(c.at)} · ${esc(cmdText(c))} · ${cmdState(c)}</div>`).join('')}</div>`;
 }
 function wanted(){

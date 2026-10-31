@@ -30,8 +30,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,openrouter={},supabase={},log=console.log,
   // Update & restart from the hosted page; tests pass fakes. git(args) returns stdout and throws on failure.
   git=args=>require('node:child_process').execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000}).trim(),
-  // `npm run dev` runs under node --watch-path=server, which restarts on any change in server/; outside it nothing can restart us.
-  canRestart=!!process.env.WATCH_REPORT_DEPENDENCIES,restart=()=>fs.writeFileSync(path.join(__dirname,'.restart'),new Date().toISOString())}={}){
+  // How the server restarts itself (restartMode below); the entry point at the bottom passes the real one.
+  restart=null}={}){
+  const canRestart=!!restart;
   // Writer settings; tests pass {fetchImpl,apiKey,featherlessKey}. Defaults come from the environment.
   const writerOpts={...openrouter};
   const llmKeys=()=>({openrouter:writerOpts.apiKey??process.env.OPENROUTER_API_KEY,featherless:writerOpts.featherlessKey??process.env.FEATHERLESS_API_KEY});
@@ -41,7 +42,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   const keepDays=Number(process.env.LOG_KEEP_DAYS)||30;store.pruneEvents(keepDays);
   writer.backfillSlugs(store);
   let commit=null;try{commit=git(['rev-parse','--short','HEAD']);}catch{}
-  const server={commit,started_at:new Date().toISOString(),can_restart:canRestart};
+  const server={commit,started_at:new Date().toISOString(),can_restart:canRestart,restart_mode:restart?.mode??null};
+  // The code on disk can be newer than what runs (pulled but not restarted); the page shows the difference.
+  const diskCommit=()=>{try{return git(['rev-parse','--short','HEAD']);}catch{return null;}};
   store.event('server.started',`Server started (${mock?'mock':'live'} Engain${commit?', commit '+commit:''})`,{mock,keep_log_days:keepDays,commit,can_restart:canRestart});
   const engain=client(mock?{apiKey:'mock',fetchImpl:require('./mock.cjs').mockFetch,limits:false,log}:{apiKey,log});
   const live=new Map();let active=null,projectName=null;
@@ -169,7 +172,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     if(!mir)return {action:'off',reason:'SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_SECRET_SERVICE_ROLE) are not set'};
     const was=store.kv('mirror_last');
     try{
-      const r=await mir.sync(store,{jobs:jobStatus(),server,fast_until:fastUntil>Date.now()?new Date(fastUntil).toISOString():null});
+      const r=await mir.sync(store,{jobs:jobStatus(),server:{...server,disk_commit:diskCommit()},fast_until:fastUntil>Date.now()?new Date(fastUntil).toISOString():null});
       await sendSnapshots();await mir.scrub();store.setKv('mirror_last',{ok:true,...r});
       if(was&&!was.ok)log('Supabase mirror working again');
       return {action:'synced',...r};
@@ -270,12 +273,16 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       if(git(['status','--porcelain','--untracked-files=no']))fail(409,'This computer has uncommitted changes to tracked files. Nothing changed.');
       const commits=Number(git(['rev-list','--count','HEAD..origin/main'])),files=git(['diff','--name-only','HEAD','origin/main']).split('\n').filter(Boolean);
       const restarts=canRestart&&files.some(f=>f.startsWith('server/'));
+      // Watch mode restarts on its own when server/ changes; any other mode is restarted here.
       store.event('server.update',`Updating ${from} -> ${to} (${commits} commits) for ${by}${restarts?'; the server restarts':''}`,{by,from,to,commits,files});
       return ['done',{from,to,commits,restarts,note:restarts?'Updated; the server restarts now':files.some(f=>f.startsWith('server/'))?'Updated, but this server cannot restart itself: restart npm run dev by hand':'Updated; no server code changed, so no restart'},
-        async()=>{try{git(['merge','--ff-only','origin/main']);}catch(e){store.event('server.update_failed',`Update to ${to} failed: ${e.message}`,{from,to,error:e.message});}}];
+        async()=>{
+          try{git(['merge','--ff-only','origin/main']);}catch(e){store.event('server.update_failed',`Update to ${to} failed: ${e.message}`,{from,to,error:e.message});return;}
+          if(restarts&&restart.mode!=='watch')await restart();
+        }];
     }
     if(c.kind==='restart'){
-      if(!canRestart)fail(409,'This server was not started with npm run dev (watch mode), so it cannot restart itself');
+      if(!canRestart)fail(409,'This server cannot restart itself');
       store.event('server.restart',`Restart requested by ${by}`,{by});
       return ['done',{note:'Restarting'},async()=>restart()];
     }
@@ -723,14 +730,35 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   return {handle,store,engain,runJob,startScheduler,close:()=>{for(const t of Object.values(timers))clearTimeout(t);store.close();}};
 }
 
+// How this process restarts itself, for the hosted page's Restart and Update buttons:
+// - watch: `npm run dev` runs under node --watch-path=server, which restarts on any change in server/.
+// - exit: under pm2 or systemd, exit and let them start it again.
+// - respawn: otherwise start the same command again, detached, 2 s later (so the two never overlap),
+//   with its output in .data/server.log, and exit.
+function restartMode(getListener){
+  const mode=process.env.WATCH_REPORT_DEPENDENCIES?'watch':(process.env.pm_id!=null||process.env.INVOCATION_ID)?'exit':'respawn';
+  const restart=async()=>{
+    if(mode==='watch')return fs.writeFileSync(path.join(__dirname,'.restart'),new Date().toISOString());
+    await new Promise(z=>{const l=getListener();l?l.close(()=>z()):z();setTimeout(z,3000);});
+    if(mode==='respawn'){
+      const {spawn}=require('node:child_process'),out=fs.openSync(path.join(root,'.data','server.log'),'a');
+      const cmd=[process.execPath,...process.execArgv,...process.argv.slice(1)].map(a=>`'${String(a).replace(/'/g,`'\\''`)}'`).join(' ');
+      spawn('/bin/sh',['-c','sleep 2; exec '+cmd],{cwd:process.cwd(),env:process.env,detached:true,stdio:['ignore',out,out]}).unref();
+    }
+    process.exit(mode==='exit'?1:0);
+  };
+  return Object.assign(restart,{mode});
+}
+
 if(require.main===module){
   const mock=process.argv.includes('--mock')||process.env.ENGAIN_MOCK==='1';
   const host=process.env.HOST||'127.0.0.1',port=Number(process.env.PORT||3000);
   if(!LOOPBACK.has(host)&&host!=='localhost'&&(!process.env.AGENT_API_KEY||!process.env.CRON_SECRET)){
     console.error('Refusing to listen on '+host+': set AGENT_API_KEY and CRON_SECRET first.');process.exit(1);
   }
-  const app=createApp({mock});
-  http.createServer(app.handle).listen(port,host,()=>{
+  let listener=null;
+  const app=createApp({mock,restart:restartMode(()=>listener)});
+  listener=http.createServer(app.handle).listen(port,host,()=>{
     console.log(`Thread collector running at http://${host}:${port}  (${mock?'MOCK Engain data':'live Engain API'})`);
     if(!mock&&!process.env.ENGAIN_API_KEY)console.log('  ENGAIN_API_KEY is missing: add it to .env.local, or use npm run dev:mock');
     // JOBS=off leaves scheduling to an outside cron calling /api/cron/threads and /api/cron/comments.
@@ -738,4 +766,4 @@ if(require.main===module){
   });
 }
 
-module.exports={createApp};
+module.exports={createApp,restartMode};
