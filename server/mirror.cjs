@@ -62,7 +62,8 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
   const scrub=()=>rest('PATCH',`commands?kind=eq.api&done_at=lt.${new Date(Date.now()-120000).toISOString()}&result->>body=not.is.null`,{result:null},'return=minimal');
   const putSnapshots=rows=>upsert('snapshots',rows.map(r=>({...r,synced_at:new Date().toISOString()})));
   // The organizations this computer runs, for the hosted page's list (never their Engain keys).
-  const putOrganizations=rows=>rest('POST','organizations',rows,'resolution=merge-duplicates,return=minimal');
+  // One request per row: PostgREST needs every row of a batch to have the same keys, and Geonode's has fewer.
+  const putOrganizations=async rows=>{for(const r of rows)await rest('POST','organizations',[r],'resolution=merge-duplicates,return=minimal');};
   return {sync,pending,finish,putSnapshots,scrub,scrubPayload,putOrganizations,org};
 }
 

@@ -61,8 +61,9 @@ test('adding an organization: key checked, own engine and database, Geonode prom
     const scrub=r.sb.done.find(x=>x.id===1&&x.payload);assert.deepStrictEqual(scrub.payload,{slug:null,name:'Zenshield'});
     await r.orgs.engines.get('geonode').syncMirror();await zen.syncMirror();
     assert.ok(!JSON.stringify(r.sb.writes).includes('engain-zen-key-123'),'no Engain key in anything written to Supabase');
-    const listed=r.sb.writes.filter(w=>w.url.endsWith('/organizations')).at(-1).body;
-    assert.deepStrictEqual(listed.map(o=>o.slug),['geonode','zenshield']);
+    // One row per request (PostgREST refuses a batch whose rows have different keys).
+    const listed=r.sb.writes.filter(w=>w.url.endsWith('/organizations')).slice(-2).map(w=>w.body);
+    assert.ok(listed.every(b=>b.length===1));assert.deepStrictEqual(listed.map(b=>b[0].slug),['geonode','zenshield']);
     // Rows from each engine carry its organization.
     assert.ok(r.sb.writes.some(w=>w.url.endsWith('/status')&&w.body[0].org==='zenshield'&&w.body[0].id==='zenshield'));
   }finally{r.close();}
