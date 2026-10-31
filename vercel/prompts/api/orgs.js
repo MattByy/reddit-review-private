@@ -6,7 +6,7 @@
 //   revoke_invite {org, id}             admin
 //   set_role {org, username, role}      admin
 //   remove_member {org, username}       admin
-//   create_org {name, engain_key, about?, topic_terms?, brand_terms?}            owner
+//   create_org {name, engain_key?, about?, topic_terms?, brand_terms?}           owner (no key: Geonode's)
 //   update_org {org, name?, about?, topic_terms?, brand_terms?, engain_key?}     admin (not Geonode)
 // Adding or changing an organization is done by the always-on computer (an org.* command), which
 // checks the Engain key with Engain and keeps it; the key is wiped from Supabase once it is done.
@@ -48,8 +48,9 @@ module.exports=async(req,res)=>{
       if(!me.owner)return reply(403,{error:'Only an owner can add organizations'});
       const name=text(b.name,60),key=text(b.engain_key,300);
       if(!name||name.length<2)return reply(422,{error:'Give the organization a name (2 to 60 characters)'});
-      if(!key||key.length<10)return reply(422,{error:'Give the organization\'s Engain API key'});
-      const payload={name,engain_key:key,about:text(b.about,200)||'',topic_terms:terms(b.topic_terms)||'',brand_terms:terms(b.brand_terms)||''};
+      if(key&&key.length<10)return reply(422,{error:'That Engain key is too short'});
+      // No key: the computer uses Geonode's (another project of the same Engain account).
+      const payload={name,engain_key:key||'',about:text(b.about,200)||'',topic_terms:terms(b.topic_terms)||'',brand_terms:terms(b.brand_terms)||''};
       const [c]=await db('commands',{body:{by:me.name,kind:'org.create',payload,org:'geonode'}});
       return reply(200,{command:{id:c.id,status:c.status},note:'The always-on computer checks the key with Engain and starts the organization within a few seconds.'});
     }

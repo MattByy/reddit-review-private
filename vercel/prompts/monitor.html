@@ -426,8 +426,8 @@ function orgView(){
   }
   if(owner)parts.push(`<div class="panel"><h3>Add an organization</h3>
     <div class="rowf"><input type="text" id="no_name" placeholder="Name, e.g. Zenshield"><input type="text" id="no_about" placeholder="What it sells, e.g. endpoint security for small teams"></div>
-    <div class="rowf"><input type="password" id="no_key" placeholder="Its Engain API key" autocomplete="off"><input type="text" id="no_topic" placeholder="Topic words, comma separated (optional)"></div>
-    <div class="rowf"><button class="sm" id="no_go">Add organization</button><span class="muted small">The always-on computer checks the key with Engain, keeps it, and starts the organization with a copy of Geonode's prompts (its name swapped in).</span></div>
+    <div class="rowf"><input type="password" id="no_key" placeholder="Engain API key (empty: use Geonode's, same account)" autocomplete="off"><input type="text" id="no_topic" placeholder="Topic words, comma separated (optional)"></div>
+    <div class="rowf"><button class="sm" id="no_go">Add organization</button><span class="muted small">The always-on computer checks the key with Engain and uses the project named like the organization. Without a key it uses Geonode's (fine when it is another project of the same Engain account). It starts with a copy of Geonode's prompts, its name swapped in.</span></div>
     ${team.changes?.length?`<div class="cmds">${team.changes.map(c=>`<div>${ago(c.at)} · ${esc(c.kind==='org.create'?'Add '+(c.payload?.name||''):'Change '+(c.payload?.name||c.payload?.slug||''))} · ${c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?'<span class="s-good">done</span>':`<span class="s-bad">${esc(c.status)}</span> · ${esc(c.result?.error||'')}`}</div>`).join('')}</div>`:''}</div>`);
   v.innerHTML=`<div class="team">${parts.join('')}</div>`;
 }
@@ -446,7 +446,7 @@ document.addEventListener('click',e=>{
   const rm=e.target.closest('[data-rmuser]');if(rm&&confirm(`Remove ${rm.dataset.rmuser} from ${data.org.name}?`))teamDo({action:'remove_member',org:data.org.slug,username:rm.dataset.rmuser});
   if(id==='os_save')teamDo({action:'update_org',org:data.org.slug,name:$('#os_name').value,about:$('#os_about').value,brand_terms:$('#os_brand').value,topic_terms:$('#os_topic').value,engain_key:$('#os_key').value||undefined},
     ()=>alertBox('Saved. The always-on computer applies it within a few seconds.'));
-  if(id==='no_go'){const name=$('#no_name').value.trim(),key=$('#no_key').value.trim();if(!name||!key)return alertBox('Give a name and the Engain key.');
+  if(id==='no_go'){const name=$('#no_name').value.trim(),key=$('#no_key').value.trim();if(!name)return alertBox('Give the organization a name.');
     teamDo({action:'create_org',name,about:$('#no_about').value,engain_key:key,topic_terms:$('#no_topic').value},()=>{
       alertBox(`Adding ${name}: the always-on computer checks the key and starts it. It appears in the organization menu within a minute.`);
       let n=0;const t=setInterval(async()=>{await loadTeam();await load();if(++n>12||!(team.changes||[]).some(c=>c.status==='pending'))clearInterval(t);},5000);});}

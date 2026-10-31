@@ -104,3 +104,18 @@ test('organizations keep separate queues; /o/<slug>/ reaches one; a new key rest
     finally{again.close();}
   }finally{fs.rmSync(r.dir,{recursive:true,force:true});}
 });
+
+test('without a key an organization uses Geonode\'s, on the project named like it; never Geonode\'s own project',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'orgs-')),used=[];
+  const projects=[{id:'p_geo',name:'geonode.com'},{id:'p_zen',name:'zenshield.com'},{id:'p_exp',name:'expedify.com'}];
+  const orgs=organizations({createApp:o=>{used.push(o.apiKey);return createApp({...o,dbFile:o.dbFile||':memory:',agentKey:'',cronSecret:''});},dir,mock:true,log:()=>{},
+    sharedKey:'engain-geonode-key',checkKey:async k=>{assert.strictEqual(k,'engain-geonode-key');return projects;}});
+  try{
+    const r=await orgs.host['org.create']({name:'Zenshield',engain_key:''},'matas');
+    assert.strictEqual(r.project,'zenshield.com');assert.strictEqual(r.key,"Geonode's");
+    const o=JSON.parse(fs.readFileSync(path.join(dir,'orgs.json'),'utf8')).orgs[0];
+    assert.strictEqual(o.engain_key,null,'no copy of the shared key');assert.strictEqual(o.project_id,'p_zen');
+    assert.strictEqual(used.at(-1),'engain-geonode-key','its engine uses Geonode\'s key');
+    await assert.rejects(orgs.host['org.create']({name:'Acme'},'matas'),/no project named like Acme \(it has: geonode.com, zenshield.com, expedify.com\)/);
+  }finally{orgs.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
