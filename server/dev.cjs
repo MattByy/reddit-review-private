@@ -219,6 +219,13 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       if(r.status!==200)fail(r.status,JSON.parse(r.body||'{}').error||'Could not remove it');
       return ['done',{removed:id}];
     }
+    // Send an unsent draft back to the front of Queue 1.
+    if(c.kind==='requeue'){
+      const id=Number(p.queue2_id);if(!Number.isInteger(id))fail(422,'queue2_id must be a number');
+      const r=await internal('POST',`/api/agent/queue2/${id}/requeue`,{});
+      if(r.status!==200)fail(r.status,JSON.parse(r.body||'{}').error||'Could not send it back');
+      return ['done',{requeued:id}];
+    }
     if(c.kind==='api'){
       const method=String(p.method||'GET').toUpperCase(),u=new URL(String(p.path||''),'http://x');
       if(!['GET','POST'].includes(method)||!REMOTE_API.test(u.pathname))fail(422,'Not reachable from the hosted page: '+method+' '+u.pathname);
@@ -468,6 +475,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       store.db.prepare("update bench_runs set status='running',finished_at=null where id=?").run(v.id);draftBench(v.id);return bench.runView(store,v.id);},
     'GET /api/agent/queue2':async q=>queue.queue2List(store,q),
     'POST /api/agent/queue2/:id/retry':async(_,__,id)=>queue.retryQueue2(store,id),
+    'POST /api/agent/queue2/:id/requeue':async(_,__,id)=>queue.returnToQueue1(store,id),
     'GET /api/agent/send-log':async q=>queue.sendLog(store,q),
     'GET /api/agent/queue2/:id':async(_,__,id)=>queue.queue2Item(store,id)||fail(404,'No such queue 2 entry'),
     // Throw away an unsent Queue 2 entry (its Queue 1 item does not come back).

@@ -306,6 +306,21 @@ function retryQueue2(store,id){
   store.event('queue2.retry',`Queue 2 #${id}: back in Queue 2 after a failed send`,{queue2_id:Number(id),item_id:r.item_id,error:r.send_error??null});
   return queue2Entry(store.queue2(id));
 }
+// Sends an unsent Queue 2 entry back to the front of Queue 1; its draft is dropped and it is written
+// again when it next comes up. Refused when the item would no longer qualify, so it is never lost.
+function returnToQueue1(store,id){
+  const r=store.queue2(id);if(!r)fail(404,'No such queue 2 entry');
+  if(r.engain_task_id||!['ready',null].includes(r.send_status??null))fail(409,'Already '+(r.send_status||'sent')+'; only an unsent draft can go back to Queue 1');
+  const q=store.queueRow(r.item_id);if(!q)fail(409,'This draft has no Queue 1 item to go back to');
+  const ev=evaluate(store),row=rowFor({...q,status:'queued'},ev);
+  // It counts as claimed until it moves back, so that reason doesn't apply.
+  const reasons=(row?.eligibility.reasons??['No longer in collected data']).filter(s=>!/^Already claimed from the queue/.test(s));
+  if(reasons.length)fail(409,'It no longer qualifies for Queue 1: '+reasons[0]);
+  if(!store.returnToQueue1(id))fail(409,'Only an unsent draft can go back to Queue 1');
+  refreshQueue(store,{addThreads:false,addComments:false});
+  store.event('queue2.returned',`Queue 2 #${id}: sent back to Queue 1 at #1`,{queue2_id:Number(id),item_id:r.item_id,message:r.message});
+  return {ok:true,queue2_id:Number(id),item_id:r.item_id,position:store.queueRow(r.item_id)?.position??null};
+}
 function setQueue2Message(store,id,message){
   const m=cleanMessage(message);if(!m)fail(422,'message is required');
   if(!store.setQueue2Message(id,m,'given'))fail(404,'No such queue 2 entry');
@@ -352,4 +367,4 @@ function commentList(store,{q,brand,own,min_score=40,available,limit=100,offset=
 const publishedList=store=>evaluate(store).published;
 
 const queue2Item=(store,id)=>withDelivery(store,store.queue2(id));
-module.exports={sendWindow,senderDelay,originFor,threadDelivery,DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};
+module.exports={sendWindow,senderDelay,originFor,threadDelivery,DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,returnToQueue1,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};

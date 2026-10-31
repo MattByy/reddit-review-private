@@ -80,6 +80,28 @@ test('Queue 2 by API: get one entry, discard an unsent one',async()=>{
   }finally{a.close();}
 });
 
+test('Queue 2 by API: send an unsent draft back to the front of Queue 1, where it is taken next',async()=>{
+  const fm=fakeModels(),a=app(fm);
+  try{
+    await ready(a);
+    const first=(await call(a,'POST','/api/agent/task',{})).body.queue2,second=(await call(a,'POST','/api/agent/task',{})).body.queue2;
+    const top=a.store.queued()[0].item_id;
+    const r=await call(a,'POST',`/api/agent/queue2/${second.queue2_id}/requeue`,{});
+    assert.strictEqual(r.status,200,JSON.stringify(r.body));assert.strictEqual(r.body.position,1);
+    assert.strictEqual(a.store.queued()[0].item_id,second.item_id,'it is #1');assert.strictEqual(a.store.queued()[1].item_id,top,'the old #1 is now #2');
+    assert.strictEqual((await call(a,'GET','/api/agent/queue2/'+second.queue2_id)).status,404,'its draft is gone');
+    // Two sent back: the latest is first.
+    assert.strictEqual((await call(a,'POST',`/api/agent/queue2/${first.queue2_id}/requeue`,{})).status,200);
+    assert.deepStrictEqual(a.store.queued().slice(0,2).map(q=>q.item_id),[first.item_id,second.item_id]);
+    const next=(await call(a,'POST','/api/agent/task',{})).body;
+    assert.strictEqual(next.task_id,first.item_id,'the next item taken is the one sent back');
+    const sent=(await call(a,'POST','/api/agent/task',{message:'Disclosure: I work at Geonode. Hi.'})).body.queue2;
+    assert.strictEqual((await call(a,'POST',`/api/agent/queue2/${sent.queue2_id}/approve`,{mode:'pool'})).status,200);
+    assert.strictEqual((await call(a,'POST',`/api/agent/queue2/${sent.queue2_id}/requeue`,{})).status,409,'a sent entry stays');
+    assert.strictEqual((await call(a,'POST','/api/agent/queue2/99999/requeue',{})).status,404);
+  }finally{a.close();}
+});
+
 test('another machine reaches every API route with AGENT_API_KEY, and nothing without it',async()=>{
   const fm=fakeModels();
   const open=app(fm);

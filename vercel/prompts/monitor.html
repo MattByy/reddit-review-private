@@ -198,7 +198,7 @@ function itemsView(rows,kind){
   return `<div class="panel list">${rows.map(r=>`<div class="item">
     <div class="h"><span class="k">${r.kind==='thread'?'Comment':r.kind==='comment'?'Reply':esc(r.kind)}</span>${sub(r)}<span>#${r.id}</span><span>${statusOf(r)}</span>
       ${r.model?`<span class="mono">${esc(r.model.split('/').pop())}</span>`:''}${r.prompt_variant_slug?`<span>${esc(r.prompt_variant_slug)}</span>`:''}
-      ${kind==='queue2'&&r.send_status!=='sending'?`<button class="ghost sm rm" data-discard="${r.id}">Remove</button>`:''}</div>
+      ${kind==='queue2'&&r.send_status!=='sending'?`<button class="ghost sm rm" data-requeue="${r.id}" title="Back to the front of Queue 1; it is written again when it comes up">Back to Queue 1</button><button class="ghost sm" data-discard="${r.id}">Remove</button>`:''}</div>
     <div class="title"><a href="${esc(r.thread_url||r.url)}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></div>
     ${r.message&&r.message_source!=='random'?`<div class="msg">${esc(r.message)}</div>`:''}
     ${r.reddit_url?`<div class="small" style="margin-top:6px"><a href="${esc(r.reddit_url)}" target="_blank" rel="noopener">View on Reddit →</a></div>`:''}
@@ -230,7 +230,7 @@ function renderControls(st){
   if(!s){box.innerHTML='<h2>Controls</h2><p class="muted small">Waiting for the computer to sync its settings.</p>';return;}
   const fu=st.data.fast_until&&Date.parse(st.data.fast_until)>Date.now()?Date.parse(st.data.fast_until):0;
   const num=(id,v,min,max)=>`<input type="number" id="${id}" value="${v}" min="${min}" max="${max}" step="1">`;
-  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='discard'?'Remove draft #'+p.queue2_id:c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
+  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='discard'?'Remove draft #'+p.queue2_id:c.kind==='requeue'?'Send #'+p.queue2_id+' back to Queue 1':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
   const cmdState=c=>c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?`<span class="s-good">done</span>${c.result?.action?' · '+esc(c.result.action)+(c.result.reason?': '+esc(c.result.reason):''):''}`:
     `<span class="s-bad">${esc(c.status)}</span>${c.result?.error||c.result?.reason?' · '+esc(c.result.error||c.result.reason):''}`;
   box.innerHTML=`<div class="crow"><span class="name">Writer</span>
@@ -276,6 +276,9 @@ document.addEventListener('click',e=>{
   const d=e.target.closest('[data-discard]');
   if(d){const id=Number(d.dataset.discard);if(!confirm(`Remove draft #${id} from Queue 2? It will not be sent.`))return;
     removing.add(id);d.closest('.item').classList.add('removing');command('discard',{queue2_id:id});}
+  const q=e.target.closest('[data-requeue]');
+  if(q){const id=Number(q.dataset.requeue);if(!confirm(`Send #${id} back to the front of Queue 1? Its draft is dropped and written again when it comes up.`))return;
+    removing.add(id);q.closest('.item').classList.add('removing');command('requeue',{queue2_id:id});}
   if(e.target.id==='c_fast'){const on=e.target.classList.contains('fast-on');command('fast',{minutes:on?0:15});}
 });
 function alertBox(m){$('#stale').hidden=false;$('#stale').textContent=m;}

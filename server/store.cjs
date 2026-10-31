@@ -239,6 +239,19 @@ function open(file){
       else db.prepare('update queue2 set write_status=?,write_error=?,prompt_used=?,model=?,provider=?,updated_at=? where id=?').run(write_status,write_error??null,prompt_used??null,model??null,provider??'openrouter',now,Number(id));
     },
     // An unsent Queue 2 entry can be thrown away; its Queue 1 item stays taken.
+    // Deletes an unsent Queue 2 entry and puts its Queue 1 item back above the current #1, in one transaction.
+    returnToQueue1(id){
+      const r=db.prepare("select item_id from queue2 where id=? and coalesce(send_status,'ready')='ready' and engain_task_id is null").get(Number(id));if(!r)return false;
+      const now=new Date().toISOString();db.exec('begin');
+      try{
+        const top=db.prepare("select min(position) p from queue where status='queued'").get().p??1;
+        const moved=db.prepare("update queue set status='queued',position=?,claimed_at=null,claimed_by=null,note=?,updated_at=? where item_id=?").run(top-1,'Sent back from Queue 2 (#'+Number(id)+')',now,r.item_id).changes;
+        if(!moved){db.exec('rollback');return false;}
+        db.prepare('delete from queue2 where id=?').run(Number(id));
+        db.exec('commit');return true;
+      }catch(e){db.exec('rollback');throw e;}
+    },
+    queueRow:itemId=>db.prepare('select * from queue where item_id=?').get(itemId)||null,
     discardQueue2(id){return db.prepare("delete from queue2 where id=? and coalesce(send_status,'ready')='ready' and engain_task_id is null").run(Number(id)).changes>0;},
     // Drafts per prompt variant of one item kind, for the weighted split.
     variantCounts(kind){return Object.fromEntries(db.prepare('select prompt_variant_id id,count(*) n from queue2 where kind=? and prompt_variant_id is not null group by prompt_variant_id').all(kind).map(r=>[r.id,r.n]));},
