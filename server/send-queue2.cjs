@@ -31,6 +31,22 @@ function subredditFromUrl(url){
   return match?match[1]:null;
 }
 
+// Engain wants a reply's target as a full comment link (.../comments/POST_ID/title/COMMENT_ID/), but the
+// links it gives for our own comments are often Reddit share links (/r/sub/s/CODE). Those redirect to the
+// full link; follow that one hop. Any other comment link is returned in the full shape, without its query.
+const COMMENT_LINK=/^https?:\/\/(?:www\.|old\.|new\.)?reddit\.com\/r\/([^/]+)\/comments\/([a-z0-9]+)\/([^/?#]+)\/([a-z0-9]+)/i;
+async function commentPermalink(url,fetchImpl=fetch){
+  const full=u=>{const m=COMMENT_LINK.exec(u||'');return m&&`https://www.reddit.com/r/${m[1]}/comments/${m[2]}/${m[3]}/${m[4]}/`;};
+  if(full(url))return full(url);
+  if(!/reddit\.com\/r\/[^/]+\/s\/\w+/i.test(url||''))fail(422,`Not a comment link: ${url}`);
+  let r;
+  try{r=await fetchImpl(url,{method:'GET',redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) geonode-collector'},signal:AbortSignal.timeout(15000)});}
+  catch(e){fail(502,`Could not open the Reddit share link ${url}: ${e.message}`);}
+  const to=r.headers.get('location');
+  if(!full(to))fail(422,`The Reddit share link ${url} did not lead to a comment (HTTP ${r.status}${to?' -> '+to:''})`);
+  return full(to);
+}
+
 // Send one queue2 entry. Every attempt lands in the activity log: a refusal before anything
 // reaches Engain is send.rejected; a call to Engain is send.request then send.ok or send.failed.
 async function sendQueue2(args,ctx){
@@ -41,9 +57,18 @@ async function sendQueue2(args,ctx){
     throw e;
   }
 }
-async function send({id,mode,userAccountId,posterAccount,override},{engain,store,projectId,log=console.log}){
+async function send({id,mode,userAccountId,posterAccount,override},{engain,store,projectId,log=console.log,fetchImpl=fetch}){
   const item=store.queue2(id);
   if(!item)fail(404,'Queue2 entry not found');
+  // A reply goes under a comment: make sure its link is the full comment link Engain accepts.
+  if(item.kind!=='thread'&&item.send_status==='ready'){
+    const link=await commentPermalink(item.url,fetchImpl);
+    if(link!==item.url){
+      store.db.prepare('update queue2 set url=?,updated_at=? where id=?').run(link,new Date().toISOString(),Number(id));
+      store.event('send.link_resolved',`Queue 2 #${id}: reply link ${item.url} -> ${link}`,{queue2_id:Number(id),item_id:item.item_id,from:item.url,to:link});
+      item.url=link;
+    }
+  }
   
   // Guard: already sent
   if(item.send_status!=='ready'){
@@ -169,4 +194,4 @@ async function pollQueue2Status(id,{engain,store,log=console.log}){
   }
 }
 
-module.exports={sendQueue2,pollQueue2Status,checkDisclosure,subredditFromUrl};
+module.exports={commentPermalink,sendQueue2,pollQueue2Status,checkDisclosure,subredditFromUrl};

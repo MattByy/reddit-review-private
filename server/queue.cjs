@@ -300,10 +300,15 @@ function sendLog(store,{result,q,queue2_id,limit=200}={}){
   const all=rows.length;
   return {count:all,failed:rows.filter(r=>r.result==='failed').length,ok:rows.filter(r=>r.result==='ok').length,items:rows};
 }
+// A failed send, or a task Engain ended without publishing (rejected, cancelled, failed), goes back into
+// Queue 2 to be sent again. Never while Engain still has it in progress or published it.
 function retryQueue2(store,id){
   const r=store.queue2(id);if(!r)fail(404,'No such queue 2 entry');
-  if(!store.retryQueue2(id))fail(409,'Only a failed entry that Engain never accepted can go back to Queue 2');
-  store.event('queue2.retry',`Queue 2 #${id}: back in Queue 2 after a failed send`,{queue2_id:Number(id),item_id:r.item_id,error:r.send_error??null});
+  const resend=!!r.engain_task_id;
+  if(resend&&(!r.engain_status||require('./collect.cjs').ACTIVE.has(r.engain_status)))fail(409,`Engain still has this one (${r.engain_status||'status unknown'}); it can be retried once it is rejected, cancelled or failed`);
+  if(!store.retryQueue2(id,{resend}))fail(409,'Only a failed send, or one Engain ended without publishing, can go back to Queue 2');
+  store.event('queue2.retry',`Queue 2 #${id}: back in Queue 2 after ${resend?`Engain ended task ${r.engain_task_id} (${r.engain_status})`:'a failed send'}`,
+    {queue2_id:Number(id),item_id:r.item_id,error:r.send_error??null,old_task_id:r.engain_task_id??null,old_status:r.engain_status??null});
   return queue2Entry(store.queue2(id));
 }
 // Sends an unsent Queue 2 entry back to the front of Queue 1; its draft is dropped and it is written
@@ -323,6 +328,7 @@ function returnToQueue1(store,id){
 }
 function setQueue2Message(store,id,message){
   const m=cleanMessage(message);if(!m)fail(422,'message is required');
+  const cur=store.queue2(id);if(cur&&(cur.engain_task_id||!['ready',null].includes(cur.send_status??null)))fail(409,'Already '+(cur.send_status||'sent')+'; a sent message cannot be edited');
   if(!store.setQueue2Message(id,m,'given'))fail(404,'No such queue 2 entry');
   store.event('queue2.edited',`Queue 2 #${id}: message edited by hand (approval withdrawn)`,{queue2_id:id,item_id:store.queue2(id).item_id,message:m});
   return queue2Entry(store.queue2(id));

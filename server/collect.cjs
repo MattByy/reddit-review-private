@@ -227,4 +227,4 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
   return summary;
 }
 
-module.exports={collect,rank,rankComment,topicHits,threadRef,fromOpportunity,fromMention,fromSmartSearch,commentFromMention,SOURCES,REMOVED,DEFAULT_MAX_AGE};
+module.exports={ACTIVE,collect,rank,rankComment,topicHits,threadRef,fromOpportunity,fromMention,fromSmartSearch,commentFromMention,SOURCES,REMOVED,DEFAULT_MAX_AGE};

@@ -205,3 +205,38 @@ test('update pulls only a clean fast-forward, after the command is marked done; 
   const plain=commandRig({git,canRestart:false,restart:()=>restarts++});
   try{assert.strictEqual((await plain.run('restart',{})).status,'failed');assert.strictEqual(restarts,1);}finally{plain.a.close();}
 });
+
+test('retry from the hosted page puts a failed send back into Queue 2',async()=>{
+  const {a,run}=commandRig();
+  try{
+    await ready(a);
+    const id=(await call(a,'POST','/api/cron/writer',{})).body.queue2_id;
+    a.store.failQueue2Send(id,'test','Engain said no');
+    assert.strictEqual(a.store.queue2(id).send_status,'failed');
+    const r=await run('batch',{action:'retry',queue2_ids:[id]});
+    assert.strictEqual(r.result.done,1);assert.strictEqual(a.store.queue2(id).send_status,'ready');
+  }finally{a.close();}
+});
+
+test('edit from the hosted page: the draft is sent as written, a sent one cannot be edited; retry after Engain ends a task',async()=>{
+  const {a,run}=commandRig();
+  try{
+    await ready(a);
+    // A placeholder whose drafting failed becomes sendable once written by hand.
+    const id=(await call(a,'POST','/api/agent/task',{})).body.queue2.queue2_id;
+    a.store.setQueue2Draft(id,{write_status:'failed',write_error:'Featherless gave no answer'});
+    const e=await run('edit',{queue2_id:id,message:'My own words, sounding a bit different (I work at Geonode).'});
+    assert.strictEqual(e.status,'done',JSON.stringify(e));
+    const q=a.store.queue2(id);assert.strictEqual(q.message_source,'given');assert.strictEqual(q.write_status,'edited');assert.strictEqual(q.write_error,null);
+    const sent=await run('batch',{action:'send',queue2_ids:[id]});
+    assert.strictEqual(sent.result.done,1,JSON.stringify(sent.result));
+    assert.strictEqual((await run('edit',{queue2_id:id,message:'too late'})).status,'failed','a sent message stays as sent');
+    // In review: no retry. Rejected by Engain: retry puts it back as a new send.
+    assert.strictEqual((await run('batch',{action:'retry',queue2_ids:[id]})).result.done,0);
+    const task=a.store.queue2(id).engain_task_id;
+    a.store.db.prepare("update queue2 set engain_status='disapproved' where id=?").run(id);
+    assert.strictEqual((await run('batch',{action:'retry',queue2_ids:[id]})).result.done,1);
+    const back=a.store.queue2(id);assert.strictEqual(back.send_status,'ready');assert.strictEqual(back.engain_task_id,null);
+    assert.ok(a.store.events({type:'queue2.retry',limit:5}).some(x=>x.data?.old_task_id===task),'the old task is kept in the log');
+  }finally{a.close();}
+});

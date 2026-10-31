@@ -230,7 +230,7 @@ function open(file){
     },
     // Any change to the text withdraws an earlier approval.
     // A person's edit also clears a draft's truncated/skipped mark: the text is now theirs.
-    setQueue2Message(id,message,source){return db.prepare("update queue2 set message=?,message_source=?,approved_at=null,approved_by=null,write_status=case when write_status in ('truncated','skipped') then 'edited' else write_status end,write_error=null,updated_at=? where id=?").run(message,source,new Date().toISOString(),Number(id)).changes>0;},
+    setQueue2Message(id,message,source){return db.prepare("update queue2 set message=?,message_source=?,approved_at=null,approved_by=null,write_status=case when write_status in ('truncated','skipped','failed') then 'edited' else write_status end,write_error=null,updated_at=? where id=?").run(message,source,new Date().toISOString(),Number(id)).changes>0;},
     setQueue2Draft(id,{message,prompt_used,model,provider,write_status,write_error,prompt_variant_id,prompt_variant_slug,prompt_variant_name}){
       const now=new Date().toISOString();
       if(message!=null)db.prepare(`update queue2 set message=?,message_source='openrouter',prompt_used=?,model=?,provider=?,write_status=?,write_error=?,written_at=?,approved_at=null,approved_by=null,
@@ -353,8 +353,11 @@ function open(file){
     },
     queue2Events:id=>db.prepare('select from_status,to_status,at from queue2_events where queue2_id=? order by id').all(Number(id)),
     // A send that failed before Engain made a task goes back to Queue 2 as a fresh, unapproved draft.
-    retryQueue2(id){return db.prepare(`update queue2 set send_status='ready',approved_at=null,approved_by=null,send_error=null,send_reason=null,failed_at=null,
-      delivery_mode=null,user_account_id=null,poster_account=null,reserved_at=null,updated_at=? where id=? and send_status='failed' and engain_task_id is null`).run(new Date().toISOString(),Number(id)).changes>0;},
+    // resend: an entry Engain accepted and then ended (rejected, cancelled, failed) is sent again as a new task;
+    // the old task stays in our_tasks and in the log.
+    retryQueue2(id,{resend=false}={}){return db.prepare(`update queue2 set send_status='ready',approved_at=null,approved_by=null,send_error=null,send_reason=null,failed_at=null,
+      delivery_mode=null,user_account_id=null,poster_account=null,reserved_at=null,updated_at=?${resend?',engain_task_id=null,engain_status=null,sent_at=null,reddit_url=null,published_at=null,settled=0':''}
+      where id=? and ${resend?'engain_task_id is not null':"send_status='failed' and engain_task_id is null"}`).run(new Date().toISOString(),Number(id)).changes>0;},
     failQueue2Send(id,reason,error){
       const now=new Date().toISOString();
       db.prepare(`update queue2 set send_status='failed',send_reason=?,send_error=?,failed_at=?,updated_at=?

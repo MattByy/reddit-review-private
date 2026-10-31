@@ -77,6 +77,8 @@ main.wrap{padding-top:22px;padding-bottom:80px}
 .sel{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
 .item .h input[type=checkbox]{margin:0}
 .bar .push{margin-left:auto}
+.edit textarea{width:100%;min-height:110px;margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:inherit;font-size:14px;line-height:1.5;resize:vertical;box-sizing:border-box}
+.edit .row{display:flex;gap:8px;align-items:center;margin-top:8px}
 .cmds div{padding:2px 0}
 .switch{position:relative;width:36px;height:20px;flex:none}
 .switch input{opacity:0;width:0;height:0}
@@ -179,6 +181,7 @@ function render(){
   const TABS=[['queue2','Queue 2',waiting.length],['sent','Sent',sent.length],['queue1','Queue 1',data.queue1.length],['activity','Activity','']];
   $('#tabs').innerHTML=TABS.map(([k,l,c])=>`<button data-t="${k}" class="${tab===k?'on':''}">${l}${c!==''?`<span class="c">${c}</span>`:''}</button>`).join('');
   const lists={queue2:waiting,sent};
+  if(document.activeElement?.dataset?.edittext&&$('#view').contains(document.activeElement))return;
   $('#view').innerHTML=tab==='queue1'?queue1View():tab==='activity'?activityView():itemsView(lists[tab],tab);
 }
 document.addEventListener('click',e=>{
@@ -212,12 +215,19 @@ function itemsView(rows,kind){
   return `${kind==='queue2'?batchBar(rows):''}<div class="panel list">${rows.map(r=>`<div class="item">
     <div class="h">${kind==='queue2'&&r.send_status!=='sending'?`<input type="checkbox" data-sel="${r.id}" ${selected.has(r.id)?'checked':''} aria-label="Select #${r.id}">`:''}<span class="k">${r.kind==='thread'?'Comment':r.kind==='comment'?'Reply':esc(r.kind)}</span>${sub(r)}<span>#${r.id}</span><span>${statusOf(r)}</span>
       ${r.model?`<span class="mono">${esc(r.model.split('/').pop())}</span>`:''}${r.prompt_variant_slug?`<span>${esc(r.prompt_variant_slug)}</span>`:''}
-      ${kind==='queue2'&&r.send_status!=='sending'?`<button class="ghost sm rm" data-requeue="${r.id}" title="Back to the front of Queue 1; it is written again when it comes up">Back to Queue 1</button><button class="ghost sm" data-discard="${r.id}">Remove</button>`:''}</div>
+      ${kind==='sent'&&canRetry(r)?`<button class="ghost sm rm" data-retry="${r.id}" title="Back into Queue 2 to send again">Retry</button>`:''}${kind==='queue2'&&r.send_status!=='sending'?`<button class="ghost sm rm" data-requeue="${r.id}" title="Back to the front of Queue 1; it is written again when it comes up">Back to Queue 1</button>${editing.has(r.id)?'':`<button class="ghost sm" data-edit="${r.id}">Edit</button>`}<button class="ghost sm" data-discard="${r.id}">Remove</button>`:''}</div>
     <div class="title"><a href="${esc(r.thread_url||r.url)}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></div>
-    ${r.message&&r.message_source!=='random'?`<div class="msg">${esc(r.message)}</div>`:''}
+    ${editing.has(r.id)?`<div class="edit"><textarea data-edittext="${r.id}" aria-label="Message for #${r.id}">${esc(editing.get(r.id))}</textarea>
+      <div class="row"><button class="sm" data-editsave="${r.id}">Save</button><button class="ghost sm" data-editcancel="${r.id}">Cancel</button><span class="muted small">Saved as written; the writer will not change it.</span></div></div>`
+      :r.message&&r.message_source!=='random'?`<div class="msg">${esc(r.message)}</div>`:''}
     ${r.reddit_url?`<div class="small" style="margin-top:6px"><a href="${esc(r.reddit_url)}" target="_blank" rel="noopener">View on Reddit →</a></div>`:''}
   </div>`).join('')}</div>`;
 }
+// Drafts being edited here: id -> text, kept across reloads until saved or cancelled.
+const editing=new Map();
+// Engain statuses that mean it still has the task (from server/collect.cjs ACTIVE); anything else ended unpublished.
+const ENGAIN_ACTIVE=new Set(['scheduled','in_review','in_queue','waiting_for_parent_comment','waiting_for_mod_approval','sent_for_posting','assigned','published']);
+const canRetry=r=>r.engain_task_id?!!r.engain_status&&!ENGAIN_ACTIVE.has(r.engain_status):r.send_status==='failed';
 // Queue 2 selection, kept across reloads while the items are still waiting.
 const selected=new Set();
 const readyToSend=r=>r.send_status==='ready'&&!r.approved_at&&r.message_source!=='random'&&!['skipped','truncated','failed'].includes(r.write_status);
@@ -263,8 +273,8 @@ function renderControls(st){
   const fu=st.data.fast_until&&Date.parse(st.data.fast_until)>Date.now()?Date.parse(st.data.fast_until):0;
   const num=(id,v,min,max)=>`<input type="number" id="${id}" value="${v}" min="${min}" max="${max}" step="1">`;
   const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='discard'?'Remove draft #'+p.queue2_id:c.kind==='requeue'?'Send #'+p.queue2_id+' back to Queue 1':
-    c.kind==='batch'?(p.all?'Send all ready':{send:'Send',requeue:'Back to Queue 1:',discard:'Remove'}[p.action]+' '+(p.queue2_ids||[]).map(i=>'#'+i).join(', ')):
-    c.kind==='update'?'Update from GitHub':c.kind==='restart'?'Restart the server':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
+    c.kind==='batch'?(p.all?'Send all ready':{send:'Send',requeue:'Back to Queue 1:',discard:'Remove',retry:'Retry'}[p.action]+' '+(p.queue2_ids||[]).map(i=>'#'+i).join(', ')):
+    c.kind==='edit'?'Edit #'+p.queue2_id:c.kind==='update'?'Update from GitHub':c.kind==='restart'?'Restart the server':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
   const cmdState=c=>c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?`<span class="s-good">done</span>${doneText(c.result)}`:
     `<span class="s-bad">${esc(c.status)}</span>${c.result?.error||c.result?.reason?' · '+esc(c.result.error||c.result.reason):''}`;
   box.innerHTML=`<div class="crow"><span class="name">Writer</span>
@@ -293,6 +303,7 @@ function wanted(){
     send_per_day:$('#c_as_on').checked?v('c_as_n'):0,send_from_hour:v('c_as_from'),send_to_hour:v('c_as_to')};
   return Object.fromEntries(Object.entries(w).filter(([k,x])=>x!==s[k]));
 }
+document.addEventListener('input',e=>{const t=e.target.dataset?.edittext;if(t)editing.set(Number(t),e.target.value);});
 document.addEventListener('input',e=>{if(e.target.closest('#controls')&&e.target.id?.startsWith('c_')){controlsDirty=Object.keys(wanted()).length>0;$('#c_save').disabled=!controlsDirty;}});
 async function command(kind,payload){
   try{
@@ -322,6 +333,15 @@ document.addEventListener('click',e=>{
     if(!confirm(ask))return;
     if(action!=='send')for(const id of ids){removing.add(id);}
     selected.clear();command('batch',{action,queue2_ids:ids});}
+  const rt=e.target.closest('[data-retry]');
+  if(rt){const id=Number(rt.dataset.retry);rt.closest('.item').classList.add('removing');command('batch',{action:'retry',queue2_ids:[id]});}
+  const ed=e.target.closest('[data-edit]');
+  if(ed){const r=data.queue2.find(x=>x.id===Number(ed.dataset.edit));editing.set(r.id,r.message_source==='random'?'':r.message||'');render();document.querySelector(`[data-edittext="${r.id}"]`)?.focus();}
+  const ec=e.target.closest('[data-editcancel]');if(ec){editing.delete(Number(ec.dataset.editcancel));render();}
+  const es=e.target.closest('[data-editsave]');
+  if(es){const id=Number(es.dataset.editsave),text=(editing.get(id)||'').trim();if(!text)return alertBox('Write a message first.');
+    editing.delete(id);const r=data.queue2.find(x=>x.id===id);if(r){r.message=text;r.message_source='given';r.write_status=r.write_status||'edited';}
+    render();command('edit',{queue2_id:id,message:text});}
   if(e.target.id==='selnone'){selected.clear();render();}
   if(e.target.id==='sendall'){const n=data.queue2.filter(r=>WAITING.has(r.send_status)&&readyToSend(r)).length;if(!confirm(`Send all ${n} ready messages to Engain now?`))return;selected.clear();command('batch',{action:'send',all:true});}
   if(e.target.id==='c_update'){if(!confirm('Pull the latest code from GitHub on the always-on computer? If server code changed, it restarts (about 10 s).'))return;command('update',{});}

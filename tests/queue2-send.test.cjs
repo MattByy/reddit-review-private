@@ -198,3 +198,19 @@ describe('Queue2 sending',()=>{
 });
 
 module.exports={};
+
+describe('reply links',()=>{
+  const {commentPermalink}=require('../server/send-queue2.cjs');
+  it('a Reddit share link is followed to the full comment link Engain accepts',async()=>{
+    const seen=[];
+    const fetchImpl=async(url,o)=>{seen.push({url,redirect:o.redirect});return new Response(null,{status:301,headers:{location:'https://www.reddit.com/r/webdev/comments/1wm7k1e/comment/19rujrmxslpmp?share_id=x&utm_source=share'}});};
+    assert.strictEqual(await commentPermalink('https://www.reddit.com/r/webdev/s/moGq8UUck2',fetchImpl),'https://www.reddit.com/r/webdev/comments/1wm7k1e/comment/19rujrmxslpmp/');
+    assert.deepStrictEqual(seen,[{url:'https://www.reddit.com/r/webdev/s/moGq8UUck2',redirect:'manual'}]);
+  });
+  it('a full comment link is kept (without its query), anything else is refused',async()=>{
+    const never=async()=>{throw Error('no fetch expected');};
+    assert.strictEqual(await commentPermalink('https://old.reddit.com/r/x/comments/abc12/some_title/def34/?context=3',never),'https://www.reddit.com/r/x/comments/abc12/some_title/def34/');
+    await assert.rejects(commentPermalink('https://www.reddit.com/r/x/comments/abc12/',never),/Not a comment link/);
+    await assert.rejects(commentPermalink('https://www.reddit.com/r/x/s/AbC',async()=>new Response(null,{status:404})),/did not lead to a comment/);
+  });
+});

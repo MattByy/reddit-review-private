@@ -234,10 +234,11 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       if(r.status!==200)fail(r.status,JSON.parse(r.body||'{}').error||'Could not send it back');
       return ['done',{requeued:id}];
     }
-    // Several Queue 2 items at once: remove, back to Queue 1 (keeping their order at the front), or send.
+    // Several Queue 2 items at once: remove, back to Queue 1 (keeping their order at the front), send,
+    // or retry (a failed send goes back into Queue 2).
     // send with all:true sends everything ready. Items that cannot be sent are skipped with the reason.
     if(c.kind==='batch'){
-      const action=p.action;if(!['discard','requeue','send'].includes(action))fail(422,'action must be discard, requeue or send');
+      const action=p.action;if(!['discard','requeue','send','retry'].includes(action))fail(422,'action must be discard, requeue, send or retry');
       let ids=p.all?(action==='send'?queue.queue2List(store).items.filter(sendable).map(i=>i.queue2_id):fail(422,'all works only with send')):(Array.isArray(p.queue2_ids)?p.queue2_ids.map(Number):[]);
       if(!p.all&&(!ids.length||ids.some(n=>!Number.isInteger(n))))fail(422,'queue2_ids must be a list of numbers');
       if(ids.length>200)fail(422,'At most 200 at a time');
@@ -251,6 +252,13 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       }
       store.event('queue2.batch',`${by}: ${action} ${done.length} of ${ids.length}${skipped.length?`, ${skipped.length} skipped`:''}`,{by,action,done,skipped});
       return ['done',{action,done:done.length,skipped}];
+    }
+    // Edit a Queue 2 draft by hand (it is sent as written; the writer leaves it alone).
+    if(c.kind==='edit'){
+      const id=Number(p.queue2_id);if(!Number.isInteger(id))fail(422,'queue2_id must be a number');
+      const r=await internal('POST',`/api/agent/queue2/${id}`,{message:p.message});
+      if(r.status!==200)fail(r.status,JSON.parse(r.body||'{}').error||'Could not save it');
+      return ['done',{edited:id}];
     }
     // Update: fetch main and check it is a fast-forward; the merge runs after the command is marked done.
     // When server/ changes, watch mode restarts the server on its own.
