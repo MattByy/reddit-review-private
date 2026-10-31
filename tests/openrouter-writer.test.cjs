@@ -508,3 +508,35 @@ test('a model call with no answer is retried once, then fails with a plain error
   assert.strictEqual(once.text,DRAFT);assert.strictEqual(once.attempts,2);
   await assert.rejects(writer.complete({model:'m',prompt:'p',keys:{openrouter:'k'},fetchImpl:async()=>{throw timeout();}}),/no answer in 90 s \(tried 2 times\)/);
 });
+
+test('Featherless fails or stalls: the same model is asked on OpenRouter, without reasoning',async()=>{
+  let featherless='error',openrouter='ok';const calls=[];
+  const fetchImpl=async(url,opts)=>{const body=JSON.parse(opts.body),fl=url.includes('featherless');calls.push({fl,body});
+    if(fl&&featherless==='stall')throw Object.assign(Error('The operation was aborted due to timeout'),{name:'TimeoutError'});
+    const bad=fl?featherless==='error':openrouter==='error';
+    return new Response(JSON.stringify(bad?{error:{message:fl?'featherless down':'openrouter down'}}:{choices:[{message:{content:DRAFT},finish_reason:'stop'}]}),{status:bad?500:200});};
+  const a=createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'or',featherlessKey:'fl',fetchImpl}});
+  try{
+    await ready(a);
+    const one=await a.runJob('writer');
+    assert.strictEqual(one.action,'written');
+    const q=(await call(a,'GET','/api/agent/queue2/'+one.queue2_id)).body;
+    assert.strictEqual(q.provider,'openrouter');assert.strictEqual(q.model,'minimax/minimax-m3');assert.strictEqual(q.message,DRAFT);
+    const or=calls.find(c=>!c.fl).body;
+    assert.strictEqual(or.model,'minimax/minimax-m3');assert.deepStrictEqual(or.reasoning,{enabled:false});assert.strictEqual(or.messages[0].content,calls[0].body.messages[0].content,'same prompt');
+    // A stall goes straight to OpenRouter, without waiting for a second Featherless try.
+    featherless='stall';calls.length=0;
+    assert.strictEqual((await a.runJob('writer')).action,'written');
+    assert.strictEqual(calls.filter(c=>c.fl).length,1);
+    // Both down: the draft fails with both reasons, and the writer tries it again next time.
+    featherless='error';openrouter='error';
+    const both=await a.runJob('writer');
+    assert.strictEqual(both.action,'failed');assert.match(both.reason,/Featherless: featherless down; OpenRouter: openrouter down/);
+    const f=(await call(a,'GET','/api/agent/queue2/'+both.queue2_id)).body;
+    assert.strictEqual(f.write_status,'failed');assert.match(f.write_error,/featherless down.*openrouter down/);
+    featherless='ok';
+    const again=await a.runJob('writer');
+    assert.strictEqual(again.queue2_id,both.queue2_id);assert.strictEqual(again.action,'written');
+    assert.strictEqual((await call(a,'GET','/api/agent/queue2/'+both.queue2_id)).body.provider,'featherless');
+  }finally{a.close();}
+});

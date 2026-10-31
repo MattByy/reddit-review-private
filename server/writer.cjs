@@ -10,6 +10,8 @@ const PROVIDERS={
   openrouter:{label:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:'OPENROUTER_API_KEY'},
   featherless:{label:'Featherless',url:'https://api.featherless.ai/v1/chat/completions',key:'FEATHERLESS_API_KEY'},
 };
+// When Featherless fails or stalls, the same model is asked on OpenRouter instead (thinking off on both).
+const OPENROUTER_TWIN={'MiniMaxAI/MiniMax-M3':'minimax/minimax-m3'};
 const VARIABLES={
   thread:['subreddit','subreddit_rules','title','body','url','style_examples'],
   comment:['subreddit','subreddit_rules','title','body','url','our_comment','our_comment_url','style_examples'],
@@ -306,12 +308,15 @@ function cleanText(t){
 }
 // One chat call, one user message (no hidden system prompt). keys: {openrouter, featherless}.
 // trace(note) hears about every retry, so the activity log shows what the model API did.
-async function complete({provider='openrouter',model,prompt,temperature=0.7,maxTokens=1500,keys={},fetchImpl=fetch,trace=()=>{}}){
+// thinking:false asks OpenRouter to answer without reasoning first (Featherless always answers that way).
+// timeoutRetries: how often a call with no answer in 90 s is tried again.
+async function complete({provider='openrouter',model,prompt,temperature=0.7,maxTokens=1500,keys={},fetchImpl=fetch,trace=()=>{},thinking=true,timeoutRetries=1}){
   const p=PROVIDERS[provider];if(!p)fail(422,'Unknown provider '+provider);
   if(!keys[provider])fail(503,`${p.key} is not set (add it to .env.local)`);
   const body={model,messages:[{role:'user',content:prompt}],max_tokens:maxTokens,temperature};
   // Hybrid thinking models (Qwen3.x) then answer straight away; other models ignore it.
   if(provider==='featherless')body.chat_template_kwargs={enable_thinking:false};
+  if(provider==='openrouter'&&!thinking)body.reasoning={enabled:false};
   const started=Date.now();
   for(let attempt=0;;attempt++){
     const wait=()=>new Promise(z=>setTimeout(z,(attempt+1)*(fetchImpl===fetch?5000:1)));
@@ -321,7 +326,7 @@ async function complete({provider='openrouter',model,prompt,temperature=0.7,maxT
     try{r=await fetchImpl(p.url,{method:'POST',headers:{Authorization:'Bearer '+keys[provider],'Content-Type':'application/json',...(provider==='openrouter'?{'X-Title':'Geonode thread collector'}:{})},
       body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});}
     catch(e){
-      if(e.name==='TimeoutError'){if(attempt<1){trace('no answer in 90 s, retrying');await wait();continue;}throw Error(`${p.label} gave no answer in 90 s (tried ${attempt+1} times)`);}
+      if(e.name==='TimeoutError'){if(attempt<timeoutRetries){trace('no answer in 90 s, retrying');await wait();continue;}throw Error(`${p.label} gave no answer in 90 s (tried ${attempt+1} times)`);}
       if(attempt<2){trace(`connection failed (${e.message}), retrying`);await wait();continue;}throw e;}
     const j=await r.json().catch(()=>null);
     // Featherless answers 429 when the plan's concurrency is in use; wait and try again.
@@ -341,7 +346,7 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   const entry=store.queue2(id);
   if(!entry)fail(404,'No such queue 2 entry');
   if(entry.send_status&&entry.send_status!=='ready')fail(409,'Already '+entry.send_status+'; it can no longer be rewritten');
-  const variant=chooseVariant(store,entry),provider=variant.provider||'openrouter',model=variant.model||defaultModel;
+  const variant=chooseVariant(store,entry);let provider=variant.provider||'openrouter',model=variant.model||defaultModel;
   const keys={openrouter:apiKey,featherless:featherlessKey};
   if(!keys[provider])fail(503,`${PROVIDERS[provider].key} is not set (add it to .env.local)`);
   const prompt=render(variant.text,variables(entry,store,variant.text)),pv={prompt_variant_id:variant.id,prompt_variant_slug:variant.slug,prompt_variant_name:variant.name,provider};
@@ -350,11 +355,22 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   store.event('llm.request',`Queue 2 #${entry.id}: asking ${provider} ${model} (prompt "${variant.name}")`,{...ref,provider,model,temperature,max_tokens:maxTokens,prompt_variant_id:variant.id,prompt_variant_slug:variant.slug,prompt_variant_name:variant.name,prompt});
   const trace=note=>store.event('llm.retry',`Queue 2 #${entry.id}: ${provider} ${model}: ${note}`,{...ref,provider,model,note});
   // Some Featherless models reason before answering and need room for both.
-  try{res=await complete({provider,model,prompt,temperature,maxTokens,keys,fetchImpl,trace});}
+  // With a fallback ready, a stalled Featherless call is not retried: OpenRouter is asked straight away.
+  const twin=provider==='featherless'&&apiKey?OPENROUTER_TWIN[model]:null;
+  try{res=await complete({provider,model,prompt,temperature,maxTokens,keys,fetchImpl,trace,timeoutRetries:twin?0:1});}
   catch(e){
     store.event('llm.error',`Queue 2 #${entry.id}: ${provider} ${model} failed: ${e.message}`,{...ref,provider,model,error:e.message});
-    store.setQueue2Draft(id,{write_status:'failed',write_error:String(e.message).slice(0,500),prompt_used:prompt,model,provider});
-    fail(502,'Writing failed: '+e.message);
+    let err=e.message;
+    if(twin){
+      store.event('llm.fallback',`Queue 2 #${entry.id}: ${provider} failed, asking openrouter ${twin} instead`,{...ref,provider:'openrouter',model:twin,from_provider:provider,from_model:model,error:e.message});
+      try{res=await complete({provider:'openrouter',model:twin,prompt,temperature,maxTokens:1500,keys,fetchImpl,trace,thinking:false});provider=pv.provider='openrouter';model=twin;}
+      catch(e2){store.event('llm.error',`Queue 2 #${entry.id}: openrouter ${twin} failed: ${e2.message}`,{...ref,provider:'openrouter',model:twin,error:e2.message});
+        err=`${PROVIDERS[provider].label}: ${e.message}; OpenRouter: ${e2.message}`;}
+    }
+    if(!res){
+      store.setQueue2Draft(id,{write_status:'failed',write_error:String(err).slice(0,500),prompt_used:prompt,model,provider});
+      fail(502,'Writing failed: '+err);
+    }
   }
   const skipped=/^skip\.?$/i.test(res.text),outcome=res.finish_reason==='length'?'truncated':skipped?'skipped':'written';
   store.event('llm.response',`Queue 2 #${entry.id}: ${provider} ${model} ${outcome} in ${res.latency_ms} ms`,{...ref,provider,model,outcome,text:res.text,raw:res.raw!==res.text?res.raw:undefined,
@@ -374,4 +390,4 @@ async function writeQueue2(store,id,{apiKey=process.env.OPENROUTER_API_KEY,feath
   return store.queue2(id);
 }
 
-module.exports={DEFAULT_WRITER,MAX_PROMPTS,backfillSlugs,DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};
+module.exports={OPENROUTER_TWIN,DEFAULT_WRITER,MAX_PROMPTS,backfillSlugs,DEFAULT_PROMPTS,NATURAL_PROMPTS,DEFAULT_MODEL,PROVIDERS,VARIABLES,TYPES,variants,saveVariants,findVariant,addVariant,updateVariant,deleteVariant,setWeights,chooseVariant,variables,styleExamples,render,cleanText,complete,writeQueue2,checkDisclosure};
