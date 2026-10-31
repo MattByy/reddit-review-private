@@ -190,7 +190,13 @@ function statusOf(r){
   if(r.send_status==='sending')return '<span class="s-warn">Sending…</span>';
   if(r.write_status==='failed')return `<span class="s-bad">Draft failed${r.write_error?': '+esc(r.write_error):''}</span>${r.message_source==='random'?' · the writer tries it again':''}`;
   if(['skipped','truncated'].includes(r.write_status))return `<span class="s-bad">Draft ${esc(r.write_status)}</span>`;
-  if(r.message_source==='random')return '<span class="s-warn">No draft yet</span> · the writer has not written this one (yet)';
+  if(r.message_source==='random'){
+    // The newest model event for this draft: a request or retry with no answer yet means it is being written.
+    const e=data.events.find(x=>x.queue2_id===r.id&&/^llm\./.test(x.type));
+    if(e&&['llm.request','llm.retry'].includes(e.type)&&Date.now()-Date.parse(e.at)<300000)
+      return `<span class="s-warn">Writing now…</span> · ${esc(e.message.replace(/^Queue 2 #\d+: /,''))} · ${ago(e.at)}`;
+    return '<span class="s-warn">No draft yet</span> · the writer has not written this one (yet)';
+  }
   return `<span class="s-good">Ready</span> · written ${ago(r.written_at||r.created_at)}`;
 }
 function itemsView(rows,kind){
