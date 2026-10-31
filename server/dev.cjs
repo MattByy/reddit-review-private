@@ -27,7 +27,11 @@ const bearer=(req,secret)=>timingSafeEqual(digest(String(req.headers?.authorizat
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
 function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectId=process.env.ENGAIN_PROJECT_ID,
-  agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,openrouter={},supabase={},log=console.log}={}){
+  agentKey=process.env.AGENT_API_KEY,cronSecret=process.env.CRON_SECRET,openrouter={},supabase={},log=console.log,
+  // Update & restart from the hosted page; tests pass fakes. git(args) returns stdout and throws on failure.
+  git=args=>require('node:child_process').execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000}).trim(),
+  // `npm run dev` runs under node --watch-path=server, which restarts on any change in server/; outside it nothing can restart us.
+  canRestart=!!process.env.WATCH_REPORT_DEPENDENCIES,restart=()=>fs.writeFileSync(path.join(__dirname,'.restart'),new Date().toISOString())}={}){
   // Writer settings; tests pass {fetchImpl,apiKey,featherlessKey}. Defaults come from the environment.
   const writerOpts={...openrouter};
   const llmKeys=()=>({openrouter:writerOpts.apiKey??process.env.OPENROUTER_API_KEY,featherless:writerOpts.featherlessKey??process.env.FEATHERLESS_API_KEY});
@@ -36,7 +40,9 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   const say=log;log=m=>{say(m);store.event('server.log',String(m));};
   const keepDays=Number(process.env.LOG_KEEP_DAYS)||30;store.pruneEvents(keepDays);
   writer.backfillSlugs(store);
-  store.event('server.started',`Server started (${mock?'mock':'live'} Engain)`,{mock,keep_log_days:keepDays});
+  let commit=null;try{commit=git(['rev-parse','--short','HEAD']);}catch{}
+  const server={commit,started_at:new Date().toISOString(),can_restart:canRestart};
+  store.event('server.started',`Server started (${mock?'mock':'live'} Engain${commit?', commit '+commit:''})`,{mock,keep_log_days:keepDays,commit,can_restart:canRestart});
   const engain=client(mock?{apiKey:'mock',fetchImpl:require('./mock.cjs').mockFetch,limits:false,log}:{apiKey,log});
   const live=new Map();let active=null,projectName=null;
   // Model tests run in the background; one drafting pass per test at a time.
@@ -113,6 +119,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   const sendable=i=>i&&i.send_status==='ready'&&!i.approved_at&&i.message_source!=='random'&&!['skipped','truncated','failed'].includes(i.write_status)
     // Our accounts can't post replies, so a reply whose turn is ours waits.
     &&!(i.status!=='thread'&&i.next_delivery?.next==='dedicated');
+  const notSendable=i=>!i?'Not in Queue 2':sendable(i)?null:i.send_status!=='ready'?'Already '+i.send_status:i.approved_at?'Already approved'
+    :i.message_source==='random'?'No draft yet':['skipped','truncated','failed'].includes(i.write_status)?'Draft '+i.write_status:'Waits for our accounts, which cannot post replies';
   jobs.sender=async()=>{
     const cfg=queue.settings(store),w=queue.sendWindow(cfg);
     if(!cfg.send_per_day)return {action:'off',reason:'Auto-send is off (send_per_day is 0)'};
@@ -161,7 +169,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     if(!mir)return {action:'off',reason:'SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_SECRET_SERVICE_ROLE) are not set'};
     const was=store.kv('mirror_last');
     try{
-      const r=await mir.sync(store,{jobs:jobStatus(),fast_until:fastUntil>Date.now()?new Date(fastUntil).toISOString():null});
+      const r=await mir.sync(store,{jobs:jobStatus(),server,fast_until:fastUntil>Date.now()?new Date(fastUntil).toISOString():null});
       await sendSnapshots();await mir.scrub();store.setKv('mirror_last',{ok:true,...r});
       if(was&&!was.ok)log('Supabase mirror working again');
       return {action:'synced',...r};
@@ -226,6 +234,43 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       if(r.status!==200)fail(r.status,JSON.parse(r.body||'{}').error||'Could not send it back');
       return ['done',{requeued:id}];
     }
+    // Several Queue 2 items at once: remove, back to Queue 1 (keeping their order at the front), or send.
+    // send with all:true sends everything ready. Items that cannot be sent are skipped with the reason.
+    if(c.kind==='batch'){
+      const action=p.action;if(!['discard','requeue','send'].includes(action))fail(422,'action must be discard, requeue or send');
+      let ids=p.all?(action==='send'?queue.queue2List(store).items.filter(sendable).map(i=>i.queue2_id):fail(422,'all works only with send')):(Array.isArray(p.queue2_ids)?p.queue2_ids.map(Number):[]);
+      if(!p.all&&(!ids.length||ids.some(n=>!Number.isInteger(n))))fail(422,'queue2_ids must be a list of numbers');
+      if(ids.length>200)fail(422,'At most 200 at a time');
+      // Each one sent back goes above the last, so the last is moved first and the list keeps its order.
+      if(action==='requeue')ids=[...ids].reverse();
+      const done=[],skipped=[];
+      for(const id of ids){
+        if(action==='send'){const why=notSendable(queue.queue2Item(store,id));if(why){skipped.push({queue2_id:id,reason:why});continue;}}
+        const r=await internal('POST',`/api/agent/queue2/${id}/${action==='send'?'approve':action}`,action==='send'?{approved_by:by}:{});
+        if(r.status===200)done.push(id);else skipped.push({queue2_id:id,reason:JSON.parse(r.body||'{}').error||'HTTP '+r.status});
+      }
+      store.event('queue2.batch',`${by}: ${action} ${done.length} of ${ids.length}${skipped.length?`, ${skipped.length} skipped`:''}`,{by,action,done,skipped});
+      return ['done',{action,done:done.length,skipped}];
+    }
+    // Update: fetch main and check it is a fast-forward; the merge runs after the command is marked done.
+    // When server/ changes, watch mode restarts the server on its own.
+    if(c.kind==='update'){
+      git(['fetch','origin','main']);
+      const from=git(['rev-parse','--short','HEAD']),to=git(['rev-parse','--short','origin/main']);
+      if(from===to)return ['done',{from,to,commits:0,note:'Already up to date'}];
+      try{git(['merge-base','--is-ancestor','HEAD','origin/main']);}catch{fail(409,`Not a fast-forward: this computer has commits that are not on GitHub (${from}). Nothing changed.`);}
+      if(git(['status','--porcelain','--untracked-files=no']))fail(409,'This computer has uncommitted changes to tracked files. Nothing changed.');
+      const commits=Number(git(['rev-list','--count','HEAD..origin/main'])),files=git(['diff','--name-only','HEAD','origin/main']).split('\n').filter(Boolean);
+      const restarts=canRestart&&files.some(f=>f.startsWith('server/'));
+      store.event('server.update',`Updating ${from} -> ${to} (${commits} commits) for ${by}${restarts?'; the server restarts':''}`,{by,from,to,commits,files});
+      return ['done',{from,to,commits,restarts,note:restarts?'Updated; the server restarts now':files.some(f=>f.startsWith('server/'))?'Updated, but this server cannot restart itself: restart npm run dev by hand':'Updated; no server code changed, so no restart'},
+        async()=>{try{git(['merge','--ff-only','origin/main']);}catch(e){store.event('server.update_failed',`Update to ${to} failed: ${e.message}`,{from,to,error:e.message});}}];
+    }
+    if(c.kind==='restart'){
+      if(!canRestart)fail(409,'This server was not started with npm run dev (watch mode), so it cannot restart itself');
+      store.event('server.restart',`Restart requested by ${by}`,{by});
+      return ['done',{note:'Restarting'},async()=>restart()];
+    }
     if(c.kind==='api'){
       const method=String(p.method||'GET').toUpperCase(),u=new URL(String(p.path||''),'http://x');
       if(!['GET','POST'].includes(method)||!REMOTE_API.test(u.pathname))fail(422,'Not reachable from the hosted page: '+method+' '+u.pathname);
@@ -249,12 +294,14 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     try{
       const list=await mir.pending();
       for(const c of list){
-        let status,result;
-        try{[status,result]=await applyCommand(c);}catch(e){status='failed';result={error:e.message};}
+        let status,result,after;
+        try{[status,result,after]=await applyCommand(c);}catch(e){status='failed';result={error:e.message};}
         // An api command's answer can hold a new key's secret: the log keeps only its status.
         store.event('command.'+status,`Hosted page command #${c.id} (${c.kind}${c.kind==='api'?' '+c.payload?.method+' '+c.payload?.path:''}) ${status}`,
           {id:c.id,kind:c.kind,payload:c.kind==='api'?{method:c.payload?.method,path:c.payload?.path}:c.payload,by:c.by,result:c.kind==='api'?{status:result?.status}:result});
         await mir.finish(c.id,status,result);
+        // Steps that restart the server run only once the command is marked done, so it never runs twice.
+        if(after){await syncMirror();await after();return {action:'checked',commands:1,restarting:true};}
       }
       if(list.length)await syncMirror();
       return {action:'checked',commands:list.length};

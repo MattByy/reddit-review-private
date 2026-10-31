@@ -3,7 +3,7 @@
 // computer as a bearer token (lib/auth.js).
 // GET /api/monitor             status, Queue 1, Queue 2 and the latest events
 // GET /api/monitor?events=1&before=<id>&type=<prefix>   older events (100 per page)
-// POST /api/monitor {"kind":"settings","payload":{...}} | {"kind":"run","payload":{"job"}} | {"kind":"discard","payload":{"queue2_id"}} | {"kind":"requeue","payload":{"queue2_id"}} | {"kind":"fast","payload":{"minutes"}}
+// POST /api/monitor {"kind":"settings","payload":{...}} | {"kind":"run","payload":{"job"}} | {"kind":"discard","payload":{"queue2_id"}} | {"kind":"requeue","payload":{"queue2_id"}} | {"kind":"batch","payload":{"action","queue2_ids"|"all"}} | {"kind":"update"} | {"kind":"restart"} | {"kind":"fast","payload":{"minutes"}}
 //   queues a command for the computer, which picks it up within a few seconds (server/dev.cjs applyCommand).
 const {supabase,who,readJson,reply:send}=require('../lib/auth.js');
 
@@ -18,9 +18,15 @@ function checkCommand(b){
     return null;
   }
   if(b.kind==='run')return ['writer','sender','threads','comments','tracker'].includes(p.job)?null:'Unknown job';
+  if(b.kind==='batch'){
+    if(!['discard','requeue','send'].includes(p.action))return 'action must be discard, requeue or send';
+    if(p.all===true)return p.action==='send'?null:'all works only with send';
+    return Array.isArray(p.queue2_ids)&&p.queue2_ids.length>0&&p.queue2_ids.length<=200&&p.queue2_ids.every(Number.isInteger)?null:'queue2_ids must be 1 to 200 numbers';
+  }
+  if(['update','restart'].includes(b.kind))return null;
   if(['discard','requeue'].includes(b.kind))return Number.isInteger(p.queue2_id)?null:'queue2_id must be a number';
   if(b.kind==='fast')return Number.isInteger(p.minutes)&&p.minutes>=0&&p.minutes<=60?null:'minutes must be 0 to 60';
-  return 'kind must be settings, run, discard, requeue or fast';
+  return 'kind must be settings, run, discard, requeue, batch, update, restart or fast';
 }
 
 module.exports=async(req,res)=>{

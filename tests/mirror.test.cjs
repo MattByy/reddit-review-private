@@ -135,3 +135,73 @@ test('removing a Queue 2 draft from the hosted page',async()=>{
     assert.strictEqual(done.find(d=>d.id===2).status,'failed','removing it twice is reported, not hidden');
   }finally{a.close();}
 });
+
+// Hosted-page commands against a fake Supabase; createApp options can swap git and restart for fakes.
+function commandRig(opts={}){
+  const done=[],status=[];let list=[];
+  const fetchImpl=async(url,o)=>{
+    if(o.method==='GET'&&url.includes('/commands?')){const r=list;list=[];return new Response(JSON.stringify(r),{status:200});}
+    const m=/commands\?id=eq\.(\d+)/.exec(url);if(o.method==='PATCH'&&m)done.push({id:Number(m[1]),...JSON.parse(o.body)});
+    if(o.method==='POST'&&url.endsWith('/status'))status.push(...JSON.parse(o.body));
+    return new Response('',{status:201});
+  };
+  const a=createApp({mock:true,dbFile:':memory:',log:()=>{},agentKey:'',cronSecret:'',openrouter:{apiKey:'k',featherlessKey:'k',fetchImpl:fakeOpenRouter()},supabase:{url:'https://x.supabase.co',key:'k',fetchImpl},...opts});
+  let n=0;
+  const run=async(kind,payload)=>{list=[{id:++n,at:new Date().toISOString(),by:'matas',kind,payload}];await call(a,'POST','/api/cron/commands',{});return done.find(d=>d.id===n);};
+  return {a,run,status};
+}
+
+test('batch from the hosted page: back to Queue 1 keeps the order, send skips drafts that are not real, remove',async()=>{
+  const {a,run}=commandRig();
+  try{
+    await ready(a);
+    const ids=[];for(let i=0;i<4;i++)ids.push((await call(a,'POST','/api/cron/writer',{})).body.queue2_id);
+    const back=await run('batch',{action:'requeue',queue2_ids:[ids[2],ids[1]]});
+    assert.strictEqual(back.status,'done');assert.strictEqual(back.result.done,2);
+    // A placeholder in the list is skipped with the reason; the real drafts are sent.
+    const p=(await call(a,'POST','/api/agent/task',{})).body.queue2.queue2_id;
+    const sent=await run('batch',{action:'send',queue2_ids:[ids[0],p]});
+    assert.strictEqual(sent.result.done,1);assert.deepStrictEqual(sent.result.skipped,[{queue2_id:p,reason:'No draft yet'}]);
+    assert.ok(a.store.queue2(ids[0]).engain_task_id,'sent to (mock) Engain');
+    const all=await run('batch',{action:'send',all:true});
+    assert.strictEqual(all.result.done,1,'only the one ready draft left');assert.ok(a.store.queue2(ids[3]).engain_task_id);
+    const rm=await run('batch',{action:'discard',queue2_ids:[p]});
+    assert.strictEqual(rm.result.done,1);assert.strictEqual(a.store.queue2(p),undefined);
+    assert.strictEqual((await run('batch',{action:'discard',all:true})).status,'failed');
+  }finally{a.close();}
+});
+
+test('batch back to Queue 1: the first in the list ends up #1',async()=>{
+  const {a,run}=commandRig();
+  try{
+    await ready(a);
+    const ids=[];for(let i=0;i<3;i++)ids.push((await call(a,'POST','/api/cron/writer',{})).body.queue2_id);
+    const items=ids.map(id=>a.store.queue2(id).item_id);
+    await run('batch',{action:'requeue',queue2_ids:[ids[2],ids[0],ids[1]]});
+    assert.deepStrictEqual(a.store.queued().slice(0,3).map(q=>q.item_id),[items[2],items[0],items[1]]);
+  }finally{a.close();}
+});
+
+test('update pulls only a clean fast-forward, after the command is marked done; restart needs watch mode',async()=>{
+  const gitCalls=[];let head='aaa1111',restarts=0,dirty='';
+  const git=args=>{gitCalls.push(args.join(' '));const c=args.join(' ');
+    if(c==='rev-parse --short HEAD')return head;if(c==='rev-parse --short origin/main')return 'bbb2222';
+    if(c==='status --porcelain --untracked-files=no')return dirty;if(c==='rev-list --count HEAD..origin/main')return '2';
+    if(c==='diff --name-only HEAD origin/main')return 'server/writer.cjs\nvercel/prompts/monitor.html';
+    if(c==='merge --ff-only origin/main'){head='bbb2222';return '';}return '';};
+  const {a,run,status}=commandRig({git,canRestart:true,restart:()=>restarts++});
+  try{
+    dirty=' M server/dev.cjs';
+    const blocked=await run('update',{});
+    assert.strictEqual(blocked.status,'failed');assert.match(blocked.result.error,/uncommitted/);assert.ok(!gitCalls.includes('merge --ff-only origin/main'));
+    dirty='';
+    const u=await run('update',{});
+    assert.strictEqual(u.status,'done');assert.strictEqual(u.result.commits,2);assert.strictEqual(u.result.restarts,true);
+    assert.ok(gitCalls.includes('merge --ff-only origin/main'),'merged after the command was marked done');
+    assert.strictEqual(status.at(-1).data.server.commit,'aaa1111');assert.strictEqual(status.at(-1).data.server.can_restart,true);
+    const r=await run('restart',{});
+    assert.strictEqual(r.status,'done');assert.strictEqual(restarts,1);
+  }finally{a.close();}
+  const plain=commandRig({git,canRestart:false,restart:()=>restarts++});
+  try{assert.strictEqual((await plain.run('restart',{})).status,'failed');assert.strictEqual(restarts,1);}finally{plain.a.close();}
+});

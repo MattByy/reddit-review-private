@@ -5,3 +5,4 @@ node_modules/
 .mcp.json
 !.env.example
 .data/
+server/.restart

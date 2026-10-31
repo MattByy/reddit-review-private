@@ -73,6 +73,10 @@ main.wrap{padding-top:22px;padding-bottom:80px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--line);margin-top:4px}
 .fast-on{background:var(--warn);color:#fff}
 .cmds{margin-top:10px;font-size:12px;color:var(--muted)}
+.srv{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:13px}
+.sel{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+.item .h input[type=checkbox]{margin:0}
+.bar .push{margin-left:auto}
 .cmds div{padding:2px 0}
 .switch{position:relative;width:36px;height:20px;flex:none}
 .switch input{opacity:0;width:0;height:0}
@@ -181,7 +185,11 @@ document.addEventListener('click',e=>{
   const t=e.target.closest('[data-t]');if(t){tab=t.dataset.t;localSet('gn_monitor_tab',tab);render();}
   if(e.target.id==='older')loadOlder();
 });
-document.addEventListener('change',e=>{if(e.target.id==='evtype'){evType=e.target.value;load();}});
+document.addEventListener('change',e=>{
+  if(e.target.id==='evtype'){evType=e.target.value;load();}
+  const c=e.target.closest('[data-sel]');if(c){const id=Number(c.dataset.sel);c.checked?selected.add(id):selected.delete(id);render();}
+  if(e.target.id==='selall'){selected.clear();if(e.target.checked)for(const el of document.querySelectorAll('[data-sel]'))selected.add(Number(el.dataset.sel));render();}
+});
 
 function statusOf(r){
   if(r.send_status==='failed')return `<span class="s-bad">Not sent${r.send_error?': '+esc(r.send_error):''}</span>`;
@@ -201,14 +209,25 @@ function statusOf(r){
 }
 function itemsView(rows,kind){
   if(!rows.length)return `<div class="panel empty">${kind==='sent'?'Nothing sent yet.':'Queue 2 is empty. The writer adds a draft every few minutes.'}</div>`;
-  return `<div class="panel list">${rows.map(r=>`<div class="item">
-    <div class="h"><span class="k">${r.kind==='thread'?'Comment':r.kind==='comment'?'Reply':esc(r.kind)}</span>${sub(r)}<span>#${r.id}</span><span>${statusOf(r)}</span>
+  return `${kind==='queue2'?batchBar(rows):''}<div class="panel list">${rows.map(r=>`<div class="item">
+    <div class="h">${kind==='queue2'&&r.send_status!=='sending'?`<input type="checkbox" data-sel="${r.id}" ${selected.has(r.id)?'checked':''} aria-label="Select #${r.id}">`:''}<span class="k">${r.kind==='thread'?'Comment':r.kind==='comment'?'Reply':esc(r.kind)}</span>${sub(r)}<span>#${r.id}</span><span>${statusOf(r)}</span>
       ${r.model?`<span class="mono">${esc(r.model.split('/').pop())}</span>`:''}${r.prompt_variant_slug?`<span>${esc(r.prompt_variant_slug)}</span>`:''}
       ${kind==='queue2'&&r.send_status!=='sending'?`<button class="ghost sm rm" data-requeue="${r.id}" title="Back to the front of Queue 1; it is written again when it comes up">Back to Queue 1</button><button class="ghost sm" data-discard="${r.id}">Remove</button>`:''}</div>
     <div class="title"><a href="${esc(r.thread_url||r.url)}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></div>
     ${r.message&&r.message_source!=='random'?`<div class="msg">${esc(r.message)}</div>`:''}
     ${r.reddit_url?`<div class="small" style="margin-top:6px"><a href="${esc(r.reddit_url)}" target="_blank" rel="noopener">View on Reddit →</a></div>`:''}
   </div>`).join('')}</div>`;
+}
+// Queue 2 selection, kept across reloads while the items are still waiting.
+const selected=new Set();
+const readyToSend=r=>r.send_status==='ready'&&!r.approved_at&&r.message_source!=='random'&&!['skipped','truncated','failed'].includes(r.write_status);
+function batchBar(rows){
+  const ids=new Set(rows.map(r=>r.id));for(const id of selected)if(!ids.has(id))selected.delete(id);
+  const pick=rows.filter(r=>r.send_status!=='sending'),n=selected.size,ready=rows.filter(readyToSend).length;
+  return `<div class="bar"><label class="sel"><input type="checkbox" id="selall" ${n&&n===pick.length?'checked':''}> Select all</label>
+    ${n?`<span class="muted small">${n} selected</span><button class="sm" data-batch="send">Send ${n} to Engain</button>
+      <button class="ghost sm" data-batch="requeue">Back to Queue 1</button><button class="ghost sm" data-batch="discard">Remove</button><button class="ghost sm" id="selnone">Clear</button>`:''}
+    <button class="sm push" id="sendall" ${ready?'':'disabled'}>Send all ready (${ready})</button></div>`;
 }
 function queue1View(){
   if(!data.queue1.length)return '<div class="panel empty">Queue 1 is empty. The threads job refills it.</div>';
@@ -231,13 +250,22 @@ let controlsDirty=false,fastPoll=null;
 // Drafts removed on this page stay hidden while the computer catches up.
 const removing=new Set();
 const pendingCmds=()=>(data?.commands||[]).filter(c=>c.status==='pending');
+function doneText(r){
+  if(!r)return '';
+  if(r.note)return ' · '+esc(r.note)+(r.commits?` (${esc(r.from)} → ${esc(r.to)}, ${r.commits} commit${r.commits>1?'s':''})`:'');
+  if(r.done!=null){const sk=r.skipped||[];return ` · ${r.done} done`+(sk.length?`, ${sk.length} skipped: `+esc(sk.slice(0,3).map(x=>'#'+x.queue2_id+' '+x.reason).join('; '))+(sk.length>3?'…':''):'');}
+  return r.action?' · '+esc(r.action)+(r.reason?': '+esc(r.reason):''):'';
+}
 function renderControls(st){
   const s=st?.data?.settings,box=$('#controls');
   if(!s){box.innerHTML='<h2>Controls</h2><p class="muted small">Waiting for the computer to sync its settings.</p>';return;}
+  const srv=st.data.server||{};
   const fu=st.data.fast_until&&Date.parse(st.data.fast_until)>Date.now()?Date.parse(st.data.fast_until):0;
   const num=(id,v,min,max)=>`<input type="number" id="${id}" value="${v}" min="${min}" max="${max}" step="1">`;
-  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='discard'?'Remove draft #'+p.queue2_id:c.kind==='requeue'?'Send #'+p.queue2_id+' back to Queue 1':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
-  const cmdState=c=>c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?`<span class="s-good">done</span>${c.result?.action?' · '+esc(c.result.action)+(c.result.reason?': '+esc(c.result.reason):''):''}`:
+  const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='discard'?'Remove draft #'+p.queue2_id:c.kind==='requeue'?'Send #'+p.queue2_id+' back to Queue 1':
+    c.kind==='batch'?(p.all?'Send all ready':{send:'Send',requeue:'Back to Queue 1:',discard:'Remove'}[p.action]+' '+(p.queue2_ids||[]).map(i=>'#'+i).join(', ')):
+    c.kind==='update'?'Update from GitHub':c.kind==='restart'?'Restart the server':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
+  const cmdState=c=>c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?`<span class="s-good">done</span>${doneText(c.result)}`:
     `<span class="s-bad">${esc(c.status)}</span>${c.result?.error||c.result?.reason?' · '+esc(c.result.error||c.result.reason):''}`;
   box.innerHTML=`<div class="crow"><span class="name">Writer</span>
       <label class="switch"><input type="checkbox" id="c_wr_on" ${s.write_every_minutes?'checked':''}><span></span></label>
@@ -254,6 +282,9 @@ function renderControls(st){
       <button class="ghost" data-run="threads">Collect threads now</button>
       <button class="${fu?'fast-on':'ghost'}" id="c_fast">${fu?`Fast mode · ${Math.max(1,Math.ceil((fu-Date.now())/60000))} min left · Stop`:'Fast mode (15 min)'}</button>
     </div>
+    <div class="srv"><span class="name">Server</span>${srv.commit?`<span class="mono">${esc(srv.commit)}</span>`:''}<span class="muted">${srv.started_at?'started '+ago(srv.started_at):'version unknown (update the server once by hand)'}</span>
+      <button class="ghost sm" id="c_update">Update from GitHub</button>
+      <button class="ghost sm" id="c_restart" ${srv.can_restart===false?'disabled title="Started without npm run dev, so it cannot restart itself"':''}>Restart</button></div>
     <div class="cmds">${(data.commands||[]).slice(0,5).map(c=>`<div>${ago(c.at)} · ${esc(cmdText(c))} · ${cmdState(c)}</div>`).join('')}</div>`;
 }
 function wanted(){
@@ -285,6 +316,16 @@ document.addEventListener('click',e=>{
   const q=e.target.closest('[data-requeue]');
   if(q){const id=Number(q.dataset.requeue);if(!confirm(`Send #${id} back to the front of Queue 1? Its draft is dropped and written again when it comes up.`))return;
     removing.add(id);q.closest('.item').classList.add('removing');command('requeue',{queue2_id:id});}
+  const b=e.target.closest('[data-batch]');
+  if(b){const action=b.dataset.batch,ids=data.queue2.filter(r=>selected.has(r.id)).map(r=>r.id);if(!ids.length)return;
+    const ask={send:`Send ${ids.length} message${ids.length>1?'s':''} to Engain now? Items without a real draft are skipped.`,requeue:`Send ${ids.length} back to the front of Queue 1? Their drafts are dropped.`,discard:`Remove ${ids.length} from Queue 2? They will not be sent.`}[action];
+    if(!confirm(ask))return;
+    if(action!=='send')for(const id of ids){removing.add(id);}
+    selected.clear();command('batch',{action,queue2_ids:ids});}
+  if(e.target.id==='selnone'){selected.clear();render();}
+  if(e.target.id==='sendall'){const n=data.queue2.filter(r=>WAITING.has(r.send_status)&&readyToSend(r)).length;if(!confirm(`Send all ${n} ready messages to Engain now?`))return;selected.clear();command('batch',{action:'send',all:true});}
+  if(e.target.id==='c_update'){if(!confirm('Pull the latest code from GitHub on the always-on computer? If server code changed, it restarts (about 10 s).'))return;command('update',{});}
+  if(e.target.id==='c_restart'){if(!confirm('Restart the server on the always-on computer? It is back in about 10 s.'))return;command('restart',{});}
   if(e.target.id==='c_fast'){const on=e.target.classList.contains('fast-on');command('fast',{minutes:on?0:15});}
 });
 function alertBox(m){$('#stale').hidden=false;$('#stale').textContent=m;}
