@@ -11,10 +11,10 @@ const {rank,rankComment,REMOVED}=require('./collect.cjs');
 // our published comments always go in, even past it.
 const DEFAULTS={queue_target:50,comment_limit:20,comment_position:5,max_age_days:120,min_comments:3,min_thread_score:0,min_comment_score:40,mention_comments:0,
   thread_collect_minutes:60,threads_every_minutes:10,comments_every_minutes:30,tracker_every_minutes:10,
-  send_per_day:0,send_from_hour:9,send_to_hour:17,write_every_minutes:30,queue2_target:20};
+  send_per_hour:0,send_from_hour:0,send_to_hour:24,write_every_minutes:30,queue2_target:20};
 const LIMITS={queue_target:[1,500],comment_limit:[0,200],comment_position:[1,500],max_age_days:[14,3650],min_comments:[0,100000],min_thread_score:[0,100],min_comment_score:[0,100],mention_comments:[0,1],
   thread_collect_minutes:[5,1440],threads_every_minutes:[1,1440],comments_every_minutes:[1,1440],tracker_every_minutes:[1,1440],
-  send_per_day:[0,500],send_from_hour:[0,23],send_to_hour:[1,24],write_every_minutes:[0,1440],queue2_target:[1,200]};
+  send_per_hour:[0,60],send_from_hour:[0,23],send_to_hour:[1,24],write_every_minutes:[0,1440],queue2_target:[1,200]};
 const DAY=86400000;
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
@@ -26,7 +26,14 @@ function setCommentsSince(store,since){
   store.setKv('comments_since',{since:d.toISOString()});
   return {comments_since:d.toISOString(),...refreshQueue(store).summary};
 }
-const settings=store=>{const s=store.settings(DEFAULTS);return Object.fromEntries(Object.keys(DEFAULTS).map(k=>[k,s[k]]));};
+const settings=store=>{const s=migrateSend(store,store.settings(DEFAULTS));return Object.fromEntries(Object.keys(DEFAULTS).map(k=>[k,s[k]]));};
+// Auto-send used to be send_per_day over 9-17. Once: off becomes all day; on keeps its hours at the same pace per hour.
+function migrateSend(store,s){
+  if(s.send_per_day===undefined)return s;
+  const {send_per_day:day,...rest}=s,hours=Math.max(1,s.send_to_hour-s.send_from_hour);
+  const next=day>0?{...rest,send_per_hour:Math.min(60,Math.ceil(day/hours))}:{...rest,send_per_hour:0,send_from_hour:0,send_to_hour:24};
+  store.saveSettings(Object.fromEntries(Object.keys(DEFAULTS).map(k=>[k,next[k]])));return next;
+}
 function saveSettings(store,input){
   const next={...settings(store)};
   for(const [k,v] of Object.entries(input||{})){
@@ -36,19 +43,23 @@ function saveSettings(store,input){
   }
   store.saveSettings(next);return next;
 }
-// Auto-send: send_per_day items spread evenly over send_from_hour..send_to_hour, Warsaw time, every day.
+// Auto-send: send_per_hour items an hour, evenly spaced, between send_from_hour and send_to_hour
+// Warsaw time (0-24 is all day; 22-6 runs overnight).
 const SEND_TZ='Europe/Warsaw';
+const allDay=cfg=>cfg.send_from_hour===cfg.send_to_hour||(cfg.send_from_hour===0&&cfg.send_to_hour===24);
 function sendWindow(cfg,now=new Date()){
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:SEND_TZ,hour:'numeric',minute:'numeric',second:'numeric',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,Number(x.value)]));
   const min=p.hour*60+p.minute+p.second/60,from=cfg.send_from_hour*60,to=cfg.send_to_hour*60;
-  return {open:min>=from&&min<to,opens_in_min:min<from?from-min:min>=to?1440-min+from:0,
-    day_start:new Date(now-min*60000).toISOString(),gap_min:cfg.send_per_day?Math.max(1,(to-from)/cfg.send_per_day):null};
+  const open=allDay(cfg)||(from<to?min>=from&&min<to:min>=from||min<to);
+  return {open,all_day:allDay(cfg),opens_in_min:open?0:(from-min+1440)%1440,
+    day_start:new Date(now-min*60000).toISOString(),hour_start:new Date(now-3600000).toISOString(),gap_min:cfg.send_per_hour?60/cfg.send_per_hour:null};
 }
+const sendHours=cfg=>allDay(cfg)?'all day':`${cfg.send_from_hour}:00-${cfg.send_to_hour}:00 Warsaw time`;
 // When the sender wakes next: one gap (±30%) while the window is open, else when it opens.
 // Never more than an hour, so a changed setting is picked up soon.
 function senderDelay(cfg,now=new Date(),rand=Math.random){
   const w=sendWindow(cfg,now);
-  const min=!cfg.send_per_day||cfg.send_to_hour<=cfg.send_from_hour?10:w.open?w.gap_min*(0.7+rand()*0.6):w.opens_in_min+rand()*5;
+  const min=!cfg.send_per_hour?10:w.open?w.gap_min*(0.7+rand()*0.6):w.opens_in_min+rand()*5;
   return Math.round(Math.min(60,min)*60000);
 }
 // "…/comments/ravq3d/bright_data_review_everything/" -> "bright data review everything"
@@ -373,4 +384,4 @@ function commentList(store,{q,brand,own,min_score=40,available,limit=100,offset=
 const publishedList=store=>evaluate(store).published;
 
 const queue2Item=(store,id)=>withDelivery(store,store.queue2(id));
-module.exports={sendWindow,senderDelay,originFor,threadDelivery,DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,returnToQueue1,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};
+module.exports={sendWindow,senderDelay,sendHours,originFor,threadDelivery,DEFAULTS,settings,commentsSince,setCommentsSince,saveSettings,evaluate,refreshQueue,claimNext,queue2List,queue2Item,sendLog,retryQueue2,returnToQueue1,setQueue2Message,queueView,setStatus,threadList,commentList,publishedList,titleFromUrl};

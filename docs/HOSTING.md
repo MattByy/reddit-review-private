@@ -24,7 +24,7 @@ npm run dev                      # http://127.0.0.1:3000, scheduled jobs on
 
 Keep it running. On macOS, a `launchd` agent or simply `caffeinate -s npm run dev` in a terminal that stays open works. The server keeps listening only on 127.0.0.1, and the tunnel connects to that.
 
-**Auto-send** is off until you turn it on. On the dashboard, under settings, set **Auto-send per day** (for example 35). The server then sends that many a day by itself, spread over 9:00–17:00 Warsaw time. Each run sends one ready Queue 2 draft, or drafts the next Queue 1 item and sends it. No browser tab needs to stay open. Set it back to 0 to stop.
+**Auto-send** is off until you turn it on, separately for each organization. On the monitor, turn on **Auto-send** and set how many **per hour** (for example 2). It sends at any time of day, or tick off **any time** and pick hours (Warsaw time). Each run sends one ready Queue 2 draft, or drafts the next Queue 1 item and sends it. No browser tab needs to stay open. Set it back to 0 to stop.
 
 **Supabase mirror (optional).** To follow everything on a hosted page:
 1. Run `supabase/schema.sql` once in the Supabase SQL editor.

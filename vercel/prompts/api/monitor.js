@@ -9,7 +9,7 @@
 const {supabase,who,pickOrg,allowed,NEEDS,readJson,reply:send}=require('../lib/auth.js');
 
 // The computer checks commands again; this keeps obvious mistakes off the queue.
-const SETTINGS={write_every_minutes:[0,1440],queue2_target:[1,200],send_per_day:[0,500],send_from_hour:[0,23],send_to_hour:[1,24]};
+const SETTINGS={write_every_minutes:[0,1440],queue2_target:[1,200],send_per_hour:[0,60],send_from_hour:[0,23],send_to_hour:[1,24]};
 function checkCommand(b){
   const p=b?.payload;
   if(!p||typeof p!=='object')return 'Give a payload';

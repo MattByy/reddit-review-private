@@ -186,13 +186,13 @@ function render(){
   const sentToday=q2.filter(r=>r.engain_task_id&&Date.parse(r.sent_at)>=today).length;
   const published=q2.filter(r=>r.published_at||/^(approved|published|completed)$/i.test(r.engain_status||'')).length;
   const s=st?.data?.settings||{};
-  $('#kpis').innerHTML=[[data.queue1.length,'Queue 1'],[waiting.length,'Queue 2 waiting'],[sentToday+(s.send_per_day?' / '+s.send_per_day:''),'Sent today'],[sent.filter(r=>r.engain_task_id).length,'Sent (all)'],[published,'Published']]
+  $('#kpis').innerHTML=[[data.queue1.length,'Queue 1'],[waiting.length,'Queue 2 waiting'],[sentToday,'Sent today'],[sent.filter(r=>r.engain_task_id).length,'Sent (all)'],[published,'Published']]
     .map(([v,l])=>`<div class="kpi"><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`).join('');
 
   if(!controlsDirty&&!$('#controls').contains(document.activeElement))renderControls(st);
   const jobs=st?.data?.jobs||{},NAMES={writer:'Writer',sender:'Auto-send',threads:'Threads',comments:'Comments',tracker:'Status checker'};
   const sub2={writer:s.write_every_minutes?`every ${s.write_every_minutes} min, up to ${s.queue2_target} waiting`:'off',
-    sender:s.send_per_day?`${s.send_per_day}/day, ${s.send_from_hour}:00–${s.send_to_hour}:00 Warsaw`:'off'};
+    sender:s.send_per_hour?`${s.send_per_hour}/hour, ${allDay(s)?'all day':`${s.send_from_hour}:00–${s.send_to_hour}:00 Warsaw`}`:'off'};
   $('#jobs').innerHTML=Object.keys(NAMES).filter(n=>jobs[n]).map(n=>{
     const j=jobs[n],last=j.last||{},r=last.result||{},bad=last.error||r.action==='failed';
     const dot=j.running?'mid':bad?'no':(r.action==='off'?'':'ok');
@@ -281,6 +281,7 @@ async function loadOlder(){
 }
 // Controls: each change becomes a command in Supabase; the computer applies it within ~10 s.
 let controlsDirty=false,fastPoll=null;
+const allDay=s=>s.send_from_hour===s.send_to_hour||(s.send_from_hour===0&&s.send_to_hour===24);
 // Drafts removed on this page stay hidden while the computer catches up.
 const removing=new Set();
 const pendingCmds=()=>(data?.commands||[]).filter(c=>c.status==='pending');
@@ -306,9 +307,10 @@ function renderControls(st){
       <label>every ${num('c_wr_min',s.write_every_minutes||30,1,1440)} min</label>
       <label>pause at ${num('c_q2',s.queue2_target,1,200)} in Queue 2</label></div>
     <div class="crow"><span class="name">Auto-send</span>
-      <label class="switch"><input type="checkbox" id="c_as_on" ${s.send_per_day?'checked':''}><span></span></label>
-      <label>${num('c_as_n',s.send_per_day||35,1,500)} per day</label>
-      <label>from ${num('c_as_from',s.send_from_hour,0,23)} to ${num('c_as_to',s.send_to_hour,1,24)} h (Warsaw)</label></div>
+      <label class="switch"><input type="checkbox" id="c_as_on" ${s.send_per_hour?'checked':''}><span></span></label>
+      <label>${num('c_as_n',s.send_per_hour||2,1,60)} per hour</label>
+      <label><input type="checkbox" id="c_as_all" ${allDay(s)?'checked':''}> any time</label>
+      <label id="c_as_hours" ${allDay(s)?'hidden':''}>only from ${num('c_as_from',allDay(s)?9:s.send_from_hour,0,23)} to ${num('c_as_to',allDay(s)?17:s.send_to_hour,1,24)} h (Warsaw)</label></div>
     <div class="actions">
       <button id="c_save" disabled>Save changes</button>
       <button class="ghost" data-run="writer">Write one now</button>
@@ -329,11 +331,11 @@ function renderControls(st){
 function wanted(){
   const v=id=>Math.round(Number($('#'+id).value)),s=data.status.data.settings;
   const w={write_every_minutes:$('#c_wr_on').checked?v('c_wr_min'):0,queue2_target:v('c_q2'),
-    send_per_day:$('#c_as_on').checked?v('c_as_n'):0,send_from_hour:v('c_as_from'),send_to_hour:v('c_as_to')};
+    send_per_hour:$('#c_as_on').checked?v('c_as_n'):0,...($('#c_as_all').checked?{send_from_hour:0,send_to_hour:24}:{send_from_hour:v('c_as_from'),send_to_hour:v('c_as_to')})};
   return Object.fromEntries(Object.entries(w).filter(([k,x])=>x!==s[k]));
 }
 document.addEventListener('input',e=>{const t=e.target.dataset?.edittext;if(t)editing.set(Number(t),e.target.value);});
-document.addEventListener('input',e=>{if(e.target.closest('#controls')&&e.target.id?.startsWith('c_')){controlsDirty=Object.keys(wanted()).length>0;$('#c_save').disabled=!controlsDirty;}});
+document.addEventListener('input',e=>{if(e.target.closest('#controls')&&e.target.id?.startsWith('c_')){if(e.target.id==='c_as_all')$('#c_as_hours').hidden=e.target.checked;controlsDirty=Object.keys(wanted()).length>0;$('#c_save').disabled=!controlsDirty;}});
 async function command(kind,payload){
   try{
     await fetch('/api/monitor',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,payload})})
@@ -347,7 +349,7 @@ function watchPending(){
   fastPoll=setInterval(async()=>{if(!pendingCmds().length){clearInterval(fastPoll);return;}await load();},3000);
 }
 document.addEventListener('click',e=>{
-  if(e.target.id==='c_save'){const w=wanted();if(Object.keys(w).length){if(w.send_per_day>0&&!data.status.data.settings.send_per_day&&!confirm(`Turn on auto-send: ${w.send_per_day} messages a day to Engain?`))return;command('settings',w);}}
+  if(e.target.id==='c_save'){const w=wanted();if(Object.keys(w).length){if(w.send_per_hour>0&&!data.status.data.settings.send_per_hour&&!confirm(`Turn on auto-send for ${data.org.name}: ${w.send_per_hour} messages an hour to Engain?`))return;command('settings',w);}}
   const r=e.target.closest('[data-run]');
   if(r){if(r.dataset.run==='sender'&&!confirm('Send one message to Engain now (if auto-send is on and it is within the sending hours)?'))return;command('run',{job:r.dataset.run});}
   const d=e.target.closest('[data-discard]');

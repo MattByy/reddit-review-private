@@ -91,9 +91,9 @@ test('commands need the right role and are tagged with the organization',async()
   assert.strictEqual((await post('s-vik','batch',{action:'discard',queue2_ids:[1]})).status,403,'viewer: read only');
   assert.strictEqual((await post('s-ana','batch',{action:'discard',queue2_ids:[1]})).status,200,'editor: drafts');
   assert.strictEqual((await post('s-ana','edit',{queue2_id:1,message:'better words'})).status,200);
-  const s=await post('s-ana','settings',{send_per_day:5});assert.strictEqual(s.status,403);assert.match(s.body.error,/admin role/);
+  const s=await post('s-ana','settings',{send_per_hour:5});assert.strictEqual(s.status,403);assert.match(s.body.error,/admin role/);
   assert.strictEqual((await post('s-ana','update',{})).status,403,'only an owner updates the server');
-  assert.strictEqual((await post('s-matas','settings',{send_per_day:5})).status,200);
+  assert.strictEqual((await post('s-matas','settings',{send_per_hour:5})).status,200);
   assert.strictEqual((await post('s-matas','update',{},'geonode')).status,200);
   assert.deepStrictEqual(t.commands.map(c=>[c.kind,c.org,c.by]),[['batch','zenshield','ana'],['edit','zenshield','ana'],['settings','zenshield','matas'],['update','geonode','matas']]);
 });

@@ -123,8 +123,8 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     const r=await tracker.checkSent(store,engain,await project(),{log});
     return {action:'checked',...r};
   };
-  // Auto-send: one item per run, spread over the day by the scheduler (queue.senderDelay). Sends a
-  // ready Queue 2 draft, else drafts the next Queue 1 item and sends that. Off while send_per_day is 0.
+  // Auto-send: one item per run, spaced send_per_hour an hour by the scheduler (queue.senderDelay). Sends a
+  // ready Queue 2 draft, else drafts the next Queue 1 item and sends that. Off while send_per_hour is 0.
   const sendable=i=>i&&i.send_status==='ready'&&!i.approved_at&&i.message_source!=='random'&&!['skipped','truncated','failed'].includes(i.write_status)
     // Our accounts can't post replies, so a reply whose turn is ours waits.
     &&!(i.status!=='thread'&&i.next_delivery?.next==='dedicated');
@@ -132,10 +132,10 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     :i.message_source==='random'?'No draft yet':['skipped','truncated','failed'].includes(i.write_status)?'Draft '+i.write_status:'Waits for our accounts, which cannot post replies';
   jobs.sender=async()=>{
     const cfg=queue.settings(store),w=queue.sendWindow(cfg);
-    if(!cfg.send_per_day)return {action:'off',reason:'Auto-send is off (send_per_day is 0)'};
-    if(!w.open)return {action:'waiting',reason:`Outside sending hours (${cfg.send_from_hour}:00-${cfg.send_to_hour}:00 Warsaw time)`};
-    const today=store.sentSince(w.day_start).length;
-    if(today>=cfg.send_per_day)return {action:'none',reason:`Sent ${today} today (max ${cfg.send_per_day})`};
+    if(!cfg.send_per_hour)return {action:'off',reason:'Auto-send is off (send_per_hour is 0)'};
+    if(!w.open)return {action:'waiting',reason:`Outside sending hours (${queue.sendHours(cfg)})`};
+    const hour=store.sentSince(w.hour_start).length;
+    if(hour>=cfg.send_per_hour)return {action:'none',reason:`Sent ${hour} in the last hour (max ${cfg.send_per_hour})`};
     const errors=[];
     for(let tries=0;tries<3;tries++){
       let item=queue.queue2List(store).items.find(sendable);
@@ -148,7 +148,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       }
       try{
         const s=await routes['POST /api/agent/queue2/:id/approve'](null,{approved_by:'auto-sender'},String(item.queue2_id));
-        return {action:'sent',queue2_id:item.queue2_id,kind:item.status,mode:s.queue2?.delivery_mode??null,sent_today:today+1,max:cfg.send_per_day,errors};
+        return {action:'sent',queue2_id:item.queue2_id,kind:item.status,mode:s.queue2?.delivery_mode??null,sent_last_hour:hour+1,max:cfg.send_per_hour,errors};
       }catch(e){errors.push(`#${item.queue2_id}: ${e.message}`);}
     }
     return {action:'none',reason:'Nothing could be sent in 3 tries',errors};
@@ -195,7 +195,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // mode, in which the writer runs every minute and the mirror syncs every 10 s so the page shows
   // it live. Sending is never faster than auto-send allows. Commands older than 15 minutes expire,
   // so nothing surprising happens when the computer comes back after a long time offline.
-  const REMOTE_SETTINGS=['write_every_minutes','queue2_target','send_per_day','send_from_hour','send_to_hour'];
+  const REMOTE_SETTINGS=['write_every_minutes','queue2_target','send_per_hour','send_from_hour','send_to_hour'];
   const REMOTE_JOBS=['writer','sender','threads','comments','tracker'];
   // The hosted Prompts page: its reads come from snapshots, its changes arrive as "api" commands.
   const REMOTE_API=/^\/api\/(prompts(\/(weights|preview|try))?|prompt-variants(\/[\w-]+(\/delete)?)?|keys(\/[\w-]+\/revoke)?|models)$/;
@@ -376,7 +376,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     }
     plan('writer',()=>fast()?60000:(queue.settings(store).write_every_minutes||10)*60000,30000);
     const c=queue.settings(store);log(`jobs scheduled: comments every ${c.comments_every_minutes} min, threads every ${c.threads_every_minutes} min, sent-status checker every ${c.tracker_every_minutes} min, `+
-      (c.write_every_minutes?`writer every ${c.write_every_minutes} min, `:'writer off, ')+(c.send_per_day?`auto-send ${c.send_per_day} a day between ${c.send_from_hour}:00 and ${c.send_to_hour}:00 Warsaw time`:'auto-send off'));
+      (c.write_every_minutes?`writer every ${c.write_every_minutes} min, `:'writer off, ')+(c.send_per_hour?`auto-send ${c.send_per_hour} an hour, ${queue.sendHours(c)}`:'auto-send off'));
   }
   const jobSource=body=>body?.source?String(body.source).slice(0,40):'cron';
   const jobStatus=()=>Object.fromEntries(Object.keys(jobs).map(n=>[n,{running:!!running[n],next_run:next[n]||null,last:store.kv('job_'+n)}]));
