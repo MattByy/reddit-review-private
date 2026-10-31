@@ -19,6 +19,9 @@ code,.mono{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
 header{border-bottom:1px solid var(--line);background:var(--panel)}
 header .wrap{display:flex;align-items:center;gap:14px;min-height:58px;flex-wrap:wrap}
 .brand{font-weight:700;font-size:16px;letter-spacing:-.01em}.brand span{color:var(--muted);font-weight:500}
+.brand .org{color:var(--ink);font-weight:700}.brand .org:not(:empty)::after{content:" · ";color:var(--muted);font-weight:500}
+.back{font-size:13px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink)}.back:hover{background:var(--chip);text-decoration:none}
+.orgsel{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink)}
 .grow{flex:1}
 .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 9px;border-radius:99px;background:var(--chip);color:var(--muted);white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
@@ -131,7 +134,9 @@ dialog .bd{padding:16px;overflow:auto;max-height:calc(86vh - 60px);display:flex;
 </head>
 <body>
 <header><div class="wrap">
-  <div class="brand">Geonode · <span>Prompts</span></div>
+  <a class="back" href="/" id="back">← Monitor</a>
+  <div class="brand"><span class="org" id="orgname"></span><span>Prompts</span></div>
+  <select class="orgsel" id="orgsel" hidden aria-label="Organization"></select>
   <div class="grow"></div>
   <span class="chip" id="who" hidden></span>
   <span class="chip" id="llm" hidden></span>
@@ -204,6 +209,10 @@ async function api(path,body){
   return j;
 }
 function showSignin(why){$('#signin').hidden=false;if(why)$('#signinwhy').textContent=why;}
+$('#orgsel').onchange=e=>{
+  if(KINDS.some(k=>dirty(k.type))&&!confirm('You have unsaved prompt changes. Switch organization and lose them?')){e.target.value=e.target.querySelector('[selected]')?.value||'';return;}
+  localSet('gn_org',e.target.value);document.cookie=`gn_org=${encodeURIComponent(e.target.value)}; Path=/; Max-Age=31536000; SameSite=Lax; Secure`;location.reload();
+};
 $('#keygo').onclick=()=>{const v=$('#keyin').value.trim();if(!v)return;localSet('gn_key',v);$('#signin').hidden=true;load();};
 
 const fmt=n=>n==null?'–':Number(n).toLocaleString();
@@ -220,7 +229,11 @@ async function load(){
     P=p;for(const k of KINDS)if(!dirty(k.type)||!edit[k.type])edit[k.type]=clone(p.variants[k.type]);
     $('#signin').hidden=true;
     const w=$('#who');w.hidden=!me;if(me)w.innerHTML=me.key?`<span class="dot ok"></span>Key “${esc(me.key.name)}” · ${esc(me.key.scope)}`:`<span class="dot ok"></span>${me.by==='dashboard'?'This machine':'Agent key'}`;
-    $('#dash').hidden=!(me&&(me.by==='dashboard'||me.key?.scope==='full'));
+    $('#dash').hidden=true;
+    // Which organization these prompts belong to; on the hosted page you can switch (the monitor follows).
+    const name=me?.org_name||'';$('#orgname').textContent=name;document.title=(name?name+' · ':'')+'Prompts';
+    const orgs=me?.orgs||[],sel=$('#orgsel');sel.hidden=orgs.length<2;
+    sel.innerHTML=orgs.map(o=>`<option value="${esc(o.slug)}" ${o.slug===me.org?'selected':''}>${esc(o.name)} (${esc(o.role)})</option>`).join('');
     const l=$('#llm');l.hidden=false;l.innerHTML=`<span class="dot ${p.openrouter_key?'ok':'no'}"></span>OpenRouter · <span class="dot ${p.featherless_key?'ok':'no'}"></span>Featherless`;
     $('#models').innerHTML=[p.model,...(p.shortlist||[]).map(m=>m.model)].filter((m,i,a)=>m&&a.indexOf(m)===i).map(m=>`<option value="${esc(m)}">`).join('');
     render();loadKeys();

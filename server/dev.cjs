@@ -499,7 +499,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       model:writerOpts.model||process.env.OPENROUTER_MODEL||writer.DEFAULT_MODEL,openrouter_key:!!llmKeys().openrouter,featherless_key:!!llmKeys().featherless,shortlist:bench.SHORTLIST}),
     // API keys. The secret is returned once, on create. scope: "prompts" (default) or "full".
     'GET /api/keys':async()=>({keys:store.apiKeys()}),
-    'GET /api/keys/me':async(_,__,___,who)=>({by:who?.by??null,key:who?.key?{id:who.key.id,name:who.key.name,scope:who.key.scope,prefix:who.key.prefix}:null}),
+    'GET /api/keys/me':async(_,__,___,who)=>({by:who?.by??null,org_name:require('./collect.cjs').profileOf(store).name||null,key:who?.key?{id:who.key.id,name:who.key.name,scope:who.key.scope,prefix:who.key.prefix}:null}),
     'POST /api/keys':async(_,body)=>{
       const name=String(body?.name??'').trim(),scope=body?.scope??'prompts';
       if(!name||name.length>60)fail(422,'Give the key a name (up to 60 characters), e.g. "prompt agent"');

@@ -49,7 +49,7 @@ async function viaSupabase(req,res,path,u,page,reply){
     const org=pickOrg(req,me);
     if(!org)return reply(403,'You are not a member of that organization');
     const by=me.via==='login'?'login:'+me.name:me.name,mine='org=eq.'+encodeURIComponent(org.slug);
-    if(path==='/api/keys/me')return send(200,null,JSON.stringify({by,org:org.slug,role:org.role,key:me.key&&{id:me.key.id,name:me.key.name,scope:me.key.scope,prefix:me.key.prefix}}));
+    if(path==='/api/keys/me')return send(200,null,JSON.stringify({by,org:org.slug,org_name:org.name,role:org.role,orgs:me.orgs.map(o=>({slug:o.slug,name:o.name,role:o.role})),key:me.key&&{id:me.key.id,name:me.key.name,scope:me.key.scope,prefix:me.key.prefix}}));
     if(/^\/api\/keys(\/|$)/.test(path)&&(me.scope!=='full'||!allowed(me,org,'admin')))return reply(403,me.scope!=='full'?'Managing keys needs an "Everything" key':`Managing API keys needs the admin role in ${org.name}`);
     if(req.method==='POST'&&!/^\/api\/(prompts\/preview|keys(\/|$))/.test(path)&&!allowed(me,org,'editor'))return reply(403,`Changing prompts needs the editor role in ${org.name}; you are ${org.role}`);
     if(req.method==='GET'&&SNAPSHOT.has(path)&&!u.search){
