@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Join an organization</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--accent:#4f46e5;--accent-ink:#fff;--good:#15803d;--bad:#b91c1c;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0c0a09;--panel:#171412;--ink:#f5f5f4;--muted:#a8a29e;--line:#292524;--accent:#818cf8;--accent-ink:#0c0a09;--good:#4ade80;--bad:#f87171;--shadow:none}}
+:root[data-theme=dark]{--bg:#0c0a09;--panel:#171412;--ink:#f5f5f4;--muted:#a8a29e;--line:#292524;--accent:#818cf8;--accent-ink:#0c0a09;--good:#4ade80;--bad:#f87171;--shadow:none}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:420px;margin:72px auto;padding:0 16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:24px}
+h1{font-size:20px;margin:0 0 6px}
+.muted{color:var(--muted)}.small{font-size:13px}
+input{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);margin-top:10px}
+button{width:100%;margin-top:14px;font:inherit;font-weight:600;padding:10px 14px;border:1px solid var(--accent);border-radius:10px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--line);font-weight:500}
+button:disabled{opacity:.6;cursor:default}
+.err{color:var(--bad);margin-top:12px;font-size:13px}
+.ok{color:var(--good)}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main><div class="panel" id="box"><p class="muted">Checking the invite…</p></div></main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+const t=new URLSearchParams(location.search).get('t')||'';
+const ROLE={viewer:'see everything, read only',editor:'write, edit and send drafts, and edit prompts',admin:'everything, including settings, members and API keys'};
+async function call(url,body){
+  const r=await fetch(url,{method:body?'POST':'GET',credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({error:'HTTP '+r.status}));if(!r.ok)throw Error(j.error||'HTTP '+r.status);return j;
+}
+function done(r){
+  document.cookie=`gn_org=${encodeURIComponent(r.org.slug)}; Path=/; Max-Age=31536000; SameSite=Lax; Secure`;
+  try{localStorage.setItem('gn_org',r.org.slug);}catch{}
+  $('#box').innerHTML=`<h1 class="ok">You joined ${esc(r.org.name)}</h1><p class="muted">As ${esc(r.role)}${r.username?' ('+esc(r.username)+')':''}. Opening the monitor…</p>`;
+  setTimeout(()=>location.replace('/'),1200);
+}
+function fail(e){const el=$('#err');if(el){el.hidden=false;el.textContent=e.message;}for(const b of document.querySelectorAll('button'))b.disabled=false;}
+async function start(){
+  let inv;
+  try{inv=await call('/api/invite?t='+encodeURIComponent(t));}
+  catch(e){$('#box').innerHTML=`<h1>Invite link</h1><p class="err">${esc(e.message)}</p><p class="small"><a href="/">Go to the monitor</a></p>`;return;}
+  const head=`<h1>Join ${esc(inv.org.name)}</h1><p class="muted small">${esc(inv.invited_by||'An admin')} invited you as <b>${esc(inv.role)}</b>: ${esc(ROLE[inv.role]||'')}.</p>`;
+  if(inv.signed_in_as){
+    $('#box').innerHTML=head+`<p class="small">You are signed in as <b>${esc(inv.signed_in_as)}</b>.</p><button id="join">Join ${esc(inv.org.name)}</button>
+      <div class="err" id="err" hidden></div>`;
+    $('#join').onclick=async e=>{e.target.disabled=true;try{done(await call('/api/invite',{t}));}catch(x){fail(x);}};
+    return;
+  }
+  $('#box').innerHTML=head+`<form id="make"><p class="small" style="margin:16px 0 0">Make your account:</p>
+      <input id="u" placeholder="Username" autocomplete="username" autocapitalize="none" required>
+      <input id="p" type="password" placeholder="Password (at least 10 characters)" autocomplete="new-password" required>
+      <input id="p2" type="password" placeholder="Password again" autocomplete="new-password" required>
+      <button type="submit">Create account and join</button></form>
+    <button class="ghost" id="have">I already have an account</button>
+    <form id="login" hidden><input id="lu" placeholder="Username" autocomplete="username" autocapitalize="none" required>
+      <input id="lp" type="password" placeholder="Password" autocomplete="current-password" required><button type="submit">Sign in</button></form>
+    <div class="err" id="err" hidden></div>`;
+  $('#have').onclick=()=>{$('#make').hidden=true;$('#have').hidden=true;$('#login').hidden=false;$('#lu').focus();};
+  $('#make').onsubmit=async e=>{
+    e.preventDefault();if($('#p').value!==$('#p2').value)return fail(Error('The two passwords are not the same'));
+    e.submitter&&(e.submitter.disabled=true);
+    try{done(await call('/api/invite',{t,username:$('#u').value,password:$('#p').value}));}catch(x){fail(x);}
+  };
+  // Signing in uses the monitor's sign-in (with its lockout); then the page asks again and offers Join.
+  $('#login').onsubmit=async e=>{
+    e.preventDefault();e.submitter&&(e.submitter.disabled=true);
+    try{await call('/api/login',{username:$('#lu').value,password:$('#lp').value});start();}catch(x){fail(x);}
+  };
+}
+start();
+</script>
+</body>
+</html>

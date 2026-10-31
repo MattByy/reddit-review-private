@@ -293,10 +293,11 @@ function rulesText(r){
   return parts.join(' ')||'No special rules known.';
 }
 // Two or three real comments people wrote (the mention comments Engain collects), preferring the
-// same subreddit. They show tone only; comments that mention Geonode are left out.
+// same subreddit. They show tone only; comments that mention our own organization are left out.
 function styleExamples(store,subreddit,n=3){
-  const rows=store.db.prepare(`select body from comments where length(body) between 60 and 500 and body not like '%geonode%'
-    order by (lower(subreddit)=lower(?)) desc, random() limit ?`).all(subreddit||'',n);
+  const own='%'+require('./collect.cjs').profileOf(store).name.toLowerCase()+'%';
+  const rows=store.db.prepare(`select body from comments where length(body) between 60 and 500 and lower(body) not like ?
+    order by (lower(subreddit)=lower(?)) desc, random() limit ?`).all(own,subreddit||'',n);
   return rows.length?rows.map(r=>'- "'+String(r.body).replace(/\s+/g,' ').trim()+'"').join('\n'):'(no examples collected yet)';
 }
 const render=(template,vars)=>template.replace(/\{\{(\w+)\}\}/g,(m,k)=>k in vars?String(vars[k]):m);

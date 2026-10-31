@@ -39,8 +39,9 @@ test('copies the queues, new events only, and a status row, with the service key
     const posts=t=>sb.calls.filter(c=>c.method==='POST'&&c.url.endsWith('/'+t)).flatMap(c=>c.body);
     assert.ok(posts('queue1').length>0);assert.strictEqual(posts('queue1').length,r.queue1);
     const q2=posts('queue2');assert.strictEqual(q2.length,1);assert.strictEqual(q2[0].message,DRAFT);assert.strictEqual(q2[0].send_status,'ready');
-    assert.ok(posts('events').length>0);assert.strictEqual(posts('status')[0].id,'main');
-    assert.ok(sb.calls.some(c=>c.method==='DELETE'&&c.url.includes('queue1?item_id=not.in.')));
+    assert.ok(posts('events').length>0);assert.strictEqual(posts('status')[0].id,'geonode');
+    assert.ok(['queue1','queue2','events','status'].every(t=>posts(t).every(r=>r.org==='geonode')),'every row carries its organization');
+    assert.ok(sb.calls.some(c=>c.method==='DELETE'&&c.url.includes('queue1?org=eq.geonode&item_id=not.in.')),'deletes only its own rows');
     // The next sync sends only events that are new since.
     const before=sb.calls.length;
     await call(a,'POST','/api/cron/mirror',{});

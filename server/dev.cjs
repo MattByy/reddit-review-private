@@ -31,12 +31,17 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   // Update & restart from the hosted page; tests pass fakes. git(args) returns stdout and throws on failure.
   git=args=>require('node:child_process').execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000}).trim(),
   // How the server restarts itself (restartMode below); the entry point at the bottom passes the real one.
-  restart=null}={}){
+  restart=null,
+  // Which organization this engine serves ({slug,name,about,brand_terms,topic_terms}); Geonode by default.
+  // host: hooks of the process that runs every organization (adding one), given to one engine only.
+  org=null,host=null}={}){
   const canRestart=!!restart;
   // Writer settings; tests pass {fetchImpl,apiKey,featherlessKey}. Defaults come from the environment.
   const writerOpts={...openrouter};
   const llmKeys=()=>({openrouter:writerOpts.apiKey??process.env.OPENROUTER_API_KEY,featherless:writerOpts.featherlessKey??process.env.FEATHERLESS_API_KEY});
   const store=open(dbFile||path.join(root,'.data',mock?'dev-mock.db':'dev.db'));
+  if(org&&org.slug!=='geonode')store.setKv('org',org);
+  const orgSlug=org?.slug||'geonode';
   // Console lines also go to the activity log; `say` prints only, for lines that log their own event.
   const say=log;log=m=>{say(m);store.event('server.log',String(m));};
   const keepDays=Number(process.env.LOG_KEEP_DAYS)||30;store.pruneEvents(keepDays);
@@ -59,10 +64,11 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
 
   async function project(){
     if(projectId)return projectId;
-    // The key reaches several workspaces' projects; default to Geonode's.
+    // The key may reach several workspaces' projects; pick the one named like this organization.
     const me=await engain.me();
     if(!me.projects?.length)fail(409,'This Engain key has no projects');
-    const p=me.projects.find(p=>/geonode/i.test(p.name))||me.projects[0];projectName=p.name;
+    const own=require('./collect.cjs').profileOf(store).brand;
+    const p=me.projects.find(p=>own.test(p.name))||me.projects[0];projectName=p.name;
     return projectId=p.id;
   }
   // One collection at a time. Returns the run ID at once and `done`, which settles with the
@@ -167,13 +173,15 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
   };
   // Supabase mirror (server/mirror.cjs), every minute while the scheduler runs. Off without its keys.
   // Logs only when it starts failing or recovers, not every minute.
-  const mir=mirror(supabase);
+  const mir=mirror({...supabase,org:orgSlug,host:!!host});
   async function syncMirror(){
     if(!mir)return {action:'off',reason:'SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_SECRET_SERVICE_ROLE) are not set'};
     const was=store.kv('mirror_last');
     try{
       const r=await mir.sync(store,{jobs:jobStatus(),server:{...server,disk_commit:diskCommit()},fast_until:fastUntil>Date.now()?new Date(fastUntil).toISOString():null});
-      await sendSnapshots();await mir.scrub();store.setKv('mirror_last',{ok:true,...r});
+      await sendSnapshots();await mir.scrub();
+      if(host)await mir.putOrganizations(host.list());
+      store.setKv('mirror_last',{ok:true,...r});
       if(was&&!was.ok)log('Supabase mirror working again');
       return {action:'synced',...r};
     }catch(e){
@@ -286,6 +294,11 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       store.event('server.restart',`Restart requested by ${by}`,{by});
       return ['done',{note:'Restarting'},async()=>restart()];
     }
+    // Organizations: only the engine of the process that runs them all (host) takes these.
+    if(c.kind.startsWith('org.')){
+      if(!host?.[c.kind])fail(422,'Unknown command: '+c.kind);
+      return ['done',await host[c.kind](p,by)];
+    }
     if(c.kind==='api'){
       const method=String(p.method||'GET').toUpperCase(),u=new URL(String(p.path||''),'http://x');
       if(!['GET','POST'].includes(method)||!REMOTE_API.test(u.pathname))fail(422,'Not reachable from the hosted page: '+method+' '+u.pathname);
@@ -311,10 +324,12 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       for(const c of list){
         let status,result,after;
         try{[status,result,after]=await applyCommand(c);}catch(e){status='failed';result={error:e.message};}
-        // An api command's answer can hold a new key's secret: the log keeps only its status.
+        // An api command's answer can hold a new key's secret, and an org.* payload an Engain key: the log keeps neither.
         store.event('command.'+status,`Hosted page command #${c.id} (${c.kind}${c.kind==='api'?' '+c.payload?.method+' '+c.payload?.path:''}) ${status}`,
-          {id:c.id,kind:c.kind,payload:c.kind==='api'?{method:c.payload?.method,path:c.payload?.path}:c.payload,by:c.by,result:c.kind==='api'?{status:result?.status}:result});
+          {id:c.id,kind:c.kind,payload:c.kind==='api'?{method:c.payload?.method,path:c.payload?.path}:c.kind.startsWith('org.')?{slug:c.payload?.slug??null,name:c.payload?.name??null}:c.payload,by:c.by,result:c.kind==='api'?{status:result?.status}:result});
         await mir.finish(c.id,status,result);
+        // Adding or changing an organization can carry its Engain key: keep only the name in Supabase.
+        if(c.kind.startsWith('org.'))await mir.scrubPayload(c.id,{slug:c.payload?.slug??null,name:c.payload?.name??null}).catch(e=>log('could not scrub command #'+c.id+': '+e.message));
         // Steps that restart the server run only once the command is marked done, so it never runs twice.
         if(after){await syncMirror();await after();return {action:'checked',commands:1,restarting:true};}
       }
@@ -727,7 +742,7 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
       send(200,await route(Object.fromEntries(u.searchParams),body,param,who));
     }catch(e){send(e.status&&e.status<600?e.status:500,{error:e.message,engain:e.body});}
   }
-  return {handle,store,engain,runJob,startScheduler,close:()=>{for(const t of Object.values(timers))clearTimeout(t);store.close();}};
+  return {org:orgSlug,handle,store,engain,runJob,startScheduler,syncMirror,close:()=>{for(const t of Object.values(timers))clearTimeout(t);store.close();}};
 }
 
 // How this process restarts itself, for the hosted page's Restart and Update buttons:
@@ -757,7 +772,8 @@ if(require.main===module){
     console.error('Refusing to listen on '+host+': set AGENT_API_KEY and CRON_SECRET first.');process.exit(1);
   }
   let listener=null;
-  const app=createApp({mock,restart:restartMode(()=>listener)});
+  // Geonode plus every organization added from the hosted page (server/orgs.cjs), one engine each.
+  const app=require('./orgs.cjs').organizations({createApp,dir:path.join(root,'.data'),mock,restart:restartMode(()=>listener)});
   listener=http.createServer(app.handle).listen(port,host,()=>{
     console.log(`Thread collector running at http://${host}:${port}  (${mock?'MOCK Engain data':'live Engain API'})`);
     if(!mock&&!process.env.ENGAIN_API_KEY)console.log('  ENGAIN_API_KEY is missing: add it to .env.local, or use npm run dev:mock');

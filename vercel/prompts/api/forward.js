@@ -3,8 +3,10 @@
 // server checks the API key. Without it, everything goes through Supabase: pages and reads come from
 // the snapshots the computer uploads, and changes become "api" commands that the computer applies
 // within a few seconds (server/dev.cjs applyCommand). Then the caller must be signed in on the monitor
-// (session cookie) or send an API key; "Prompts only" keys are enough here.
-const {sha256,cookie,SESSION,supabase,readJson}=require('../lib/auth.js');
+// (session cookie) or send an API key; "Prompts only" keys are enough here. It is about the organization
+// the monitor has chosen (gn_org cookie) or ?org=; reading needs viewer, changing prompts editor, and
+// managing API keys admin (lib/auth.js).
+const {supabase,who,pickOrg,allowed,readJson}=require('../lib/auth.js');
 const ALLOW=/^\/(prompts|docs\/prompts-api|api\/(prompts(\/[\w-]+)?|prompt-variants(\/[\w-]+(\/delete)?)?|models|keys(\/me|\/[\w-]+\/revoke)?))$/;
 const PASS=['authorization','content-type','accept'];
 const PAGES=new Set(['/prompts','/docs/prompts-api']),SNAPSHOT=new Set(['/api/prompts','/api/keys','/api/models']);
@@ -38,25 +40,25 @@ async function viaSupabase(req,res,path,u,page,reply){
   try{
     // The page itself holds no data, so it is served to anyone (as on the computer).
     if(PAGES.has(path)){
-      const [s]=await db(`snapshots?key=eq.${encodeURIComponent('GET '+path)}&select=type,body`);
+      const [s]=await db(`snapshots?org=eq.geonode&key=eq.${encodeURIComponent('GET '+path)}&select=type,body`);
       return s?send(200,s.type,s.body):reply(503,'The always-on computer has not uploaded this page yet. Is it running with the Supabase keys?');
     }
-    // Who is calling: the monitor's session, or an API key (any scope) mirrored from the computer.
-    let who=null;
-    const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
-    if(token){const [k]=await db(`api_keys?hash=eq.${sha256(token)}&revoked_at=is.null&select=id,name,scope,prefix`);if(k)who={by:'key:'+k.name,key:k};}
-    else{const s=cookie(req,SESSION);if(s){const [row]=await db(`monitor_sessions?token_hash=eq.${sha256(s)}&expires_at=gt.${new Date().toISOString()}&select=username`);if(row)who={by:'login:'+row.username,key:null,full:true};}}
-    if(!who)return reply(401,'Sign in on the monitor first, or send an API key');
-    const full=who.full||who.key?.scope==='full';
-    if(/^\/api\/keys(\/|$)/.test(path)&&path!=='/api/keys/me'&&!full)return reply(403,'Managing keys needs an "Everything" key');
-    if(path==='/api/keys/me')return send(200,null,JSON.stringify({by:who.by,key:who.key&&{id:who.key.id,name:who.key.name,scope:who.key.scope,prefix:who.key.prefix}}));
+    // Who is calling (the monitor's session, or an API key of any scope) and about which organization.
+    const me=await who(req,db);
+    if(!me)return reply(401,'Sign in on the monitor first, or send an API key');
+    const org=pickOrg(req,me);
+    if(!org)return reply(403,'You are not a member of that organization');
+    const by=me.via==='login'?'login:'+me.name:me.name,mine='org=eq.'+encodeURIComponent(org.slug);
+    if(path==='/api/keys/me')return send(200,null,JSON.stringify({by,org:org.slug,role:org.role,key:me.key&&{id:me.key.id,name:me.key.name,scope:me.key.scope,prefix:me.key.prefix}}));
+    if(/^\/api\/keys(\/|$)/.test(path)&&(me.scope!=='full'||!allowed(me,org,'admin')))return reply(403,me.scope!=='full'?'Managing keys needs an "Everything" key':`Managing API keys needs the admin role in ${org.name}`);
+    if(req.method==='POST'&&!/^\/api\/(prompts\/preview|keys(\/|$))/.test(path)&&!allowed(me,org,'editor'))return reply(403,`Changing prompts needs the editor role in ${org.name}; you are ${org.role}`);
     if(req.method==='GET'&&SNAPSHOT.has(path)&&!u.search){
-      const [s]=await db(`snapshots?key=eq.${encodeURIComponent('GET '+path)}&select=type,body`);
+      const [s]=await db(`snapshots?${mine}&key=eq.${encodeURIComponent('GET '+path)}&select=type,body`);
       if(s)return send(200,s.type,s.body);
     }
-    // Anything else (a change, a preview, a model search) is done by the computer.
+    // Anything else (a change, a preview, a model search) is done by that organization's engine.
     const body=req.method==='POST'?await readJson(req):null;
-    const [c]=await db('commands',{body:{by:who.by,kind:'api',payload:{method:req.method,path:path+(u.search||''),body}}});
+    const [c]=await db('commands',{body:{by,kind:'api',payload:{method:req.method,path:path+(u.search||''),body},org:org.slug}});
     for(const end=Date.now()+50000;Date.now()<end;){
       await sleep(800);
       const [d]=await db(`commands?id=eq.${c.id}&select=status,result`);

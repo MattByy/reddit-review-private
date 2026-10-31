@@ -4,7 +4,6 @@
 // list marks threads we already worked in.
 const SOURCES=['opportunities','mentions','smart_search','tasks'];
 const DAY=86400000;
-const OWN_BRAND=/geonode/i;
 // Geonode's topic: a comment or thread must touch one of these to count as relevant.
 const TOPIC=/\bprox(y|ies)\b|residential|rotating|\bisp\b|datacenter|data center|mobile prox|scrap(e|er|ers|ing)|crawl(er|ing)?|captcha|cloudflare|anti-?bot|\bwaf\b|blocked|ip ban|banned ip|rate.?limit|\bserp\b|unblock|fingerprint|headless|playwright|puppeteer|selenium|geo-?(target|restrict)|\bvpn\b|bandwidth|\bips?\b/gi;
 // Generic words ("ip", "vpn", "blocked", "bandwidth"...) add weight but never qualify a comment alone.
@@ -26,7 +25,20 @@ function threadRef(raw){
 }
 const num=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
 const relevance=r=>(r=num(r))==null||r<0?null:r>1?Math.min(r/100,1):r;
-const topicHits=text=>[...new Set((String(text||'').match(TOPIC)||[]).map(s=>s.toLowerCase()))];
+// Who the threads are collected for: its name, the words that mean "this mentions us" and its topic.
+// Geonode's is built in; another organization's is saved in its own database (kv 'org') when it is
+// added. Without topic words, every thread and comment counts as on-topic.
+const GEONODE={slug:'geonode',name:'Geonode',about:'proxies and web-scraping infrastructure',brand:/geonode/i,topic:TOPIC,strong:STRONG};
+const escapeRe=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+function profileOf(store){
+  const o=store.kv('org');if(!o||o.slug==='geonode')return GEONODE;
+  const words=a=>(a||[]).map(w=>String(w).trim()).filter(Boolean);
+  const brand=words(o.brand_terms).length?words(o.brand_terms):[o.name],topics=words(o.topic_terms);
+  const any=list=>new RegExp(list.map(w=>'\\b'+escapeRe(w)).join('|'),'gi');
+  return {slug:o.slug,name:o.name,about:o.about||'',brand:new RegExp(brand.map(escapeRe).join('|'),'i'),
+    topic:topics.length?any(topics):null,strong:topics.length?new RegExp('^('+topics.map(escapeRe).join('|')+')$','i'):null};
+}
+const topicHits=(text,profile=GEONODE)=>profile.topic?[...new Set((String(text||'').match(profile.topic)||[]).map(s=>s.toLowerCase()))]:[];
 
 function fromOpportunity(o){
   const p=o.postContent||{},ref=threadRef(p.url);if(!ref)return null;
@@ -58,15 +70,15 @@ function fromSmartSearch(r,keyword){
 const DEFAULT_MAX_AGE=120;
 // Score 0-100 with a visible breakdown. Weights are a starting point to tune, not Engain's model.
 // Age past max_age_days is reported as a flag; the queue excludes those threads outright.
-function rank(t,sub,{max_age_days=DEFAULT_MAX_AGE}={},now=Date.now()){
+function rank(t,sub,{max_age_days=DEFAULT_MAX_AGE,profile=GEONODE}={},now=Date.now()){
   const parts={},flags=[];
   // Engain scores opportunities; Smart Search hits matched our own keywords. A thread found only
   // through a brand mention earns relevance from an on-topic title/body or its best on-topic comment.
   let baseRel=t.relevance??(t.sources.includes('smart_search')?0.6:0);
-  if(t.relevance==null&&topicHits(t.title+' '+(t.body||'')).length)baseRel=Math.max(baseRel,0.5);
+  if(t.relevance==null&&(!profile.topic||topicHits(t.title+' '+(t.body||''),profile).length))baseRel=Math.max(baseRel,0.5);
   if(t.best_comment_score)baseRel=Math.max(baseRel,t.best_comment_score/100);
   const offTopic=baseRel===0;
-  if(offTopic)flags.push('No proxy/scraping signal in the thread or its mention comments');
+  if(offTopic)flags.push(`No ${profile.name} topic in the thread or its mention comments`);
   parts.relevance=baseRel*35;
   parts.traffic=Math.min(1,Math.log10(1+(t.visits_per_month||0))/4)*20;
   parts.google=t.google_position?Math.max(0,1-(t.google_position-1)/10)*5:0;
@@ -93,22 +105,24 @@ function rank(t,sub,{max_age_days=DEFAULT_MAX_AGE}={},now=Date.now()){
 
 function bestCommentScores(store){
   const best={};
-  for(const c of store.comments()){const s=rankComment(c).score;if(s>(best[c.thread_id]||0))best[c.thread_id]=s;}
+  const profile=profileOf(store);
+  for(const c of store.comments()){const s=rankComment(c,{profile}).score;if(s>(best[c.thread_id]||0))best[c.thread_id]=s;}
   return best;
 }
 
-// Comment relevance 0-100. A comment with no Geonode-topic term in it or its thread title scores 0.
-function rankComment(c,{max_age_days=DEFAULT_MAX_AGE}={},now=Date.now()){
-  const parts={},reasons=[],own=OWN_BRAND.test(c.brand||'');
+// Comment relevance 0-100. A comment with no topic term in it or its thread title scores 0
+// (with no topic words set, the topic part is a flat 20).
+function rankComment(c,{max_age_days=DEFAULT_MAX_AGE,profile=GEONODE}={},now=Date.now()){
+  const parts={},reasons=[],own=profile.brand.test(c.brand||'');
   // Strip the brand's own name so "firecrawl" or "serpapi" does not count as a topic word.
   const name=String(c.brand||'').split('.')[0];
-  const hits=topicHits((c.body+' '+(c.thread_title||'')).replace(name?new RegExp(name.replace(/[^a-z0-9]/gi,''),'gi'):/$^/,' '));
+  const hits=topicHits((c.body+' '+(c.thread_title||'')).replace(name?new RegExp(name.replace(/[^a-z0-9]/gi,''),'gi'):/$^/,' '),profile);
   // The comment itself must name the topic; the thread title only adds weight.
-  const own_words=topicHits(String(c.body||'').replace(name?new RegExp(name.replace(/[^a-z0-9]/gi,''),'gi'):/$^/,' '));
-  if(!own_words.some(h=>STRONG.test(h)))return {score:0,parts:{},reasons:['No proxy/scraping topic in the comment or thread title'],own,too_old:false,topics:hits};
-  parts.topic=Math.min(hits.length,4)/4*35;
+  const own_words=topicHits(String(c.body||'').replace(name?new RegExp(name.replace(/[^a-z0-9]/gi,''),'gi'):/$^/,' '),profile);
+  if(profile.topic&&!own_words.some(h=>profile.strong.test(h)))return {score:0,parts:{},reasons:[`No ${profile.name} topic in the comment or thread title`],own,too_old:false,topics:hits};
+  parts.topic=profile.topic?Math.min(hits.length,4)/4*35:20;
   if(INTENT.test(c.body)){parts.intent=20;reasons.push('Asks, compares or reports a problem');}
-  if(own){parts.brand=c.sentiment==='negative'?25:15;reasons.push(c.sentiment==='negative'?'Negative about Geonode: needs a support answer':'Mentions Geonode');}
+  if(own){parts.brand=c.sentiment==='negative'?25:15;reasons.push(c.sentiment==='negative'?`Negative about ${profile.name}: needs a support answer`:`Mentions ${profile.name}`);}
   else{parts.brand=c.sentiment==='negative'?25:c.sentiment==='neutral'?15:10;reasons.push(`Mentions ${c.brand}${c.sentiment==='negative'?' negatively':''}`);}
   const age=c.created_utc?(now-c.created_utc*1000)/DAY:null;
   parts.freshness=age==null?0:age<=7?20:Math.max(0,1-(age-7)/(max_age_days-7))*20;
@@ -179,8 +193,8 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
     let brands=[];
     await step('mention_brands',async()=>{
       brands=((await engain.mentionBrands({projectId})).brands||[]).map(b=>b.brand).filter(Boolean);
-      // 'own' reads only Geonode's mentions: enough to exclude threads that already mention us.
-      if(input.mention_brands==='own')brands=brands.filter(b=>OWN_BRAND.test(b));
+      // 'own' reads only our own brand's mentions: enough to exclude threads that already mention us.
+      if(input.mention_brands==='own'){const own=profileOf(store).brand;brands=brands.filter(b=>own.test(b));}
     });
     for(const brand of brands.length?brands:[undefined])
       await step('mentions:'+(brand||'project'),async()=>{
@@ -212,13 +226,13 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
     // Subreddit stats cost one request each (30/min), so only look up the subreddits of the
     // strongest candidates and relevant comments, best first, up to enrich_limit.
     const limit=Math.max(0,Math.min(Number(input.enrich_limit??100),1000)),engaged=store.engaged(),best=bestCommentScores(store);
-    const candidates=[];
+    const candidates=[],profile=profileOf(store);
     for(const t of store.threads()){
       if(engaged[t.thread_id])continue;
-      const r=rank({...t,best_comment_score:best[t.thread_id]},null);
+      const r=rank({...t,best_comment_score:best[t.thread_id]},null,{profile});
       if(!r.off_topic)candidates.push({sub:t.subreddit,score:r.score});
     }
-    for(const c of store.comments()){const r=rankComment(c);if(r.score>=40)candidates.push({sub:c.subreddit,score:r.score});}
+    for(const c of store.comments()){const r=rankComment(c,{profile});if(r.score>=40)candidates.push({sub:c.subreddit,score:r.score});}
     const subs=[...new Set(candidates.filter(c=>c.sub).sort((a,b)=>b.score-a.score).map(c=>c.sub.toLowerCase()))];
     const stale=subs.filter(s=>{const c=store.subreddit(s);return !c||Date.now()-Date.parse(c.fetched_at)>DAY;}).slice(0,limit);
     for(const s of stale)await step('subreddit_stats:'+s,async()=>{store.saveSubreddit(s,await engain.subredditStats(s));summary.subreddits_enriched++;});
@@ -227,4 +241,4 @@ async function collect(input,{engain,store,projectId,onProgress=()=>{}}){
   return summary;
 }
 
-module.exports={ACTIVE,collect,rank,rankComment,topicHits,threadRef,fromOpportunity,fromMention,fromSmartSearch,commentFromMention,SOURCES,REMOVED,DEFAULT_MAX_AGE};
+module.exports={GEONODE,profileOf,ACTIVE,collect,rank,rankComment,topicHits,threadRef,fromOpportunity,fromMention,fromSmartSearch,commentFromMention,SOURCES,REMOVED,DEFAULT_MAX_AGE};

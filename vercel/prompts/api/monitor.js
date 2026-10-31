@@ -1,11 +1,12 @@
 // Data for the hosted monitor page, read from the Supabase mirror (server/mirror.cjs).
 // Needs the session cookie from /api/login, or an "Everything" (full) API key of the always-on
-// computer as a bearer token (lib/auth.js).
-// GET /api/monitor             status, Queue 1, Queue 2 and the latest events
+// computer as a bearer token (lib/auth.js). Everything is about one organization: ?org=<slug>, else
+// the gn_org cookie, else the caller's first; commands need the role lib/auth.js NEEDS lists.
+// GET /api/monitor             who you are, your organizations, then status, Queue 1, Queue 2 and the latest events
 // GET /api/monitor?events=1&before=<id>&type=<prefix>   older events (100 per page)
 // POST /api/monitor {"kind":"settings","payload":{...}} | {"kind":"run","payload":{"job"}} | {"kind":"discard","payload":{"queue2_id"}} | {"kind":"requeue","payload":{"queue2_id"}} | {"kind":"batch","payload":{"action","queue2_ids"|"all"}} | {"kind":"edit","payload":{"queue2_id","message"}} | {"kind":"update"} | {"kind":"restart"} | {"kind":"fast","payload":{"minutes"}}
 //   queues a command for the computer, which picks it up within a few seconds (server/dev.cjs applyCommand).
-const {supabase,who,readJson,reply:send}=require('../lib/auth.js');
+const {supabase,who,pickOrg,allowed,NEEDS,readJson,reply:send}=require('../lib/auth.js');
 
 // The computer checks commands again; this keeps obvious mistakes off the queue.
 const SETTINGS={write_every_minutes:[0,1440],queue2_target:[1,200],send_per_day:[0,500],send_from_hour:[0,23],send_to_hour:[1,24]};
@@ -35,27 +36,33 @@ module.exports=async(req,res)=>{
   const db=supabase();
   if(!db)return reply(503,{error:'Not connected yet: set SUPABASE_URL and SUPABASE_SERVICE_KEY on this Vercel project.'});
   try{
-    const k=await who(req,db);
-    if(!k)return reply(401,{error:'Please sign in'});
-    if(k.forbidden)return reply(403,{error:'This needs an "Everything" key; this one is "Prompts only"'});
+    const me=await who(req,db);
+    if(!me)return reply(401,{error:'Please sign in'});
+    if(me.scope!=='full')return reply(403,{error:'This needs an "Everything" key; this one is "Prompts only"'});
+    const org=pickOrg(req,me);
+    const you={name:me.name,owner:me.owner,orgs:me.orgs.map(o=>({slug:o.slug,name:o.name,role:o.role}))};
+    if(!org)return reply(me.orgs.length?403:200,me.orgs.length?{error:'You are not a member of that organization'}:{you,org:null,note:'You are not in any organization yet. Ask an admin for an invite link.'});
+    const mine='org=eq.'+encodeURIComponent(org.slug);
 
     if(req.method==='POST'){
       const body=await readJson(req);
       const why=checkCommand(body);if(why)return reply(422,{error:why});
-      const [c]=await db('commands',{body:{by:k.name,kind:body.kind,payload:body.payload}});
+      const need=NEEDS[body.kind];
+      if(!need||!allowed(me,org,need))return reply(403,{error:need==='owner'?'Only an owner can do this':`This needs the ${need} role in ${org.name}; you are ${org.role}`});
+      const [c]=await db('commands',{body:{by:me.name,kind:body.kind,payload:body.payload,org:org.slug}});
       return reply(200,{command:c});
     }
     const q=new URL(req.url,'http://x').searchParams;
     const before=Number(q.get('before'))||null,type=(q.get('type')||'').replace(/[^\w.]/g,'');
-    const eventsPath=`events?select=id,at,type,message,item_id,queue2_id&order=id.desc&limit=100${before?`&id=lt.${before}`:''}${type?`&type=like.${type}*`:''}`;
+    const eventsPath=`events?${mine}&select=id,at,type,message,item_id,queue2_id&order=id.desc&limit=100${before?`&id=lt.${before}`:''}${type?`&type=like.${type}*`:''}`;
     if(q.get('events'))return reply(200,{events:await db(eventsPath)});
     const [status,queue1,queue2,events,commands]=await Promise.all([
-      db('status?id=eq.main&select=synced_at,data'),
-      db('queue1?select=*&order=position.asc&limit=200'),
-      db('queue2?select=*&order=id.desc&limit=300'),
+      db(`status?${mine}&select=synced_at,data&order=synced_at.desc&limit=1`),
+      db(`queue1?${mine}&select=*&order=position.asc&limit=200`),
+      db(`queue2?${mine}&select=*&order=id.desc&limit=300`),
       db(eventsPath),
-      db('commands?select=*&order=id.desc&limit=10'),
+      db(`commands?${mine}&select=id,at,by,kind,payload,status,result,done_at&order=id.desc&limit=10`),
     ]);
-    reply(200,{by:k.name,status:status[0]||null,queue1,queue2,events,commands});
+    reply(200,{by:me.name,you,org:{slug:org.slug,name:org.name,about:org.about,role:org.role},status:status[0]||null,queue1,queue2,events,commands});
   }catch(e){reply(e.status||502,{error:e.message});}
 };

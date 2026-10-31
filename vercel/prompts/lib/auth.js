@@ -21,19 +21,48 @@ function supabase(){
   };
 }
 
-// {name, via} or null. A "Prompts only" key is refused with forbidden:true.
+// Roles in an organization, lowest first. An owner (monitor_users.is_owner) is admin everywhere and
+// may also add organizations and update or restart the server.
+const ROLES=['viewer','editor','admin'];
+const rank=r=>ROLES.indexOf(r);
+// The least role each command needs. Anything not listed is refused.
+const NEEDS={run:'editor',discard:'editor',requeue:'editor',batch:'editor',edit:'editor',fast:'editor',api:'viewer',
+  settings:'admin','org.update':'admin',update:'owner',restart:'owner','org.create':'owner'};
+const ORG_COOKIE='gn_org';
+const SLUG=/^[a-z0-9][a-z0-9-]{0,39}$/;
+
+// Who is calling and what they may use: {name, via, owner, scope, orgs:[{slug,name,role}]}, or null.
+// - Signed in (session cookie): an owner gets every organization as admin; anyone else their memberships.
+// - API key (mirrored from the computer): only the key's own organization, as admin for an "Everything"
+//   key; a "Prompts only" key has scope 'prompts' and is good for the Prompts page only.
 async function who(req,db){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
+  const all=async()=>(await db('organizations?select=slug,name,about,brand_terms,topic_terms,ready&order=created_at.asc')).filter(o=>o.ready!==false);
   if(token){
-    const [k]=await db(`api_keys?hash=eq.${sha256(token)}&revoked_at=is.null&select=name,scope`);
+    const [k]=await db(`api_keys?hash=eq.${sha256(token)}&revoked_at=is.null&select=id,name,scope,prefix,org`);
     if(!k)return null;
-    return k.scope==='full'?{name:k.name,via:'key'}:{forbidden:true};
+    const org=(await all()).find(o=>o.slug===(k.org||'geonode'));
+    return {name:'key:'+k.name,via:'key',key:k,owner:false,scope:k.scope==='full'?'full':'prompts',orgs:org?[{...org,role:'admin'}]:[]};
   }
   const s=cookie(req,SESSION);
   if(!s)return null;
   const [row]=await db(`monitor_sessions?token_hash=eq.${sha256(s)}&expires_at=gt.${new Date().toISOString()}&select=username`);
-  return row?{name:row.username,via:'login'}:null;
+  if(!row)return null;
+  const [u]=await db(`monitor_users?username=eq.${encodeURIComponent(row.username)}&select=username,is_owner`);
+  const orgs=await all();
+  if(u?.is_owner)return {name:row.username,via:'login',owner:true,scope:'full',orgs:orgs.map(o=>({...o,role:'admin'}))};
+  const mine=new Map((await db(`org_members?username=eq.${encodeURIComponent(row.username)}&select=org,role`)).map(m=>[m.org,m.role]));
+  return {name:row.username,via:'login',owner:false,scope:'full',orgs:orgs.filter(o=>mine.has(o.slug)).map(o=>({...o,role:mine.get(o.slug)}))};
 }
+// The organization a request is about: ?org=, else the gn_org cookie the monitor sets, else the first
+// one this caller may use. Null when they may use none (or asked for one they may not).
+function pickOrg(req,me){
+  const asked=new URL(req.url,'http://x').searchParams.get('org')||cookie(req,ORG_COOKIE);
+  if(asked&&SLUG.test(asked))return me.orgs.find(o=>o.slug===asked)||null;
+  return me.orgs[0]||null;
+}
+// May this caller do `need` (a role, or 'owner') in this organization?
+const allowed=(me,org,need)=>need==='owner'?!!me.owner:!!org&&rank(org.role)>=rank(need);
 
 async function readJson(req){
   let body=req.body;
@@ -45,4 +74,4 @@ async function readJson(req){
 const reply=(res,status,body,headers={})=>{res.statusCode=status;res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
   for(const [k,v] of Object.entries(headers))res.setHeader(k,v);res.end(JSON.stringify(body));};
 
-module.exports={sha256,ipOf,cookie,SESSION,supabase,who,readJson,reply};
+module.exports={sha256,ipOf,cookie,SESSION,ORG_COOKIE,ROLES,NEEDS,SLUG,supabase,who,pickOrg,allowed,readJson,reply};

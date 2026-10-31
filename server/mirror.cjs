@@ -7,8 +7,11 @@ const BATCH=500;
 const json=s=>{try{return s==null?null:JSON.parse(s);}catch{return s;}};
 const subredditOf=url=>/\/r\/([^/]+)/.exec(url||'')?.[1]??null;
 
-function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_KEY??process.env.SUPABASE_SECRET_SERVICE_ROLE,fetchImpl=fetch}={}){
+// org: the organization this engine serves. Every row it writes carries it, it deletes only its own
+// rows, and it reads only its own commands (plus the organization-level ones, kind 'org.*', when host is set).
+function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_KEY??process.env.SUPABASE_SECRET_SERVICE_ROLE,fetchImpl=fetch,org='geonode',host=false}={}){
   if(!url||!key)return null;
+  const mine='org=eq.'+encodeURIComponent(org),tag=rows=>rows.map(r=>({...r,org}));
   const base=url.replace(/\/+$/,'')+'/rest/v1/';
   async function rest(method,path,body,prefer){
     const res=await fetchImpl(base+path,{method,headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',...(prefer?{Prefer:prefer}:{})},
@@ -16,9 +19,9 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
     if(!res.ok)throw Object.assign(Error(`Supabase ${method} ${path.split('?')[0]}: HTTP ${res.status} ${(await res.text()).slice(0,200)}`),{status:res.status});
     return method==='GET'?res.json():null;
   }
-  const upsert=async(table,rows)=>{if(!rows.length)return;for(let i=0;i<rows.length;i+=BATCH)await rest('POST',table,rows.slice(i,i+BATCH),'resolution=merge-duplicates,return=minimal');};
+  const upsert=async(table,rows)=>{if(!rows.length)return;rows=tag(rows);for(let i=0;i<rows.length;i+=BATCH)await rest('POST',table,rows.slice(i,i+BATCH),'resolution=merge-duplicates,return=minimal');};
   // Rows that left the local table leave the mirror too.
-  const prune=(table,col,keys)=>rest('DELETE',`${table}?${col}=${keys.length?`not.in.(${keys.map(k=>encodeURIComponent(JSON.stringify(String(k)))).join(',')})`:'not.is.null'}`,null,'return=minimal');
+  const prune=(table,col,keys)=>rest('DELETE',`${table}?${mine}&${col}=${keys.length?`not.in.(${keys.map(k=>encodeURIComponent(JSON.stringify(String(k)))).join(',')})`:'not.is.null'}`,null,'return=minimal');
 
   async function sync(store,status={}){
     const q1=queue.queueView(store,{history:0}).items.map(i=>({item_id:i.item_id,position:i.position,kind:i.kind,subreddit:i.thread?.subreddit??subredditOf(i.url),
@@ -45,18 +48,22 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
     if(ev.length)store.setKv('mirror_state',{...state,events_id:ev.at(-1).id});
 
     const synced_at=new Date().toISOString();
-    await upsert('status',[{id:'main',synced_at,data:{...status,settings:queue.settings(store),counts:{queue1:q1.length,queue2:q2.filter(r=>['ready','sending',null].includes(r.send_status)).length,
+    await upsert('status',[{id:org,synced_at,data:{...status,settings:queue.settings(store),counts:{queue1:q1.length,queue2:q2.filter(r=>['ready','sending',null].includes(r.send_status)).length,
       sent:q2.filter(r=>r.engain_task_id).length}}}]);
     return {queue1:q1.length,queue2:q2.length,events:ev.length,synced_at};
   }
   // Commands from the hosted page, oldest first; finish() writes back the outcome.
-  const pending=()=>rest('GET','commands?status=eq.pending&order=id.asc&limit=20&select=id,at,by,kind,payload');
+  const pending=()=>rest('GET',`commands?status=eq.pending&${host?`or=(org.eq.${encodeURIComponent(org)},kind.like.org.*)`:mine}&order=id.asc&limit=20&select=id,at,by,kind,payload,org`);
   const finish=(id,status,result)=>rest('PATCH',`commands?id=eq.${Number(id)}`,{status,result:result??null,done_at:new Date().toISOString()},'return=minimal');
   // Pages and API answers for the hosted Prompts page: [{key:'GET /api/prompts',type,body}].
   // Answers to the Prompts page's commands can hold a new key's secret; wipe any left after 2 minutes.
+  // An organization-level command can carry an Engain key: once done, its payload is cut to the name.
+  const scrubPayload=(id,payload)=>rest('PATCH',`commands?id=eq.${Number(id)}`,{payload},'return=minimal');
   const scrub=()=>rest('PATCH',`commands?kind=eq.api&done_at=lt.${new Date(Date.now()-120000).toISOString()}&result->>body=not.is.null`,{result:null},'return=minimal');
   const putSnapshots=rows=>upsert('snapshots',rows.map(r=>({...r,synced_at:new Date().toISOString()})));
-  return {sync,pending,finish,putSnapshots,scrub};
+  // The organizations this computer runs, for the hosted page's list (never their Engain keys).
+  const putOrganizations=rows=>rest('POST','organizations',rows,'resolution=merge-duplicates,return=minimal');
+  return {sync,pending,finish,putSnapshots,scrub,scrubPayload,putOrganizations,org};
 }
 
 module.exports={mirror};

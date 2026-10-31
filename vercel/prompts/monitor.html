@@ -85,12 +85,23 @@ main.wrap{padding-top:22px;padding-bottom:80px}
 .switch span{position:absolute;inset:0;background:var(--line);border-radius:99px;cursor:pointer;transition:.15s}
 .switch span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.15s}
 .switch input:checked+span{background:var(--good)}.switch input:checked+span:before{transform:translateX(16px)}
+.orgsel{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink)}
+.team{display:grid;gap:14px}
+.team .panel{padding:16px 18px}
+.team h3{margin:0 0 10px;font-size:15px}
+.team .rowf{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.team .rowf input[type=text],.team .rowf input[type=password]{flex:1;min-width:180px}
+.team select,.team input{font:inherit;font-size:13px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink)}
+.team table{width:100%;border-collapse:collapse;font-size:13px}
+.team td{padding:7px 4px;border-top:1px solid var(--line)}
+.team .link{width:100%;font-family:ui-monospace,monospace;font-size:12px}
 .banner{padding:11px 14px;margin-bottom:14px;border-radius:10px;font-size:13px;background:color-mix(in srgb,var(--bad) 10%,transparent);color:var(--bad)}
 </style>
 </head>
 <body>
 <header><div class="wrap">
-  <div class="brand">Geonode <span>· Monitor</span></div>
+  <div class="brand"><span id="orgname">Monitor</span> <span>· Monitor</span></div>
+  <select class="orgsel" id="orgsel" hidden aria-label="Organization"></select>
   <span class="chip" id="sync" hidden><span class="dot"></span><span></span></span>
   <div class="grow"></div>
   <a href="/prompts" class="small">Prompts →</a>
@@ -132,8 +143,12 @@ function warsawDayStart(){
 }
 
 let data=null,tab=localGet('gn_monitor_tab')||'queue2',evType='',older=[],timer=null;
+// The chosen organization: remembered here, and in the gn_org cookie so the Prompts page follows it.
+let orgSlug=localGet('gn_org')||'';
+function setOrg(slug){orgSlug=slug;localSet('gn_org',slug);document.cookie=`gn_org=${encodeURIComponent(slug)}; Path=/; Max-Age=31536000; SameSite=Lax; Secure`;}
+const withOrg=q=>orgSlug?(q?q+'&':'?')+'org='+encodeURIComponent(orgSlug):q;
 async function api(q=''){
-  const r=await fetch('/api/monitor'+q,{credentials:'same-origin'});
+  const r=await fetch('/api/monitor'+withOrg(q),{credentials:'same-origin'});
   const body=await r.json().catch(()=>({error:'HTTP '+r.status}));
   if(!r.ok)throw Object.assign(Error(body.error||'HTTP '+r.status),{status:r.status});
   return body;
@@ -145,8 +160,16 @@ function showSignin(msg){
 }
 async function load(){
   try{data=await api(evType?'?type='+evType:'');older=[];}
-  catch(e){if(e.status===401||e.status===403)return showSignin(e.status===403?e.message:signedIn?'Your session ended. Please sign in again.':'');$('#stale').hidden=false;$('#stale').textContent='Could not load: '+e.message;return;}
-  signedIn=true;$('#signin').hidden=true;$('#app').hidden=false;$('#signout').hidden=false;render();
+  catch(e){
+    // A remembered organization you are no longer in: fall back to your first.
+    if(e.status===403&&orgSlug&&/not a member/.test(e.message)){setOrg('');return load();}
+    if(e.status===401||e.status===403)return showSignin(e.status===403?e.message:signedIn?'Your session ended. Please sign in again.':'');$('#stale').hidden=false;$('#stale').textContent='Could not load: '+e.message;return;}
+  signedIn=true;$('#signin').hidden=true;$('#app').hidden=false;$('#signout').hidden=false;
+  if(data.org&&data.org.slug!==orgSlug)setOrg(data.org.slug);
+  renderOrgs();
+  if(!data.org){$('#kpis').innerHTML='';$('#controls').innerHTML='';$('#jobs').innerHTML='';$('#tabs').innerHTML='';
+    $('#view').innerHTML=`<div class="panel empty">${esc(data.note||'No organization')}</div>`;return;}
+  render();
 }
 
 const WAITING=new Set(['ready','sending',null]);
@@ -178,10 +201,11 @@ function render(){
       <div class="n">Last ${ago(last.finished)}${j.next_run?' · next '+ago(j.next_run):''}</div></div>`;
   }).join('');
 
-  const TABS=[['queue2','Queue 2',waiting.length],['sent','Sent',sent.length],['queue1','Queue 1',data.queue1.length],['activity','Activity','']];
+  const TABS=[['queue2','Queue 2',waiting.length],['sent','Sent',sent.length],['queue1','Queue 1',data.queue1.length],['activity','Activity',''],['org','Organization','']];
   $('#tabs').innerHTML=TABS.map(([k,l,c])=>`<button data-t="${k}" class="${tab===k?'on':''}">${l}${c!==''?`<span class="c">${c}</span>`:''}</button>`).join('');
   const lists={queue2:waiting,sent};
   if(document.activeElement?.dataset?.edittext&&$('#view').contains(document.activeElement))return;
+  if(tab==='org'){if(!$('#view').contains(document.activeElement)||document.activeElement===document.body)orgView();return;}
   $('#view').innerHTML=tab==='queue1'?queue1View():tab==='activity'?activityView():itemsView(lists[tab],tab);
 }
 document.addEventListener('click',e=>{
@@ -212,10 +236,10 @@ function statusOf(r){
 }
 function itemsView(rows,kind){
   if(!rows.length)return `<div class="panel empty">${kind==='sent'?'Nothing sent yet.':'Queue 2 is empty. The writer adds a draft every few minutes.'}</div>`;
-  return `${kind==='queue2'?batchBar(rows):''}<div class="panel list">${rows.map(r=>`<div class="item">
-    <div class="h">${kind==='queue2'&&r.send_status!=='sending'?`<input type="checkbox" data-sel="${r.id}" ${selected.has(r.id)?'checked':''} aria-label="Select #${r.id}">`:''}<span class="k">${r.kind==='thread'?'Comment':r.kind==='comment'?'Reply':esc(r.kind)}</span>${sub(r)}<span>#${r.id}</span><span>${statusOf(r)}</span>
+  return `${kind==='queue2'&&can('editor')?batchBar(rows):''}<div class="panel list">${rows.map(r=>`<div class="item">
+    <div class="h">${kind==='queue2'&&r.send_status!=='sending'&&can('editor')?`<input type="checkbox" data-sel="${r.id}" ${selected.has(r.id)?'checked':''} aria-label="Select #${r.id}">`:''}<span class="k">${r.kind==='thread'?'Comment':r.kind==='comment'?'Reply':esc(r.kind)}</span>${sub(r)}<span>#${r.id}</span><span>${statusOf(r)}</span>
       ${r.model?`<span class="mono">${esc(r.model.split('/').pop())}</span>`:''}${r.prompt_variant_slug?`<span>${esc(r.prompt_variant_slug)}</span>`:''}
-      ${kind==='sent'&&canRetry(r)?`<button class="ghost sm rm" data-retry="${r.id}" title="Back into Queue 2 to send again">Retry</button>`:''}${kind==='queue2'&&r.send_status!=='sending'?`<button class="ghost sm rm" data-requeue="${r.id}" title="Back to the front of Queue 1; it is written again when it comes up">Back to Queue 1</button>${editing.has(r.id)?'':`<button class="ghost sm" data-edit="${r.id}">Edit</button>`}<button class="ghost sm" data-discard="${r.id}">Remove</button>`:''}</div>
+      ${kind==='sent'&&canRetry(r)&&can('editor')?`<button class="ghost sm rm" data-retry="${r.id}" title="Back into Queue 2 to send again">Retry</button>`:''}${kind==='queue2'&&r.send_status!=='sending'&&can('editor')?`<button class="ghost sm rm" data-requeue="${r.id}" title="Back to the front of Queue 1; it is written again when it comes up">Back to Queue 1</button>${editing.has(r.id)?'':`<button class="ghost sm" data-edit="${r.id}">Edit</button>`}<button class="ghost sm" data-discard="${r.id}">Remove</button>`:''}</div>
     <div class="title"><a href="${esc(r.thread_url||r.url)}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></div>
     ${editing.has(r.id)?`<div class="edit"><textarea data-edittext="${r.id}" aria-label="Message for #${r.id}">${esc(editing.get(r.id))}</textarea>
       <div class="row"><button class="sm" data-editsave="${r.id}">Save</button><button class="ghost sm" data-editcancel="${r.id}">Cancel</button><span class="muted small">Saved as written; the writer will not change it.</span></div></div>`
@@ -274,7 +298,7 @@ function renderControls(st){
   const num=(id,v,min,max)=>`<input type="number" id="${id}" value="${v}" min="${min}" max="${max}" step="1">`;
   const cmdText=c=>{const p=c.payload||{};return c.kind==='settings'?'Change '+Object.entries(p).map(([k,v])=>k.replace(/_/g,' ')+' → '+v).join(', '):c.kind==='run'?'Run '+p.job+' now':c.kind==='discard'?'Remove draft #'+p.queue2_id:c.kind==='requeue'?'Send #'+p.queue2_id+' back to Queue 1':
     c.kind==='batch'?(p.all?'Send all ready':{send:'Send',requeue:'Back to Queue 1:',discard:'Remove',retry:'Retry'}[p.action]+' '+(p.queue2_ids||[]).map(i=>'#'+i).join(', ')):
-    c.kind==='edit'?'Edit #'+p.queue2_id:c.kind==='update'?'Update from GitHub':c.kind==='restart'?'Restart the server':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
+    c.kind==='edit'?'Edit #'+p.queue2_id:c.kind==='org.create'?'Add organization '+(p.name||''):c.kind==='org.update'?'Change organization '+(p.name||p.slug||''):c.kind==='update'?'Update from GitHub':c.kind==='restart'?'Restart the server':c.kind==='api'?'Prompts page: '+(p.method||'')+' '+(p.path||''):p.minutes?`Fast mode ${p.minutes} min`:'Stop fast mode';};
   const cmdState=c=>c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?`<span class="s-good">done</span>${doneText(c.result)}`:
     `<span class="s-bad">${esc(c.status)}</span>${c.result?.error||c.result?.reason?' · '+esc(c.result.error||c.result.reason):''}`;
   box.innerHTML=`<div class="crow"><span class="name">Writer</span>
@@ -297,6 +321,10 @@ function renderControls(st){
       <button class="ghost sm" id="c_update">Update from GitHub</button>
       <button class="ghost sm" id="c_restart" ${srv.can_restart===false?'disabled title="This server cannot restart itself; restart it by hand once to get the version that can"':''}>Restart</button></div>
     <div class="cmds">${(data.commands||[]).slice(0,5).map(c=>`<div>${ago(c.at)} · ${esc(cmdText(c))} · ${cmdState(c)}</div>`).join('')}</div>`;
+  // What your role allows: settings need admin, the buttons editor, the server row an owner.
+  if(!can('admin')){for(const el of box.querySelectorAll('.crow input'))el.disabled=true;$('#c_save').hidden=true;}
+  if(!can('editor'))for(const el of box.querySelectorAll('.actions button'))el.hidden=true;
+  if(!data.you?.owner)box.querySelector('.srv')?.remove();
 }
 function wanted(){
   const v=id=>Math.round(Number($('#'+id).value)),s=data.status.data.settings;
@@ -348,6 +376,75 @@ document.addEventListener('click',e=>{
   if(e.target.id==='c_update'){if(!confirm('Pull the latest code from GitHub on the always-on computer? If server code changed, it restarts (about 10 s).'))return;command('update',{});}
   if(e.target.id==='c_restart'){if(!confirm('Restart the server on the always-on computer? It is back in about 10 s.'))return;command('restart',{});}
   if(e.target.id==='c_fast'){const on=e.target.classList.contains('fast-on');command('fast',{minutes:on?0:15});}
+});
+// Roles: viewer < editor < admin; an owner is admin in every organization.
+const ROLE_RANK={viewer:0,editor:1,admin:2};
+const can=need=>!!data?.org&&(ROLE_RANK[data.org.role]??-1)>=ROLE_RANK[need];
+function renderOrgs(){
+  const orgs=data?.you?.orgs||[],sel=$('#orgsel');
+  $('#orgname').textContent=data?.org?.name||'Monitor';document.title=(data?.org?.name||'')+' · Monitor';
+  sel.hidden=orgs.length<2&&!data?.you?.owner;
+  sel.innerHTML=orgs.map(o=>`<option value="${esc(o.slug)}" ${o.slug===data?.org?.slug?'selected':''}>${esc(o.name)} (${esc(o.role)})</option>`).join('');
+}
+$('#orgsel').onchange=e=>{setOrg(e.target.value);selected.clear();editing.clear();removing.clear();team=null;load();};
+
+// The Organization tab: members, invites and settings for admins; adding organizations for owners.
+let team=null,teamBusy=false,lastLink=null;
+async function teamApi(body){
+  const r=await fetch('/api/orgs'+(body?'':withOrg('')),{method:body?'POST':'GET',credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({error:'HTTP '+r.status}));if(!r.ok)throw Error(j.error||'HTTP '+r.status);return j;
+}
+async function loadTeam(){if(teamBusy)return;teamBusy=true;try{team=await teamApi();}catch(e){team={error:e.message};}finally{teamBusy=false;}orgView();}
+function orgView(){
+  const v=$('#view');if(!team){v.innerHTML='<div class="panel empty">Loading…</div>';loadTeam();return;}
+  const o=data.org,admin=can('admin'),owner=data.you?.owner,me=(team.you?.orgs||[]).find(x=>x.slug===o.slug)||{};
+  const roleSel=(id,val)=>`<select ${id}>${['viewer','editor','admin'].map(r=>`<option ${r===val?'selected':''}>${r}</option>`).join('')}</select>`;
+  const parts=[];
+  if(team.error)parts.push(`<div class="panel"><span class="s-bad">${esc(team.error)}</span></div>`);
+  parts.push(`<div class="panel"><h3>${esc(o.name)}</h3><div class="muted small">You are ${esc(o.role)}${owner?' (owner: admin in every organization)':''}. ${esc(o.about||'')}</div></div>`);
+  if(admin&&team.members){
+    parts.push(`<div class="panel"><h3>Members</h3>${team.members.length?`<table>${team.members.map(m=>`<tr><td>${esc(m.username)}</td>
+      <td>${roleSel(`data-role="${esc(m.username)}"`,m.role)}</td><td class="muted small">added ${ago(m.added_at)}${m.added_by?' by '+esc(m.added_by):''}</td>
+      <td style="text-align:right"><button class="ghost sm" data-rmuser="${esc(m.username)}">Remove</button></td></tr>`).join('')}</table>`:'<div class="muted small">No members yet. Owners see every organization without being members.</div>'}</div>`);
+    parts.push(`<div class="panel"><h3>Invite someone</h3><div class="rowf">${roleSel('id="inv_role"','editor')}<button class="sm" id="inv_go">Create invite link</button>
+      <span class="muted small">viewer: read only · editor: drafts, sending, prompts · admin: also settings, members, API keys</span></div>
+      ${lastLink?`<div class="rowf"><input class="link" id="inv_link" readonly value="${esc(lastLink)}"><button class="ghost sm" id="inv_copy">Copy</button></div><div class="muted small">Send this link to the person. It works once, for 7 days.</div>`:''}
+      ${team.invites?.length?`<table>${team.invites.map(i=>`<tr><td>${esc(i.role)}</td><td class="muted small">made ${ago(i.created_at)} by ${esc(i.created_by||'?')} · expires ${ago(i.expires_at)}</td>
+        <td style="text-align:right"><button class="ghost sm" data-revoke="${esc(i.id)}">Withdraw</button></td></tr>`).join('')}</table>`:''}</div>`);
+    if(o.slug!=='geonode')parts.push(`<div class="panel"><h3>Settings</h3>
+      <div class="rowf"><label class="small" style="width:120px">Name</label><input type="text" id="os_name" value="${esc(o.name)}"></div>
+      <div class="rowf"><label class="small" style="width:120px">What it sells</label><input type="text" id="os_about" value="${esc(me.about||o.about||'')}"></div>
+      <div class="rowf"><label class="small" style="width:120px">Brand words</label><input type="text" id="os_brand" value="${esc(me.brand_terms||'')}" placeholder="Zenshield, zenshield.io"></div>
+      <div class="rowf"><label class="small" style="width:120px">Topic words</label><input type="text" id="os_topic" value="${esc(me.topic_terms||'')}" placeholder="empty: every thread counts as on-topic"></div>
+      <div class="rowf"><label class="small" style="width:120px">New Engain key</label><input type="password" id="os_key" placeholder="leave empty to keep the current one" autocomplete="off"></div>
+      <div class="rowf"><button class="sm" id="os_save">Save</button><span class="muted small">Brand words mark threads that already mention you; topic words decide what counts as relevant.</span></div></div>`);
+  }
+  if(owner)parts.push(`<div class="panel"><h3>Add an organization</h3>
+    <div class="rowf"><input type="text" id="no_name" placeholder="Name, e.g. Zenshield"><input type="text" id="no_about" placeholder="What it sells, e.g. endpoint security for small teams"></div>
+    <div class="rowf"><input type="password" id="no_key" placeholder="Its Engain API key" autocomplete="off"><input type="text" id="no_topic" placeholder="Topic words, comma separated (optional)"></div>
+    <div class="rowf"><button class="sm" id="no_go">Add organization</button><span class="muted small">The always-on computer checks the key with Engain, keeps it, and starts the organization with a copy of Geonode's prompts (its name swapped in).</span></div>
+    ${team.changes?.length?`<div class="cmds">${team.changes.map(c=>`<div>${ago(c.at)} · ${esc(c.kind==='org.create'?'Add '+(c.payload?.name||''):'Change '+(c.payload?.name||c.payload?.slug||''))} · ${c.status==='pending'?'<span class="s-warn">waiting for the computer…</span>':c.status==='done'?'<span class="s-good">done</span>':`<span class="s-bad">${esc(c.status)}</span> · ${esc(c.result?.error||'')}`}</div>`).join('')}</div>`:''}</div>`);
+  v.innerHTML=`<div class="team">${parts.join('')}</div>`;
+}
+async function teamDo(body,after){
+  try{const r=await teamApi(body);if(after)after(r);await loadTeam();}catch(e){alertBox(e.message);}
+}
+document.addEventListener('change',e=>{
+  const r=e.target.closest('[data-role]');
+  if(r)teamDo({action:'set_role',org:data.org.slug,username:r.dataset.role,role:r.value});
+});
+document.addEventListener('click',e=>{
+  const id=e.target.id;
+  if(id==='inv_go')teamDo({action:'invite',org:data.org.slug,role:$('#inv_role').value},r=>{lastLink=r.link;});
+  if(id==='inv_copy'){navigator.clipboard?.writeText($('#inv_link').value).then(()=>{e.target.textContent='Copied';},()=>{$('#inv_link').select();});}
+  const rv=e.target.closest('[data-revoke]');if(rv&&confirm('Withdraw this invite link?'))teamDo({action:'revoke_invite',org:data.org.slug,id:rv.dataset.revoke});
+  const rm=e.target.closest('[data-rmuser]');if(rm&&confirm(`Remove ${rm.dataset.rmuser} from ${data.org.name}?`))teamDo({action:'remove_member',org:data.org.slug,username:rm.dataset.rmuser});
+  if(id==='os_save')teamDo({action:'update_org',org:data.org.slug,name:$('#os_name').value,about:$('#os_about').value,brand_terms:$('#os_brand').value,topic_terms:$('#os_topic').value,engain_key:$('#os_key').value||undefined},
+    ()=>alertBox('Saved. The always-on computer applies it within a few seconds.'));
+  if(id==='no_go'){const name=$('#no_name').value.trim(),key=$('#no_key').value.trim();if(!name||!key)return alertBox('Give a name and the Engain key.');
+    teamDo({action:'create_org',name,about:$('#no_about').value,engain_key:key,topic_terms:$('#no_topic').value},()=>{
+      alertBox(`Adding ${name}: the always-on computer checks the key and starts it. It appears in the organization menu within a minute.`);
+      let n=0;const t=setInterval(async()=>{await loadTeam();await load();if(++n>12||!(team.changes||[]).some(c=>c.status==='pending'))clearInterval(t);},5000);});}
 });
 function alertBox(m){$('#stale').hidden=false;$('#stale').textContent=m;}
 

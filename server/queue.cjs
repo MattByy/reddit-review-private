@@ -15,7 +15,6 @@ const DEFAULTS={queue_target:50,comment_limit:20,comment_position:5,max_age_days
 const LIMITS={queue_target:[1,500],comment_limit:[0,200],comment_position:[1,500],max_age_days:[14,3650],min_comments:[0,100000],min_thread_score:[0,100],min_comment_score:[0,100],mention_comments:[0,1],
   thread_collect_minutes:[5,1440],threads_every_minutes:[1,1440],comments_every_minutes:[1,1440],tracker_every_minutes:[1,1440],
   send_per_day:[0,500],send_from_hour:[0,23],send_to_hour:[1,24],write_every_minutes:[0,1440],queue2_target:[1,200]};
-const OWN=/geonode/i;
 const DAY=86400000;
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 
@@ -73,7 +72,8 @@ function originFor(store,taskId){
 
 // Scores everything collected and lists why each one cannot be queued (if so).
 function evaluate(store){
-  const cfg=settings(store),subs=store.subreddits(),engaged=store.engaged(),threads=store.threads(),comments=store.comments(),history=store.queue();
+  // The organization's profile rides along unlisted, so settings shown or saved never include it.
+  const cfg=Object.defineProperty({...settings(store)},'profile',{value:require('./collect.cjs').profileOf(store)}),OWN=cfg.profile.brand,subs=store.subreddits(),engaged=store.engaged(),threads=store.threads(),comments=store.comments(),history=store.queue();
   // Threads we already handed to an agent or a person decided on are never queued again as threads.
   const handled=new Map(history.filter(q=>q.kind!=='comment'&&['claimed','done','skipped'].includes(q.status)).map(q=>[q.thread_id,q.status]));
   const handledItems=new Map(history.filter(q=>['claimed','done','skipped'].includes(q.status)).map(q=>[q.item_id,q.status]));
@@ -85,7 +85,7 @@ function evaluate(store){
   const best={};for(const c of commentRows)if(!c.rank.own&&c.rank.score>(best[c.thread_id]||0))best[c.thread_id]=c.rank.score;
   const shared=id=>{
     const r=[],e=engaged[id];
-    if(ownMention.has(id))r.push('Geonode is already mentioned in this thread');
+    if(ownMention.has(id))r.push(cfg.profile.name+' is already mentioned in this thread');
     if(e?.statuses.some(s=>REMOVED.has(s)))r.push('Moderators removed our earlier task here');else if(e)r.push('We already have a task here ('+[...new Set(e.statuses)].join(', ')+')');
     if(handled.has(id))r.push('Already '+handled.get(id)+' from the queue');
     return r;
@@ -98,14 +98,14 @@ function evaluate(store){
     if(!t.sources.some(s=>s.startsWith('opportunities')||s==='smart_search'))r.push('Found only through a brand mention');
     if(row.rank.too_old)r.push(row.rank.age_days==null?'Creation date unknown':`Older than ${cfg.max_age_days} days`);
     if(t.num_comments==null||t.num_comments<cfg.min_comments)r.push(`Fewer than ${cfg.min_comments} comments`);
-    if(row.rank.off_topic)r.push('Off-topic for Geonode');
+    if(row.rank.off_topic)r.push('Off-topic for '+cfg.profile.name);
     if(row.rank.score<cfg.min_thread_score)r.push(`Score below ${cfg.min_thread_score}`);
     row.eligibility={queueable:r.length===0,reasons:r};
     return threadById[t.thread_id]=row;
   });
   const commentById={};
   for(const c of commentRows){
-    const r=c.rank.own?['Mentions Geonode']:shared(c.thread_id),t=threadById[c.thread_id];
+    const r=c.rank.own?['Mentions '+cfg.profile.name]:shared(c.thread_id),t=threadById[c.thread_id];
     if(!cfg.mention_comments)r.push('Competitor comments are turned off (mention_comments=0)');
     if(c.rank.too_old)r.push(c.rank.age_days==null?'Comment date unknown':`Comment older than ${cfg.max_age_days} days`);
     if(t?.rank.age_days!=null&&t.rank.age_days>cfg.max_age_days)r.push(`Thread older than ${cfg.max_age_days} days`);

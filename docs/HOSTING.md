@@ -69,3 +69,25 @@ Until it is set, the page says "Not connected yet".
 1. **Create your own key.** On the computer itself, open http://127.0.0.1:3000/prompts. Under **API keys**, create a key for yourself with **Everything** scope, so you can also manage keys from Vercel.
 2. **Sign in on Vercel.** Open the Vercel URL and paste that key into **Sign in**. It is kept in that browser only.
 3. **Agents:** create **Prompts only** keys for them. The guide is at `<vercel url>/docs/prompts-api`.
+
+## 5. Organizations, people and roles
+
+One server runs several organizations (`server/orgs.cjs`). Geonode is built in (`.data/dev.db`, `ENGAIN_API_KEY`).
+An owner adds another one on the hosted page (Organization tab → Add an organization) with its name, what it
+sells, its Engain key and optional topic words. The always-on computer checks the key with Engain, keeps it in
+`.data/orgs.json` (mode 600; it never goes to Supabase), and starts the organization's own engine: its own
+database and logs in `.data/orgs/<slug>/`, jobs, queues, settings and a copy of Geonode's prompts with its
+name swapped in. Locally, another organization's API is under `/o/<slug>/api/...`.
+
+Supabase (`supabase/organizations.sql`): every mirrored row has an `org` column; `organizations`,
+`org_members` and `invites` hold who may use what. Roles per organization:
+
+| Role | Can |
+|---|---|
+| viewer | see everything, read only |
+| editor | write, edit, send, retry and move drafts; run jobs; fast mode; edit prompts |
+| admin | also settings, members, invites, API keys, the organization's settings and Engain key |
+| owner (`monitor_users.is_owner`) | admin in every organization; add organizations; update and restart the server |
+
+Invites are links (Organization tab → Invite someone), valid once for 7 days. The person makes an account on
+the link, or signs in first and joins with the one they have. An API key reaches only its own organization.
