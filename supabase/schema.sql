@@ -25,6 +25,7 @@ create table if not exists queue2 (
   message text,
   message_source text,
   write_status text,
+  write_error text,
   model text,
   provider text,
   prompt_variant_slug text,
@@ -74,6 +75,9 @@ create index if not exists commands_pending on commands (id) where status = 'pen
 
 -- Copies of pages and API answers (the Prompts page and its data) for the hosted Prompts page.
 create table if not exists snapshots (key text primary key, type text not null, body text not null, synced_at timestamptz not null);
+
+-- Added after the first deploy; harmless when the column already exists.
+alter table queue2 add column if not exists write_error text;
 
 alter table queue1 enable row level security;
 alter table queue2 enable row level security;

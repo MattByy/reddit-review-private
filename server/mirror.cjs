@@ -26,10 +26,13 @@ function mirror({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_K
     await upsert('queue1',q1);await prune('queue1','item_id',q1.map(r=>r.item_id));
 
     const q2=store.db.prepare('select * from queue2').all().map(r=>({id:r.id,item_id:r.item_id,kind:r.kind,subreddit:subredditOf(r.thread_url||r.url),title:r.title,url:r.url,thread_url:r.thread_url,
-      message:r.message,message_source:r.message_source,write_status:r.write_status,model:r.model,provider:r.provider,prompt_variant_slug:r.prompt_variant_slug,send_status:r.send_status,delivery_mode:r.delivery_mode,
+      message:r.message,message_source:r.message_source,write_status:r.write_status,write_error:r.write_error,model:r.model,provider:r.provider,prompt_variant_slug:r.prompt_variant_slug,send_status:r.send_status,delivery_mode:r.delivery_mode,
       approved_by:r.approved_by,approved_at:r.approved_at,engain_task_id:r.engain_task_id,engain_status:r.engain_status,reddit_url:r.reddit_url,send_error:r.send_error,
       created_at:r.created_at,written_at:r.written_at,sent_at:r.sent_at,published_at:r.published_at,updated_at:r.updated_at}));
-    await upsert('queue2',q2);await prune('queue2','id',q2.map(r=>r.id));
+    // Older Supabase projects lack queue2.write_error (supabase/schema.sql adds it); sync without it there.
+    try{await upsert('queue2',q2);}
+    catch(e){if(!/write_error/.test(e.message))throw e;await upsert('queue2',q2.map(({write_error,...r})=>r));}
+    await prune('queue2','id',q2.map(r=>r.id));
 
     // Key hashes (never the keys), so the hosted page accepts the same keys and honours revoking.
     const keys=store.db.prepare('select id,name,scope,prefix,hash,created_at,revoked_at from api_keys').all();

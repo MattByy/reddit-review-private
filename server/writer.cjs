@@ -316,10 +316,13 @@ async function complete({provider='openrouter',model,prompt,temperature=0.7,maxT
   for(let attempt=0;;attempt++){
     const wait=()=>new Promise(z=>setTimeout(z,(attempt+1)*(fetchImpl===fetch?5000:1)));
     let r;
-    // A dropped connection is retried like a busy server.
+    // A dropped connection is retried like a busy server. A draft normally takes seconds, so a call
+    // still open after 90 s has stalled at the provider; it is retried once.
     try{r=await fetchImpl(p.url,{method:'POST',headers:{Authorization:'Bearer '+keys[provider],'Content-Type':'application/json',...(provider==='openrouter'?{'X-Title':'Geonode thread collector'}:{})},
-      body:JSON.stringify(body),signal:AbortSignal.timeout(120000)});}
-    catch(e){if(attempt<2&&e.name!=='TimeoutError'){trace(`connection failed (${e.message}), retrying`);await wait();continue;}throw e;}
+      body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});}
+    catch(e){
+      if(e.name==='TimeoutError'){if(attempt<1){trace('no answer in 90 s, retrying');await wait();continue;}throw Error(`${p.label} gave no answer in 90 s (tried ${attempt+1} times)`);}
+      if(attempt<2){trace(`connection failed (${e.message}), retrying`);await wait();continue;}throw e;}
     const j=await r.json().catch(()=>null);
     // Featherless answers 429 when the plan's concurrency is in use; wait and try again.
     if(r.status===429&&attempt<4){trace(`${p.label} answered 429 (busy), retrying`);await wait();continue;}

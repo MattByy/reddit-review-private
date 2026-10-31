@@ -481,3 +481,30 @@ test('follow-ups only under comments from our own accounts',async()=>{
     assert.match(ev2.publishedById.fu_old.eligibility.reasons.join(),/before the fresh start/);
   }finally{a.close();}
 });
+
+test('writer job: a draft whose model call failed is written again before a new item is taken, up to 3 tries',async()=>{
+  let mode='error';
+  const or=fakeOpenRouter(()=>mode==='error'?{status:500,body:{error:{message:'upstream down'}}}:{status:200,body:{choices:[{message:{content:DRAFT}}]}});
+  const a=app({fetchImpl:or.fetchImpl});
+  try{
+    await ready(a);
+    const first=await a.runJob('writer');
+    assert.strictEqual(first.action,'failed');assert.strictEqual(first.retry,false);
+    for(let n=1;n<3;n++){const r=await a.runJob('writer');assert.strictEqual(r.queue2_id,first.queue2_id);assert.strictEqual(r.retry,true);}
+    const fourth=await a.runJob('writer');
+    assert.notStrictEqual(fourth.queue2_id,first.queue2_id,'after 3 failures the writer moves on');
+    mode='ok';
+    const fixed=await a.runJob('writer');
+    assert.strictEqual(fixed.queue2_id,fourth.queue2_id);assert.strictEqual(fixed.action,'written');assert.strictEqual(fixed.retry,true);
+    const e=(await call(a,'GET','/api/agent/queue2')).body.items.find(x=>x.queue2_id===fixed.queue2_id);
+    assert.strictEqual(e.message,DRAFT);assert.strictEqual(e.write_error,null);
+  }finally{a.close();}
+});
+
+test('a model call with no answer is retried once, then fails with a plain error',async()=>{
+  const timeout=()=>Object.assign(Error('The operation was aborted due to timeout'),{name:'TimeoutError'});
+  let n=0;const ok=new Response(JSON.stringify({choices:[{message:{content:DRAFT}}]}),{status:200});
+  const once=await writer.complete({model:'m',prompt:'p',keys:{openrouter:'k'},fetchImpl:async()=>{if(n++===0)throw timeout();return ok;}});
+  assert.strictEqual(once.text,DRAFT);assert.strictEqual(once.attempts,2);
+  await assert.rejects(writer.complete({model:'m',prompt:'p',keys:{openrouter:'k'},fetchImpl:async()=>{throw timeout();}}),/no answer in 90 s \(tried 2 times\)/);
+});

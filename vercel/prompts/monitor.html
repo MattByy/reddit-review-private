@@ -188,7 +188,8 @@ function statusOf(r){
   if(r.engain_task_id){const s=r.engain_status||'submitted',c=/approv|publish|complet/i.test(s)?'s-good':/fail|cancel|disapprov|error|removed/i.test(s)?'s-bad':'s-warn';
     return `<span class="${c}">${esc(s)}</span> · via ${r.delivery_mode==='dedicated'?'our accounts':'pool'} · sent ${ago(r.sent_at)}`;}
   if(r.send_status==='sending')return '<span class="s-warn">Sending…</span>';
-  if(['skipped','truncated','failed'].includes(r.write_status))return `<span class="s-bad">Draft ${esc(r.write_status)}</span>`;
+  if(r.write_status==='failed')return `<span class="s-bad">Draft failed${r.write_error?': '+esc(r.write_error):''}</span>${r.message_source==='random'?' · the writer tries it again':''}`;
+  if(['skipped','truncated'].includes(r.write_status))return `<span class="s-bad">Draft ${esc(r.write_status)}</span>`;
   if(r.message_source==='random')return '<span class="s-warn">No draft yet</span> · the writer has not written this one (yet)';
   return `<span class="s-good">Ready</span> · written ${ago(r.written_at||r.created_at)}`;
 }
@@ -199,7 +200,7 @@ function itemsView(rows,kind){
       ${r.model?`<span class="mono">${esc(r.model.split('/').pop())}</span>`:''}${r.prompt_variant_slug?`<span>${esc(r.prompt_variant_slug)}</span>`:''}
       ${kind==='queue2'&&r.send_status!=='sending'?`<button class="ghost sm rm" data-discard="${r.id}">Remove</button>`:''}</div>
     <div class="title"><a href="${esc(r.thread_url||r.url)}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></div>
-    ${r.message?`<div class="msg">${esc(r.message)}</div>`:''}
+    ${r.message&&r.message_source!=='random'?`<div class="msg">${esc(r.message)}</div>`:''}
     ${r.reddit_url?`<div class="small" style="margin-top:6px"><a href="${esc(r.reddit_url)}" target="_blank" rel="noopener">View on Reddit →</a></div>`:''}
   </div>`).join('')}</div>`;
 }

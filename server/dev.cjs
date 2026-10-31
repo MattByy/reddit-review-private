@@ -143,12 +143,16 @@ function createApp({mock=false,dbFile,apiKey=process.env.ENGAIN_API_KEY,projectI
     if(!cfg.write_every_minutes&&!fast())return {action:'off',reason:'The writer is off (write_every_minutes is 0)'};
     const waiting=queue.queue2List(store).items.filter(sendable).length;
     if(waiting>=cfg.queue2_target)return {action:'none',reason:`Queue 2 has ${waiting} drafts ready (target ${cfg.queue2_target})`};
-    const r=queue.claimNext(store,'writer');
+    // A draft whose model call failed (a timeout, an outage) still holds its placeholder; write it
+    // again before taking a new item, up to 3 failed tries each, so placeholders don't pile up.
+    const failures=id=>store.db.prepare("select count(*) n from events where type='llm.error' and queue2_id=?").get(id).n;
+    const stranded=queue.queue2List(store).items.find(i=>i.send_status==='ready'&&i.message_source==='random'&&[null,'failed'].includes(i.write_status)&&failures(i.queue2_id)<3);
+    const r=stranded?{queue2:{queue2_id:stranded.queue2_id,kind:stranded.status}}:queue.claimNext(store,'writer');
     if(!r.queue2)return {action:'none',reason:'Queue 1 is empty'};
     const id=r.queue2.queue2_id;
-    try{await writer.writeQueue2(store,id,writerOpts);}catch(e){return {action:'failed',queue2_id:id,reason:e.message};}
+    try{await writer.writeQueue2(store,id,writerOpts);}catch(e){return {action:'failed',queue2_id:id,retry:!!stranded,reason:e.message};}
     const item=queue.queue2Item(store,id);
-    return {action:item?item.write_status:'skipped',queue2_id:id,kind:r.queue2.kind??item?.status??null,model:item?.model??null,ready:waiting+(sendable(item)?1:0)};
+    return {action:item?item.write_status:'skipped',queue2_id:id,retry:!!stranded,kind:r.queue2.kind??item?.status??null,model:item?.model??null,ready:waiting+(sendable(item)?1:0)};
   };
   // Supabase mirror (server/mirror.cjs), every minute while the scheduler runs. Off without its keys.
   // Logs only when it starts failing or recovers, not every minute.
